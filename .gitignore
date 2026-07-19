@@ -1,3 +1,41 @@
-branch_structure.json
-temp_auto_push.bat
-temp_interactive_push.bat
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Turbo
+.turbo/
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Prisma
+apps/api/prisma/migrations/dev.db
+apps/api/prisma/migrations/dev.db-journal
+
+# Generated types are committed and CI-verified — do NOT add types.ts here
