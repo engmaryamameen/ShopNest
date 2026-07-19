@@ -1,0 +1,25 @@
+{
+  "name": "shopnest",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "turbo": "2.5.4",
+    "typescript": "5.8.3"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  }
+}
