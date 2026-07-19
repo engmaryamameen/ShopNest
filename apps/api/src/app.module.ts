@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { CartModule } from './cart/cart.module';
 import { OriginGuard } from './common/guards/origin.guard';
 import appConfig from './config/app.config';
 
@@ -45,6 +46,7 @@ import appConfig from './config/app.config';
     HealthModule,
     AuthModule,
     CatalogModule,
+    CartModule,
   ],
   providers: [
     {
