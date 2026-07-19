@@ -26,7 +26,6 @@ import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decor
 export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
 
-  // ─── Customer endpoints ───────────────────────────────────────────────
 
   @Post('orders/checkout')
   @HttpCode(HttpStatus.CREATED)
@@ -54,7 +53,6 @@ export class OrdersController {
     return this.orders.cancelMyOrder(user.sub, id);
   }
 
-  // ─── Admin endpoints ──────────────────────────────────────────────────
 
   @Get('admin/orders')
   @Roles(Role.ADMIN)

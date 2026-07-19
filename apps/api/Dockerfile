@@ -1,4 +1,3 @@
-# ── Stage 1: Dependencies ─────────────────────────────────────────────────
 FROM node:22-alpine AS deps
 WORKDIR /app
 
@@ -10,7 +9,6 @@ COPY packages/api-client/package.json ./packages/api-client/
 
 RUN pnpm install --frozen-lockfile
 
-# ── Stage 2: Build ────────────────────────────────────────────────────────
 FROM node:22-alpine AS builder
 WORKDIR /app
 
@@ -24,7 +22,6 @@ WORKDIR /app/apps/api
 RUN pnpm run build
 RUN pnpm exec prisma generate
 
-# ── Stage 3: Production ───────────────────────────────────────────────────
 FROM node:22-alpine AS runner
 WORKDIR /app
 
