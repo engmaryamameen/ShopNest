@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
+import { AuthModule } from './auth/auth.module';
 import { OriginGuard } from './common/guards/origin.guard';
 import appConfig from './config/app.config';
 
@@ -41,6 +42,7 @@ import appConfig from './config/app.config';
     }),
     PrismaModule,
     HealthModule,
+    AuthModule,
   ],
   providers: [
     {
