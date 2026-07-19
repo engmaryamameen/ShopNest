@@ -1,0 +1,7 @@
+node_modules
+.next
+.env
+.env.local
+coverage
+e2e
+playwright-report
