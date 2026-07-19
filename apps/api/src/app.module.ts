@@ -7,6 +7,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CartModule } from './cart/cart.module';
+import { OrdersModule } from './orders/orders.module';
 import { OriginGuard } from './common/guards/origin.guard';
 import appConfig from './config/app.config';
 
@@ -47,6 +48,7 @@ import appConfig from './config/app.config';
     AuthModule,
     CatalogModule,
     CartModule,
+    OrdersModule,
   ],
   providers: [
     {
