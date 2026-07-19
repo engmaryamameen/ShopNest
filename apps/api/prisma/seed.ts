@@ -10,7 +10,6 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient();
 
 async function main() {
-  // ── Admin user ─────────────────────────────────────────────────────────
   const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@shopnest.dev';
   const adminPassword = process.env.ADMIN_PASSWORD ?? 'Admin@ShopNest2025!';
 
@@ -26,7 +25,6 @@ async function main() {
     console.log(`Admin already exists: ${adminEmail}`);
   }
 
-  // ── Sample categories ──────────────────────────────────────────────────
   const categories = [
     { name: 'Electronics', slug: 'electronics' },
     { name: 'Clothing', slug: 'clothing' },
@@ -43,7 +41,6 @@ async function main() {
   }
   console.log(`Categories seeded: ${categories.map((c) => c.name).join(', ')}`);
 
-  // ── Sample products ───────────────────────────────────────────────────
   const electronicsCategory = await prisma.category.findUniqueOrThrow({
     where: { slug: 'electronics' },
   });

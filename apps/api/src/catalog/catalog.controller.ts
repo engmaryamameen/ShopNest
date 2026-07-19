@@ -31,8 +31,6 @@ import { Roles } from '../common/decorators/roles.decorator';
 export class CatalogController {
   constructor(private readonly catalog: CatalogService) {}
 
-  // ─── Categories ──────────────────────────────────────────────────────────
-
   @Post('categories')
   @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)
@@ -47,8 +45,6 @@ export class CatalogController {
   listCategories() {
     return this.catalog.listCategories();
   }
-
-  // ─── Products ────────────────────────────────────────────────────────────
 
   @Post('products')
   @UseGuards(JwtAuthGuard)

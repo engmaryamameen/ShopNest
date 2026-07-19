@@ -34,7 +34,6 @@ export class OrdersService {
   ) {}
 
   async checkout(userId: string, dto: CheckoutDto) {
-    // ── Fast pre-check outside transaction ───────────────────────────────
     const existingOrder = await this.prisma.order.findUnique({
       where: { Order_userId_idempotencyKey_key: { userId, idempotencyKey: dto.idempotencyKey } },
       include: ORDER_INCLUDE,
@@ -44,23 +43,19 @@ export class OrdersService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          // ── 1. Lock cart row (serializes all cart mutations) ─────────
           const cart = await this.cartService.lockCart(tx, userId);
 
-          // ── 2. Re-check idempotency INSIDE transaction ───────────────
           const doubleCheck = await tx.order.findUnique({
             where: { Order_userId_idempotencyKey_key: { userId, idempotencyKey: dto.idempotencyKey } },
             include: ORDER_INCLUDE,
           });
           if (doubleCheck) return doubleCheck;
 
-          // ── 3. Load cart items inside transaction ────────────────────
           const cartItems = await tx.cartItem.findMany({ where: { cartId: cart.id } });
           if (cartItems.length === 0) throw new BadRequestException('Cart is empty');
 
           const productIds = cartItems.map((i) => i.productId);
 
-          // ── 4. Lock products in deterministic order (deadlock prevention)
           const lockedProducts = await tx.$queryRaw<LockedProduct[]>(
             Prisma.sql`
               SELECT id, "priceCents", name, slug, "stockQuantity", "isActive"
@@ -71,7 +66,6 @@ export class OrdersService {
             `,
           );
 
-          // ── 5. Validate stock and active status ──────────────────────
           const productMap = new Map(lockedProducts.map((p) => [p.id, p]));
           for (const item of cartItems) {
             const product = productMap.get(item.productId);
@@ -83,7 +77,6 @@ export class OrdersService {
             }
           }
 
-          // ── 6. Decrement stock (conditional UPDATE, check affected rows) ─
           for (const item of cartItems) {
             const affected = await tx.$executeRaw`
               UPDATE "Product"
@@ -96,13 +89,11 @@ export class OrdersService {
             }
           }
 
-          // ── 7. Compute total ─────────────────────────────────────────
           const totalCents = cartItems.reduce((sum, item) => {
             const p = productMap.get(item.productId)!;
             return sum + p.priceCents * item.quantity;
           }, 0);
 
-          // ── 8. Create order with item snapshots ───────────────────────
           const order = await tx.order.create({
             data: {
               userId,
@@ -125,7 +116,6 @@ export class OrdersService {
             include: ORDER_INCLUDE,
           });
 
-          // ── 9. Delete specific CartItem IDs (not deleteMany by cartId) ─
           await tx.cartItem.deleteMany({ where: { id: { in: cartItems.map((i) => i.id) } } });
 
           return order;
@@ -162,7 +152,6 @@ export class OrdersService {
     return this.transitionStatus(orderId, OrderStatus.CANCELLED, userId, Role.CUSTOMER);
   }
 
-  // ─── Admin endpoints ──────────────────────────────────────────────────
 
   async adminListOrders(status?: OrderStatus) {
     return this.prisma.order.findMany({
@@ -185,7 +174,6 @@ export class OrdersService {
     return this.transitionStatus(orderId, dto.status, adminId, Role.ADMIN);
   }
 
-  // ─── Private helpers ──────────────────────────────────────────────────
 
   private async transitionStatus(
     orderId: string,

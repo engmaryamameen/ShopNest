@@ -10,7 +10,6 @@ import { ProductQueryDto } from './dto/product-query.dto';
 export class CatalogService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ─── Categories ──────────────────────────────────────────────────────────
 
   async createCategory(dto: CreateCategoryDto) {
     return this.prisma.category.create({ data: dto });
@@ -20,7 +19,6 @@ export class CatalogService {
     return this.prisma.category.findMany({ orderBy: { name: 'asc' } });
   }
 
-  // ─── Products ────────────────────────────────────────────────────────────
 
   async createProduct(dto: CreateProductDto) {
     await this.ensureCategoryExists(dto.categoryId);
@@ -115,7 +113,6 @@ export class CatalogService {
     }
   }
 
-  // ─── Private ─────────────────────────────────────────────────────────────
 
   private async ensureCategoryExists(categoryId: string): Promise<void> {
     const cat = await this.prisma.category.findUnique({ where: { id: categoryId } });

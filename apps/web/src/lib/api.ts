@@ -60,7 +60,6 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 }
 
 export const api = {
-  // ─── Auth ───────────────────────────────────────────────────────────────
   register: (body: { email: string; password: string }) =>
     request<{ user: { id: string; email: string; role: string } }>('/auth/register', {
       method: 'POST',
@@ -89,7 +88,6 @@ export const api = {
       isServer: true,
     }),
 
-  // ─── Catalog ────────────────────────────────────────────────────────────
   listCategories: () => request<unknown[]>('/categories'),
 
   listProducts: (params: Record<string, string | number>) => {
@@ -103,7 +101,6 @@ export const api = {
 
   getProduct: (slug: string) => request<unknown>(`/products/${slug}`),
 
-  // ─── Cart ────────────────────────────────────────────────────────────────
   getCart: (cookies?: string) =>
     request<unknown>('/cart', { cookies, isServer: true }),
 
@@ -116,7 +113,6 @@ export const api = {
   clearCart: (cookies?: string) =>
     request<void>('/cart', { method: 'DELETE', cookies, isServer: true }),
 
-  // ─── Orders ─────────────────────────────────────────────────────────────
   checkout: (body: { idempotencyKey: string }, cookies?: string) =>
     request<unknown>('/orders/checkout', { method: 'POST', body, cookies, isServer: true }),
 
@@ -129,7 +125,6 @@ export const api = {
   cancelOrder: (id: string, cookies?: string) =>
     request<unknown>(`/orders/${id}/cancel`, { method: 'PATCH', cookies, isServer: true }),
 
-  // ─── Admin ──────────────────────────────────────────────────────────────
   adminListOrders: (status?: string, cookies?: string) => {
     const qs = status ? `?status=${status}` : '';
     return request<unknown[]>(`/admin/orders${qs}`, { cookies, isServer: true });
