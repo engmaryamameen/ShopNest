@@ -41,4 +41,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget -qO- http://localhost:3001/health || exit 1
 
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]

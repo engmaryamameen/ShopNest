@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { CART_QUERY_KEY } from '@/lib/use-cart';
 
 interface AddToCartButtonProps {
   productId: string;
@@ -14,6 +16,7 @@ export function AddToCartButton({ productId, stockQuantity }: AddToCartButtonPro
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   if (stockQuantity === 0) {
     return (
@@ -32,12 +35,16 @@ export function AddToCartButton({ productId, stockQuantity }: AddToCartButtonPro
       try {
         await api.upsertCartItem({ productId, quantity });
         setMessage({ type: 'success', text: 'Added to cart!' });
+        await queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
         router.refresh();
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           router.push('/login?returnTo=/cart');
         } else {
-          setMessage({ type: 'error', text: err instanceof ApiError ? err.message : 'Failed to add to cart' });
+          setMessage({
+            type: 'error',
+            text: err instanceof ApiError ? err.message : 'Failed to add to cart',
+          });
         }
       }
     });
@@ -65,7 +72,7 @@ export function AddToCartButton({ productId, stockQuantity }: AddToCartButtonPro
           >
             −
           </button>
-          <span className="px-4 py-2 font-medium min-w-[3rem] text-center">{quantity}</span>
+          <span className="px-4 py-2 font-medium min-w-12 text-center">{quantity}</span>
           <button
             onClick={() => setQuantity((q) => Math.min(10, q + 1, stockQuantity))}
             className="px-3 py-2 text-gray-600 hover:bg-gray-50"

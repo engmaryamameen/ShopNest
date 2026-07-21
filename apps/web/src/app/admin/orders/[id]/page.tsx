@@ -37,7 +37,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
 
   let order: Order;
   try {
-    order = (await api.adminGetOrder(id)) as Order;
+    order = (await api.adminGetOrder(id, cookieHeader)) as Order;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;

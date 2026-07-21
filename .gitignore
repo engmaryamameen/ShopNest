@@ -38,4 +38,7 @@ Thumbs.db
 apps/api/prisma/migrations/dev.db
 apps/api/prisma/migrations/dev.db-journal
 
+# TypeScript incremental build info
+*.tsbuildinfo
+
 # Generated types are committed and CI-verified — do NOT add types.ts here

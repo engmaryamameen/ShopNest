@@ -38,5 +38,5 @@ export default async function CartPage() {
     throw err;
   }
 
-  return <CartView cart={cart} />;
+  return <CartView initialCart={cart} />;
 }

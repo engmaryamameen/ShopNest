@@ -82,8 +82,8 @@ export class CatalogController {
   @Roles(Role.ADMIN)
   @ApiCookieAuth('access_token')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: '[Admin] Delete a product' })
-  deleteProduct(@Param('id') id: string) {
-    return this.catalog.deleteProduct(id);
+  @ApiOperation({ summary: '[Admin] Archive a product (soft-delete; physical deletion is never performed)' })
+  archiveProduct(@Param('id') id: string) {
+    return this.catalog.archiveProduct(id);
   }
 }

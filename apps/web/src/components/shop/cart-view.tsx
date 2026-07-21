@@ -5,54 +5,44 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
-
-interface CartItem {
-  id: string;
-  productId: string;
-  quantity: number;
-  product: {
-    id: string;
-    name: string;
-    slug: string;
-    priceCents: number;
-    imageUrl?: string | null;
-    stockQuantity: number;
-  };
-}
-
-interface Cart {
-  id: string;
-  items: CartItem[];
-}
+import { useCart, useRemoveCartItem, type Cart } from '@/lib/use-cart';
 
 function formatPrice(cents: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 }
 
-export function CartView({ cart }: { cart: Cart }) {
+interface CartViewProps {
+  /** Server-fetched initial cart, hydrates the TanStack Query cache. */
+  initialCart: Cart;
+}
+
+export function CartView({ initialCart }: CartViewProps) {
   const router = useRouter();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [isCheckingOut, startCheckoutTransition] = useTransition();
-  const [isRemoving, startRemoveTransition] = useTransition();
 
-  const total = cart.items.reduce((sum, item) => sum + item.product.priceCents * item.quantity, 0);
+  // TanStack Query owns the cart state client-side.
+  // initialCart seeds the cache so we render immediately without a waterfall.
+  // The page only renders CartView when the user is authenticated, so data is
+  // never null here — fall back to initialCart while the query initialises.
+  const { data } = useCart();
+  const cart: Cart = data ?? initialCart;
+  const removeItem = useRemoveCartItem();
+
+  const total = cart.items.reduce(
+    (sum, item) => sum + item.product.priceCents * item.quantity,
+    0,
+  );
 
   function handleRemove(productId: string) {
-    startRemoveTransition(async () => {
-      try {
-        await api.removeCartItem(productId);
-        router.refresh();
-      } catch {
-        // silent retry
-      }
-    });
+    removeItem.mutate(productId);
   }
 
   function handleCheckout() {
     setCheckoutError(null);
     startCheckoutTransition(async () => {
       try {
-        // Client-generated UUID v4 as idempotency key
+        // Client-generated UUID v4 as idempotency key — stable for this attempt.
         const idempotencyKey = crypto.randomUUID();
         const order = (await api.checkout({ idempotencyKey })) as { id: string };
         router.push(`/orders/${order.id}`);
@@ -85,29 +75,42 @@ export function CartView({ cart }: { cart: Cart }) {
         <div className="lg:col-span-2 space-y-4">
           {cart.items.map((item) => (
             <div key={item.id} className="bg-white rounded-xl border border-gray-200 p-4 flex gap-4">
-              <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+              <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100 shrink-0">
                 {item.product.imageUrl ? (
-                  <Image src={item.product.imageUrl} alt={item.product.name} fill className="object-cover" />
+                  <Image
+                    src={item.product.imageUrl}
+                    alt={item.product.name}
+                    fill
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="w-full h-full bg-gray-100" />
                 )}
               </div>
 
               <div className="flex-1">
-                <Link href={`/products/${item.product.slug}`} className="font-semibold text-gray-900 hover:text-indigo-600">
+                <Link
+                  href={`/products/${item.product.slug}`}
+                  className="font-semibold text-gray-900 hover:text-indigo-600"
+                >
                   {item.product.name}
                 </Link>
-                <p className="text-gray-500 text-sm mt-0.5">{formatPrice(item.product.priceCents)} each</p>
+                <p className="text-gray-500 text-sm mt-0.5">
+                  {formatPrice(item.product.priceCents)} each
+                </p>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
-                  <span className="font-semibold">{formatPrice(item.product.priceCents * item.quantity)}</span>
+                  <span className="font-semibold">
+                    {formatPrice(item.product.priceCents * item.quantity)}
+                  </span>
                 </div>
               </div>
 
               <button
                 onClick={() => handleRemove(item.productId)}
-                disabled={isRemoving}
+                disabled={removeItem.isPending}
                 className="text-red-400 hover:text-red-600 text-sm transition-colors disabled:opacity-50"
+                aria-label={`Remove ${item.product.name} from cart`}
               >
                 Remove
               </button>
@@ -122,7 +125,9 @@ export function CartView({ cart }: { cart: Cart }) {
           <div className="space-y-2 mb-4">
             {cart.items.map((item) => (
               <div key={item.id} className="flex justify-between text-sm text-gray-600">
-                <span>{item.product.name} × {item.quantity}</span>
+                <span>
+                  {item.product.name} × {item.quantity}
+                </span>
                 <span>{formatPrice(item.product.priceCents * item.quantity)}</span>
               </div>
             ))}
