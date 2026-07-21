@@ -8,11 +8,12 @@ export class CreateProductDto {
   @MaxLength(200)
   name!: string;
 
-  @ApiProperty({ example: 'wireless-headphones' })
+  @ApiPropertyOptional({ example: 'wireless-headphones', description: 'Auto-generated from name if omitted' })
+  @IsOptional()
   @IsString()
   @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'slug must be lowercase-kebab-case' })
   @MaxLength(200)
-  slug!: string;
+  slug?: string;
 
   @ApiProperty({ example: 'High-quality wireless headphones with ANC.' })
   @IsString()

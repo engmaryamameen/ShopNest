@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUserStore } from '@/store/user.store';
 import { api } from '@/lib/api';
+import { useCartCount } from '@/lib/use-cart';
 
 export function NavBar() {
   const router = useRouter();
   const { user, setUser } = useUserStore();
+  const cartCount = useCartCount();
 
   async function handleLogout() {
     try {
@@ -31,9 +33,21 @@ export function NavBar() {
             <Link href="/shop" className="text-gray-600 hover:text-gray-900 text-sm font-medium">
               Shop
             </Link>
-            <Link href="/cart" className="text-gray-600 hover:text-gray-900 text-sm font-medium">
+
+            {/* Cart link with item-count badge */}
+            <Link
+              href="/cart"
+              className="relative text-gray-600 hover:text-gray-900 text-sm font-medium"
+              aria-label={cartCount > 0 ? `Cart (${cartCount} items)` : 'Cart'}
+            >
               Cart
+              {cartCount > 0 && (
+                <span className="absolute -top-2 -right-4 min-w-4.5 h-4.5 flex items-center justify-center bg-indigo-600 text-white text-[0.65rem] font-bold rounded-full px-1 leading-none">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
             </Link>
+
             <Link href="/orders" className="text-gray-600 hover:text-gray-900 text-sm font-medium">
               Orders
             </Link>

@@ -89,14 +89,14 @@ export function AdminProductList({ products, categories }: AdminProductListProps
     });
   }
 
-  function handleDelete(productId: string, name: string) {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  function handleArchive(productId: string, name: string) {
+    if (!confirm(`Archive "${name}"? It will be hidden from the public catalog.`)) return;
     startTransition(async () => {
       try {
-        await api.adminDeleteProduct(productId);
+        await api.adminArchiveProduct(productId);
         router.refresh();
       } catch (err) {
-        alert(err instanceof ApiError ? err.message : 'Delete failed');
+        alert(err instanceof ApiError ? err.message : 'Archive failed');
       }
     });
   }
@@ -212,8 +212,8 @@ export function AdminProductList({ products, categories }: AdminProductListProps
                     <button onClick={() => startEdit(product)} className="text-indigo-600 hover:text-indigo-700 text-sm font-medium">
                       Edit
                     </button>
-                    <button onClick={() => handleDelete(product.id, product.name)} className="text-red-500 hover:text-red-600 text-sm font-medium">
-                      Delete
+                    <button onClick={() => handleArchive(product.id, product.name)} className="text-red-500 hover:text-red-600 text-sm font-medium">
+                      Archive
                     </button>
                   </div>
                 </td>
