@@ -1,0 +1,17 @@
+{
+  "name": "@shopnest/api-client",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "generate": "openapi-typescript http://localhost:3001/api-json -o src/types.ts",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.8.3"
+  }
+}
