@@ -63,18 +63,21 @@ jobs:
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: pnpm exec prisma generate
+
       - name: Type-check API
         run: pnpm --filter @shopnest/api type-check
+
+      - name: Lint API
+        run: pnpm --filter @shopnest/api lint
 
       - name: Run API unit tests
         run: pnpm --filter @shopnest/api test --coverage
 
       - name: Verify generated types are committed
-        run: |
-          # Start API, generate types, verify no diff
-          # In CI without a live server, we verify the file exists and is non-empty
-          test -s packages/api-client/src/types.ts
-          echo "types.ts exists and is non-empty"
+        run: test -s packages/api-client/src/types.ts
 
   # ── Web ──────────────────────────────────────────────────────────────────
   web:

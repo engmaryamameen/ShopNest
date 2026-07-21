@@ -55,8 +55,6 @@ export class CatalogService {
     const skip = (page - 1) * limit;
 
     if (q) {
-      // Full-text search via the generated tsvector column.
-      // Sorting by relevance first; secondary sort is applied per sortBy/sortOrder.
       const orderByClause =
         sortBy === 'priceCents'
           ? Prisma.sql`"priceCents" ${sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
@@ -138,10 +136,6 @@ export class CatalogService {
     }
   }
 
-  /**
-   * Archive a product (soft-delete via isActive = false).
-   * Physical deletion is never performed so order history references remain intact.
-   */
   async archiveProduct(id: string): Promise<void> {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw new NotFoundException('Product not found');
@@ -168,7 +162,6 @@ export class CatalogService {
     return Number(rows[0].count);
   }
 
-  /** Convert a display name to a URL-safe lowercase-kebab slug. */
   private slugify(name: string): string {
     return name
       .toLowerCase()
@@ -177,10 +170,6 @@ export class CatalogService {
       .replace(/^-+|-+$/g, '');
   }
 
-  /**
-   * Ensure the slug is unique in the given table.
-   * If the candidate already exists, appends -2, -3, … until a free slot is found.
-   */
   private async resolveUniqueSlug(base: string, table: 'product' | 'category'): Promise<string> {
     let candidate = base;
     let attempt = 1;

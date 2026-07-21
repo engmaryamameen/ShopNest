@@ -1,7 +1,3 @@
-/**
- * Validate a returnTo path to prevent open-redirect attacks.
- * Only accepts relative paths on the same origin.
- */
 export function validateReturnTo(candidate: string | null | undefined): string {
   if (!candidate) return '/';
   if (candidate.startsWith('/') && !candidate.startsWith('//')) {

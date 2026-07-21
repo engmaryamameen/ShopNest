@@ -34,12 +34,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const accessToken = request.cookies.get('access_token')?.value;
   const refreshToken = request.cookies.get('refresh_token')?.value;
 
-  // If we have a valid-looking access token, proceed.
   if (accessToken) {
     return NextResponse.next();
   }
 
-  // No access token: attempt a proactive refresh before redirecting to login.
   if (refreshToken) {
     try {
       const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
@@ -54,8 +52,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       });
 
       if (refreshRes.ok) {
-        // Refresh succeeded: redirect to the same URL so the browser re-sends
-        // with the new cookies that are attached to the redirect response.
         const response = NextResponse.redirect(request.nextUrl, { status: 307 });
         const setCookies = refreshRes.headers.getSetCookie?.() ?? [];
         for (const cookie of setCookies) {
@@ -65,17 +61,11 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       }
 
       if (refreshRes.status === 409) {
-        // 409 CONFLICT = another tab/request already rotated this token within
-        // the grace window.  The new access token was already set in the browser
-        // by the winning request.  Do NOT redirect — that would loop because this
-        // response carries no new cookies.  Instead, proceed: the browser already
-        // holds a valid access_token cookie from the winning rotation.
+        // Another tab already rotated this token; the browser has the new cookies.
         return NextResponse.next();
       }
-
-      // Any other non-OK status (401, 403, 500 …) → fall through to login redirect.
     } catch {
-      // Network error calling the API — fall through to login redirect.
+      // network error — fall through to login redirect
     }
   }
 
