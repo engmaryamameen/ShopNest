@@ -144,7 +144,7 @@ describe('AuthService', () => {
 
   describe('refresh - concurrent tab grace period', () => {
     it('returns recently-rotated when token was used within grace period', async () => {
-      const { raw, hash } = generateRefreshToken();
+      const { raw } = generateRefreshToken();
       const usedAt = new Date(Date.now() - 5000).toISOString(); // 5 seconds ago
 
       prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
