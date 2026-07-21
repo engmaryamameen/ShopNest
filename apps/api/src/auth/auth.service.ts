@@ -123,13 +123,11 @@ export class AuthService {
         return { kind: 'already-revoked' } as RefreshOutcome;
       }
 
-      // Mark current token as used
       await tx.refreshToken.update({
         where: { id: rec.tokenId },
         data: { isUsed: true, usedAt: new Date() },
       });
 
-      // Issue new token in the same family
       const expiresIn = this.config.getOrThrow<string>('app.jwtRefreshExpiresIn');
       const { raw: newRawToken, hash: newHash } = generateRefreshToken();
       const expiresAt = new Date(Date.now() + parseDurationMs(expiresIn));
@@ -203,10 +201,6 @@ export class AuthService {
   }
 }
 
-/**
- * Parse duration strings like "15m", "30d", "1h" into milliseconds.
- * Only supports: s (seconds), m (minutes), h (hours), d (days).
- */
 function parseDurationMs(duration: string): number {
   const match = /^(\d+)([smhd])$/.exec(duration);
   if (!match) throw new Error(`Invalid duration string: ${duration}`);

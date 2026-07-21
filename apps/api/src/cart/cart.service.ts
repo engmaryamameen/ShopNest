@@ -89,10 +89,6 @@ export class CartService {
     });
   }
 
-  /**
-   * Lock the Cart row to serialize all cart mutations and checkout.
-   * Called inside every transaction that touches cart state.
-   */
   async lockCart(tx: Prisma.TransactionClient, userId: string): Promise<{ id: string }> {
     const rows = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM "Cart" WHERE "userId" = ${userId}::uuid FOR UPDATE

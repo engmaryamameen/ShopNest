@@ -26,7 +26,6 @@ export interface Cart {
 
 export const CART_QUERY_KEY = ['cart'] as const;
 
-/** Fetch the current user's cart (no-op when unauthenticated — returns null). */
 export function useCart() {
   return useQuery<Cart | null>({
     queryKey: CART_QUERY_KEY,
@@ -42,16 +41,11 @@ export function useCart() {
   });
 }
 
-/** Total number of distinct line items in the cart (for the nav badge). */
 export function useCartCount(): number {
   const { data } = useCart();
   return data?.items?.length ?? 0;
 }
 
-/**
- * Add or update a cart item with optimistic UI.
- * On error the previous cache snapshot is restored automatically.
- */
 export function useUpsertCartItem() {
   const queryClient = useQueryClient();
 
@@ -96,10 +90,6 @@ export function useUpsertCartItem() {
   });
 }
 
-/**
- * Remove a cart item by productId with optimistic UI.
- * On error the previous cache snapshot is restored automatically.
- */
 export function useRemoveCartItem() {
   const queryClient = useQueryClient();
 
