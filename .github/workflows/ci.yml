@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "refactor/**", "feat/**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Audit ────────────────────────────────────────────────────────────────
+  audit:
+    name: Security audit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.28.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+
+  # ── API ──────────────────────────────────────────────────────────────────
+  api:
+    name: API — type-check, lint, test
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: shopnest
+          POSTGRES_PASSWORD: shopnest
+          POSTGRES_DB: shopnest_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://shopnest:shopnest@localhost:5432/shopnest_test
+      JWT_ACCESS_SECRET: test-access-secret-placeholder
+      JWT_REFRESH_SECRET: test-refresh-secret-placeholder
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.28.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: pnpm exec prisma generate
+
+      - name: Type-check API
+        run: pnpm --filter @shopnest/api type-check
+
+      - name: Lint API
+        run: pnpm --filter @shopnest/api lint
+
+      - name: Run API unit tests
+        run: pnpm --filter @shopnest/api test --coverage
+
+      - name: Verify generated types are committed
+        run: test -s packages/api-client/src/types.ts
+
+  # ── Web ──────────────────────────────────────────────────────────────────
+  web:
+    name: Web — type-check, lint, test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.28.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type-check web
+        run: pnpm --filter @shopnest/web type-check
+
+      - name: Lint web
+        run: pnpm --filter @shopnest/web lint
+
+      - name: Run web unit tests
+        run: pnpm --filter @shopnest/web test
+
+  # ── Build ────────────────────────────────────────────────────────────────
+  build:
+    name: Build all apps
+    runs-on: ubuntu-24.04
+    needs: [api, web]
+    env:
+      DATABASE_URL: postgresql://shopnest:shopnest@localhost:5432/shopnest_test
+      JWT_ACCESS_SECRET: build-placeholder
+      JWT_REFRESH_SECRET: build-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.28.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: pnpm exec prisma generate
+
+      - name: Build API
+        run: pnpm --filter @shopnest/api build
+        env:
+          NEXT_PUBLIC_API_URL: http://placeholder:3001

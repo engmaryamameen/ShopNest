@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(CUSTOMER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tokenFamilies RefreshTokenFamily[]
+  cart          Cart?
+  orders        Order[]
+  statusChanges OrderStatusHistory[] @relation("changedBy")
+}
+
+model RefreshTokenFamily {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tokens RefreshToken[]
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String             @id @default(uuid()) @db.Uuid
+  familyId  String             @db.Uuid
+  family    RefreshTokenFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  tokenHash String             @unique
+  isUsed    Boolean            @default(false)
+  usedAt    DateTime?
+  expiresAt DateTime
+  createdAt DateTime           @default(now())
+
+  @@index([familyId])
+}
+
+model Category {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @unique
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String   @unique
+  description   String
+  priceCents    Int
+  stockQuantity Int      @default(0)
+  imageUrl      String?
+  categoryId    String   @db.Uuid
+  category      Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([categoryId])
+  @@index([isActive, createdAt])
+}
+
+model Cart {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
+
+  items CartItem[]
+}
+
+model CartItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  cartId    String   @db.Uuid
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String   @db.Uuid
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int
+  addedAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+}
+
+model Order {
+  id             String      @id @default(uuid()) @db.Uuid
+  userId         String      @db.Uuid
+  user           User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  status         OrderStatus @default(PENDING)
+  totalCents     Int
+  currency       String      @default("USD")
+  idempotencyKey String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+
+  @@unique([userId, idempotencyKey], name: "Order_userId_idempotencyKey_key")
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  orderId        String  @db.Uuid
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  productId      String  @db.Uuid
+  product        Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity       Int
+  unitPriceCents Int
+  productName    String
+  productSlug    String
+
+  @@index([orderId])
+}
+
+model OrderStatusHistory {
+  id          String      @id @default(uuid()) @db.Uuid
+  orderId     String      @db.Uuid
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  changedById String      @db.Uuid
+  changedBy   User        @relation("changedBy", fields: [changedById], references: [id], onDelete: Restrict)
+  fromStatus  OrderStatus
+  toStatus    OrderStatus
+  createdAt   DateTime    @default(now())
+
+  @@index([orderId])
+}
