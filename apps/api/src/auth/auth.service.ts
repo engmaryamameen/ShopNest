@@ -2,7 +2,6 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
-  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -34,8 +33,6 @@ interface LockedRecord {
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -46,14 +43,17 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Email already registered');
 
+    // Hash outside the transaction — argon2 is intentionally slow and holding
+    // a connection for its duration would unnecessarily starve the pool.
     const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
 
-    const user = await this.prisma.user.create({
-      data: { email: dto.email, passwordHash },
+    // User and cart are created atomically so the system can never have a user
+    // without a cart (which would cause checkout to fail with "Cart not found").
+    const user = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.user.create({ data: { email: dto.email, passwordHash } });
+      await tx.cart.create({ data: { userId: u.id } });
+      return u;
     });
-
-    // Create cart eagerly so checkout never needs to handle missing cart
-    await this.prisma.cart.create({ data: { userId: user.id } });
 
     const { familyId, rawToken } = await this.createTokenFamily(user.id);
     return { userId: user.id, familyId, rawToken };
