@@ -149,6 +149,9 @@ export const api = {
 
   // ── Admin – Products ───────────────────────────────────────────────────────
 
+  adminListProducts: (cookies?: string) =>
+    request<unknown[]>('/admin/products', { cookies }),
+
   adminCreateProduct: (body: unknown, cookies?: string) =>
     request<unknown>('/products', { method: 'POST', body, cookies }),
 
