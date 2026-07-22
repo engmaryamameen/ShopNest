@@ -165,4 +165,10 @@ export const api = {
 
   adminCreateCategory: (body: { name: string; slug?: string }, cookies?: string) =>
     request<unknown>('/categories', { method: 'POST', body, cookies }),
+
+  adminUpdateCategory: (id: string, body: { name?: string; slug?: string }, cookies?: string) =>
+    request<unknown>(`/categories/${id}`, { method: 'PATCH', body, cookies }),
+
+  adminDeleteCategory: (id: string, cookies?: string) =>
+    request<void>(`/categories/${id}`, { method: 'DELETE', cookies }),
 };

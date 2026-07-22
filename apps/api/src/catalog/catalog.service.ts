@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
@@ -27,6 +28,40 @@ export class CatalogService {
 
   async listCategories() {
     return this.prisma.category.findMany({ orderBy: { name: 'asc' } });
+  }
+
+  async updateCategory(id: string, dto: UpdateCategoryDto) {
+    const existing = await this.prisma.category.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Category not found');
+
+    // Slug is not auto-derived on rename — it stays stable to preserve existing
+    // URLs (e.g. /shop?category=electronics). Pass slug explicitly to change it.
+    const data: { name?: string; slug?: string } = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.slug !== undefined) data.slug = dto.slug;
+
+    try {
+      return await this.prisma.category.update({ where: { id }, data });
+    } catch (err) {
+      if (this.isPrismaUniqueViolation(err)) {
+        throw new ConflictException('A category with that slug already exists');
+      }
+      throw err;
+    }
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    const existing = await this.prisma.category.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Category not found');
+
+    const productCount = await this.prisma.product.count({ where: { categoryId: id } });
+    if (productCount > 0) {
+      throw new ConflictException(
+        `Cannot delete category: ${productCount} product${productCount === 1 ? '' : 's'} still reference it. Re-assign or archive them first.`,
+      );
+    }
+
+    await this.prisma.category.delete({ where: { id } });
   }
 
   // ---------------------------------------------------------------------------
@@ -57,28 +92,37 @@ export class CatalogService {
     if (q) {
       const orderByClause =
         sortBy === 'priceCents'
-          ? Prisma.sql`"priceCents" ${sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
+          ? Prisma.sql`p."priceCents" ${sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
           : sortBy === 'name'
-            ? Prisma.sql`name ${sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
-            : Prisma.sql`"createdAt" ${sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`;
+            ? Prisma.sql`p.name ${sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`
+            : Prisma.sql`p."createdAt" ${sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`}`;
 
-      const results = await this.prisma.$queryRaw<Array<{
+      const rawResults = await this.prisma.$queryRaw<Array<{
         id: string; name: string; slug: string; description: string;
         priceCents: number; stockQuantity: number; imageUrl: string | null;
         categoryId: string; isActive: boolean; createdAt: Date; updatedAt: Date;
+        categoryName: string | null; categorySlug: string | null;
       }>>`
-        SELECT id, name, slug, description, "priceCents", "stockQuantity",
-               "imageUrl", "categoryId", "isActive", "createdAt", "updatedAt"
-        FROM   "Product"
-        WHERE  "isActive" = true
-          AND  search_vector @@ plainto_tsquery('english', ${q})
-          ${category ? Prisma.sql`AND "categoryId" = (SELECT id FROM "Category" WHERE slug = ${category})` : Prisma.sql``}
-        ORDER  BY ts_rank(search_vector, plainto_tsquery('english', ${q})) DESC,
+        SELECT p.id, p.name, p.slug, p.description, p."priceCents", p."stockQuantity",
+               p."imageUrl", p."categoryId", p."isActive", p."createdAt", p."updatedAt",
+               c.name AS "categoryName", c.slug AS "categorySlug"
+        FROM   "Product" p
+        LEFT   JOIN "Category" c ON c.id = p."categoryId"
+        WHERE  p."isActive" = true
+          AND  p.search_vector @@ plainto_tsquery('english', ${q})
+          ${category ? Prisma.sql`AND p."categoryId" = (SELECT id FROM "Category" WHERE slug = ${category})` : Prisma.sql``}
+        ORDER  BY ts_rank(p.search_vector, plainto_tsquery('english', ${q})) DESC,
                   ${orderByClause}
         LIMIT  ${limit} OFFSET ${skip}
       `;
+
+      const items = rawResults.map(({ categoryName, categorySlug, ...rest }) => ({
+        ...rest,
+        category: categoryName ? { name: categoryName, slug: categorySlug as string } : null,
+      }));
+
       const total = await this.countSearchResults(q, category);
-      return { items: results, total, page, limit };
+      return { items, total, page, limit };
     }
 
     const where: Prisma.ProductWhereInput = { isActive: true };
