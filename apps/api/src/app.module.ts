@@ -8,7 +8,9 @@ import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
+import { OptionalJwtAuthGuard } from './auth/guards/optional-jwt-auth.guard';
 import { OriginGuard } from './common/guards/origin.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 import appConfig from './config/app.config';
 
 @Module({
@@ -51,10 +53,13 @@ import appConfig from './config/app.config';
     OrdersModule,
   ],
   providers: [
-    {
-      provide: APP_GUARD,
-      useClass: OriginGuard,
-    },
+    // Guard execution order: 1 → 2 → 3 (then controller/route guards)
+    // 1. Populate request.user from JWT cookie if present (never throws)
+    { provide: APP_GUARD, useClass: OptionalJwtAuthGuard },
+    // 2. Reject mutating requests whose Origin doesn't match WEB_URL
+    { provide: APP_GUARD, useClass: OriginGuard },
+    // 3. Enforce @Roles() metadata — request.user is already set by step 1
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule {}

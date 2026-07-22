@@ -6,12 +6,12 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { PinoLogger } from 'nestjs-pino';
+import { Logger } from 'nestjs-pino';
 import { Prisma } from '@prisma/client';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
-  constructor(private readonly logger: PinoLogger) {}
+  constructor(private readonly logger: Logger) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
@@ -39,9 +39,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
         status = HttpStatus.CONFLICT;
         message = 'Transaction conflict — retry with the same idempotency key';
         errorCode = 'TRANSACTION_CONFLICT';
+      } else if (exception.code === 'P2023') {
+        // Inconsistent column data — e.g. a non-UUID string passed to a UUID column
+        status = HttpStatus.BAD_REQUEST;
+        message = 'Invalid data format';
+        errorCode = 'INVALID_DATA';
       } else {
         this.logger.error({ err: exception }, 'Unhandled Prisma error');
       }
+    } else if (exception instanceof Prisma.PrismaClientValidationError) {
+      // Missing required fields, wrong types, or invalid enum values passed
+      // to a Prisma query — always a caller mistake, not a server error.
+      status = HttpStatus.BAD_REQUEST;
+      message = 'Invalid request data';
+      errorCode = 'VALIDATION_ERROR';
     } else {
       this.logger.error({ err: exception, path: request.url }, 'Unhandled exception');
     }
