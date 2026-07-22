@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { NestFactory, Reflector } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
@@ -8,7 +8,6 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseTransformInterceptor } from './common/interceptors/response-transform.interceptor';
-import { RolesGuard } from './common/guards/roles.guard';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -39,7 +38,6 @@ async function bootstrap(): Promise<void> {
 
   app.useGlobalFilters(new AllExceptionsFilter(app.get(Logger)));
   app.useGlobalInterceptors(new ResponseTransformInterceptor());
-  app.useGlobalGuards(new RolesGuard(app.get(Reflector)));
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('ShopNest API')
