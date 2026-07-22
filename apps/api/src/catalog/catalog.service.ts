@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -31,14 +31,18 @@ export class CatalogService {
   }
 
   async updateCategory(id: string, dto: UpdateCategoryDto) {
-    const existing = await this.prisma.category.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Category not found');
-
     // Slug is not auto-derived on rename — it stays stable to preserve existing
     // URLs (e.g. /shop?category=electronics). Pass slug explicitly to change it.
     const data: { name?: string; slug?: string } = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.slug !== undefined) data.slug = dto.slug;
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('At least one field (name or slug) must be provided');
+    }
+
+    const existing = await this.prisma.category.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Category not found');
 
     try {
       return await this.prisma.category.update({ where: { id }, data });
@@ -51,17 +55,22 @@ export class CatalogService {
   }
 
   async deleteCategory(id: string): Promise<void> {
-    const existing = await this.prisma.category.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Category not found');
+    // Wrap in a transaction so the product-count check and the delete are
+    // atomic — a concurrent product creation cannot sneak in between them
+    // and produce an unhandled FK violation.
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.category.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException('Category not found');
 
-    const productCount = await this.prisma.product.count({ where: { categoryId: id } });
-    if (productCount > 0) {
-      throw new ConflictException(
-        `Cannot delete category: ${productCount} product${productCount === 1 ? '' : 's'} still reference it. Re-assign or archive them first.`,
-      );
-    }
+      const productCount = await tx.product.count({ where: { categoryId: id } });
+      if (productCount > 0) {
+        throw new ConflictException(
+          `Cannot delete category: ${productCount} product${productCount === 1 ? '' : 's'} still reference it. Re-assign or archive them first.`,
+        );
+      }
 
-    await this.prisma.category.delete({ where: { id } });
+      await tx.category.delete({ where: { id } });
+    });
   }
 
   // ---------------------------------------------------------------------------
