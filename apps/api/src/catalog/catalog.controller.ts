@@ -55,6 +55,15 @@ export class CatalogController {
     return this.catalog.createProduct(dto);
   }
 
+  @Get('admin/products')
+  @UseGuards(JwtAuthGuard)
+  @Roles(Role.ADMIN)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: '[Admin] List all products including archived' })
+  listAllProducts() {
+    return this.catalog.listAllProducts();
+  }
+
   @Get('products')
   @ApiOperation({ summary: 'List products (supports full-text search and category filter)' })
   listProducts(@Query() query: ProductQueryDto) {

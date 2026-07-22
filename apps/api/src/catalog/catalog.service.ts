@@ -102,6 +102,13 @@ export class CatalogService {
     return { items, total, page, limit };
   }
 
+  async listAllProducts() {
+    return this.prisma.product.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { category: { select: { name: true, slug: true } } },
+    });
+  }
+
   async getProductBySlug(slug: string) {
     const product = await this.prisma.product.findUnique({
       where: { slug },

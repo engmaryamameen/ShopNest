@@ -8,8 +8,10 @@ interface Product {
   id: string;
   name: string;
   slug: string;
+  description: string;
   priceCents: number;
   stockQuantity: number;
+  imageUrl?: string | null;
   isActive: boolean;
   category?: { name: string; slug: string };
 }
@@ -18,14 +20,15 @@ export default async function AdminProductsPage() {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
-  const result = await api.listProducts({ limit: 100 });
-  const categories = (await api.listCategories()) as Array<{ id: string; name: string; slug: string }>;
-  const products = (result as { items: Product[] }).items;
+  const [products, categories] = await Promise.all([
+    api.adminListProducts(cookieHeader) as Promise<Product[]>,
+    api.listCategories() as Promise<Array<{ id: string; name: string; slug: string }>>,
+  ]);
 
   return (
     <div>
       <h1 className="text-3xl font-bold text-gray-900 mb-8">Products</h1>
-      <AdminProductList products={products} categories={categories} cookieHeader={cookieHeader} />
+      <AdminProductList products={products} categories={categories} />
     </div>
   );
 }
