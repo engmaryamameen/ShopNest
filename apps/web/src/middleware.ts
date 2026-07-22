@@ -14,6 +14,7 @@ const PUBLIC_PATHS = [
   '/login',
   '/register',
   '/shop',
+  '/products',
   '/api/',
   '/_next/',
   '/favicon',

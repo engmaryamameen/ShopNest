@@ -19,6 +19,13 @@ export default function AdminDashboardPage() {
           <h2 className="text-xl font-semibold text-gray-900">Products</h2>
           <p className="text-gray-500 mt-1">Add, edit, and remove products</p>
         </Link>
+        <Link
+          href="/admin/categories"
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow"
+        >
+          <h2 className="text-xl font-semibold text-gray-900">Categories</h2>
+          <p className="text-gray-500 mt-1">Manage product categories</p>
+        </Link>
       </div>
     </div>
   );
