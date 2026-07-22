@@ -8,6 +8,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  ConflictException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiCookieAuth } from '@nestjs/swagger';
@@ -89,10 +90,7 @@ export class AuthController {
     }
 
     if (outcome.kind === 'recently-rotated') {
-      // Another tab already refreshed within the grace period.
-      // Return a 409 so the client knows to retry with existing cookies.
-      res.status(HttpStatus.CONFLICT);
-      throw new UnauthorizedException('REFRESH_RECENTLY_ROTATED');
+      throw new ConflictException('Another tab already refreshed — retry with existing cookies');
     }
 
     const user = (await this.authService.getUserById(outcome.userId))!;

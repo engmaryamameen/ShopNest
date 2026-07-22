@@ -8,8 +8,10 @@ interface Product {
   id: string;
   name: string;
   slug: string;
+  description: string;
   priceCents: number;
   stockQuantity: number;
+  imageUrl?: string | null;
   isActive: boolean;
   category?: { name: string; slug: string };
 }
@@ -23,7 +25,6 @@ interface Category {
 interface AdminProductListProps {
   products: Product[];
   categories: Category[];
-  cookieHeader: string;
 }
 
 function formatPrice(cents: number): string {
@@ -60,11 +61,11 @@ export function AdminProductList({ products, categories }: AdminProductListProps
     setForm({
       name: product.name,
       slug: product.slug,
-      description: '',
+      description: product.description,
       priceCents: product.priceCents,
       stockQuantity: product.stockQuantity,
       categoryId: product.category ? categories.find((c) => c.slug === product.category?.slug)?.id ?? '' : '',
-      imageUrl: '',
+      imageUrl: product.imageUrl ?? '',
       isActive: product.isActive,
     });
     setShowCreateForm(false);

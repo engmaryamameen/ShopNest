@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { OrderStatus, Role } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import { OrdersService } from '../orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CartService } from '../../cart/cart.service';
