@@ -1,0 +1,16 @@
+.git
+.github
+.turbo
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+**/*.spec.ts
+**/*.test.ts
+apps/web/e2e
+apps/web/playwright-report
+README.md
+DECISIONS.md

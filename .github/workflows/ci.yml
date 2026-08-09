@@ -129,5 +129,8 @@ jobs:
 
       - name: Build API
         run: pnpm --filter @shopnest/api build
+
+      - name: Build web
+        run: pnpm --filter @shopnest/web build
         env:
           NEXT_PUBLIC_API_URL: http://placeholder:3001

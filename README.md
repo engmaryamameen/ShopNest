@@ -32,10 +32,10 @@ cp apps/web/.env.example apps/web/.env.local
 
 # Run migrations
 cd apps/api && pnpm exec prisma migrate dev --name init
-pnpm exec ts-node prisma/seed.ts   # creates admin + sample data
+cd ../..
+pnpm --filter @shopnest/api db:seed   # creates admin + sample data
 
 # Start dev servers
-cd ../..
 pnpm dev
 ```
 

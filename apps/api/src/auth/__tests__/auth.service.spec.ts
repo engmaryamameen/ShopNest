@@ -51,6 +51,7 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     prisma = makePrismaMock();
+    prisma.$transaction.mockImplementation(async (callback) => callback(prisma));
     jwtService = { sign: jest.fn().mockReturnValue('signed-jwt') };
 
     const module: TestingModule = await Test.createTestingModule({

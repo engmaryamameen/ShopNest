@@ -1,6 +1,6 @@
 /**
  * Database seed script — creates an admin user and sample categories/products.
- * Run: pnpm --filter @shopnest/api exec ts-node prisma/seed.ts
+ * Run: pnpm --filter @shopnest/api db:seed
  *
  * Only creates records if they don't already exist (idempotent).
  */
