@@ -28,7 +28,7 @@ function makePrismaMock() {
   return {
     tx,
     catalogImportRun: {
-      create: jest.fn().mockResolvedValue({ id: 'run-id' }),
+      create: jest.fn().mockResolvedValue({ id: 'run-id', status: CatalogImportStatus.QUEUED }),
       update: jest.fn().mockImplementation(({ data }) => ({ id: 'run-id', ...data })),
       findMany: jest.fn(),
     },
@@ -44,7 +44,8 @@ describe('CatalogImportService', () => {
     };
     const service = new CatalogImportService(prisma as never, adapter);
 
-    const result = await service.importDummyJson();
+    const queued = await service.enqueueDummyJson();
+    const result = await service.executeRun(queued.id);
 
     expect(prisma.tx.product.create).toHaveBeenCalledTimes(1);
     expect(prisma.tx.productSource.create).toHaveBeenCalledWith({
@@ -66,33 +67,27 @@ describe('CatalogImportService', () => {
     };
     const service = new CatalogImportService(prisma as never, adapter);
 
-    await service.importDummyJson();
+    await service.executeRun('run-id');
     const checksum = prisma.tx.productSource.create.mock.calls[0][0].data.checksum;
     prisma.tx.productSource.findUnique.mockResolvedValue({
       id: 'source-id',
       productId: 'product-id',
       checksum,
     });
-    const result = await service.importDummyJson();
+    const result = await service.executeRun('run-id');
 
     expect(prisma.tx.product.create).toHaveBeenCalledTimes(1);
     expect(result).toEqual(expect.objectContaining({ unchangedCount: 1, createdCount: 0 }));
   });
 
-  it('persists a failed run when the supplier fails', async () => {
+  it('leaves retry and terminal failure policy to the worker', async () => {
     const prisma = makePrismaMock();
     const adapter: CatalogSourceAdapter = {
       fetchProducts: jest.fn().mockRejectedValue(new Error('offline')),
     };
     const service = new CatalogImportService(prisma as never, adapter);
 
-    await expect(service.importDummyJson()).rejects.toThrow('offline');
-    expect(prisma.catalogImportRun.update).toHaveBeenCalledWith({
-      where: { id: 'run-id' },
-      data: expect.objectContaining({
-        status: CatalogImportStatus.FAILED,
-        errorMessage: 'offline',
-      }),
-    });
+    await expect(service.executeRun('run-id')).rejects.toThrow('offline');
+    expect(prisma.catalogImportRun.update).not.toHaveBeenCalled();
   });
 });

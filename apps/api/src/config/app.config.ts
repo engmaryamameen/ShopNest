@@ -12,4 +12,12 @@ export default registerAs('app', () => ({
   cartMaxQuantityPerProduct: parseInt(process.env.CART_MAX_QTY_PER_PRODUCT ?? '10', 10),
   catalogImportUrl: process.env.CATALOG_IMPORT_URL ?? 'https://dummyjson.com',
   catalogImportTimeoutMs: parseInt(process.env.CATALOG_IMPORT_TIMEOUT_MS ?? '5000', 10),
+  catalogWorkerEnabled: process.env.CATALOG_WORKER_ENABLED !== 'false',
+  catalogWorkerPollMs: parseInt(process.env.CATALOG_WORKER_POLL_MS ?? '2000', 10),
+  catalogWorkerLeaseSeconds: parseInt(process.env.CATALOG_WORKER_LEASE_SECONDS ?? '300', 10),
+  catalogScheduleEnabled: process.env.CATALOG_SCHEDULE_ENABLED !== 'false',
+  catalogScheduleIntervalMs: parseInt(
+    process.env.CATALOG_SCHEDULE_INTERVAL_MS ?? '21600000',
+    10,
+  ),
 }));

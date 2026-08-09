@@ -1,0 +1,1 @@
+ALTER TYPE "CatalogImportStatus" ADD VALUE 'QUEUED' BEFORE 'RUNNING';
