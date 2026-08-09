@@ -30,6 +30,9 @@ services:
       JWT_REFRESH_EXPIRES_IN: 30d
       REFRESH_GRACE_PERIOD_MS: "30000"
       CART_MAX_QTY_PER_PRODUCT: "10"
+      CATALOG_WORKER_ENABLED: "true"
+      CATALOG_SCHEDULE_ENABLED: "true"
+      CATALOG_SCHEDULE_INTERVAL_MS: "21600000"
     depends_on:
       db:
         condition: service_healthy

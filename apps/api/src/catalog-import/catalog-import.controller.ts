@@ -1,4 +1,4 @@
-import { Controller, Get, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -14,9 +14,10 @@ export class CatalogImportController {
   constructor(private readonly imports: CatalogImportService) {}
 
   @Post('dummy-json')
-  @ApiOperation({ summary: '[Admin] Import the current DummyJSON catalog' })
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: '[Admin] Queue a DummyJSON catalog synchronization' })
   importDummyJson() {
-    return this.imports.importDummyJson();
+    return this.imports.enqueueDummyJson();
   }
 
   @Get()

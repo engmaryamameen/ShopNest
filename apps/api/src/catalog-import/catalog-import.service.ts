@@ -22,13 +22,24 @@ export class CatalogImportService {
     @Inject(CATALOG_SOURCE_ADAPTER) private readonly adapter: CatalogSourceAdapter,
   ) {}
 
-  async importDummyJson() {
+  async enqueueDummyJson() {
     const source = CatalogSource.DUMMY_JSON;
-    const run = await this.prisma.catalogImportRun.create({ data: { source } });
-
     try {
-      const products = await this.adapter.fetchProducts();
-      const counts = await this.prisma.$transaction(async (tx) => {
+      return await this.prisma.catalogImportRun.create({
+        data: { source, status: CatalogImportStatus.QUEUED },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('A catalog synchronization is already queued or running');
+      }
+      throw error;
+    }
+  }
+
+  async executeRun(runId: string) {
+    const source = CatalogSource.DUMMY_JSON;
+    const products = await this.adapter.fetchProducts();
+    const counts = await this.prisma.$transaction(async (tx) => {
         const [lock] = await tx.$queryRaw<Array<{ acquired: boolean }>>`
           SELECT pg_try_advisory_xact_lock(hashtext(${`shopnest:catalog-import:${source}`})) AS acquired
         `;
@@ -43,23 +54,19 @@ export class CatalogImportService {
 
         for (const product of products) await this.upsertProduct(tx, source, product, result);
         return result;
-      });
+    });
 
-      return this.prisma.catalogImportRun.update({
-        where: { id: run.id },
-        data: { ...counts, status: CatalogImportStatus.SUCCEEDED, completedAt: new Date() },
-      });
-    } catch (error) {
-      await this.prisma.catalogImportRun.update({
-        where: { id: run.id },
-        data: {
-          status: CatalogImportStatus.FAILED,
-          completedAt: new Date(),
-          errorMessage: this.safeErrorMessage(error),
-        },
-      });
-      throw error;
-    }
+    return this.prisma.catalogImportRun.update({
+      where: { id: runId },
+      data: {
+        ...counts,
+        status: CatalogImportStatus.SUCCEEDED,
+        completedAt: new Date(),
+        lockedAt: null,
+        lockedBy: null,
+        errorMessage: null,
+      },
+    });
   }
 
   listRuns(limit = 20) {
@@ -143,8 +150,4 @@ export class CatalogImportService {
       .replace(/^-+|-+$/g, '');
   }
 
-  private safeErrorMessage(error: unknown): string {
-    const message = error instanceof Error ? error.message : 'Unknown import failure';
-    return message.slice(0, 1000);
-  }
 }

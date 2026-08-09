@@ -25,6 +25,7 @@ enum CatalogSource {
 }
 
 enum CatalogImportStatus {
+  QUEUED
   RUNNING
   SUCCEEDED
   FAILED
@@ -126,11 +127,17 @@ model CatalogImportRun {
   updatedCount    Int                 @default(0)
   unchangedCount  Int                 @default(0)
   errorMessage    String?
+  attemptCount    Int                 @default(0)
+  maxAttempts     Int                 @default(3)
+  availableAt     DateTime            @default(now())
+  lockedAt        DateTime?
+  lockedBy        String?
   startedAt       DateTime            @default(now())
   completedAt     DateTime?
 
   @@index([source, startedAt])
   @@index([status, startedAt])
+  @@index([status, availableAt])
 }
 
 model Cart {
