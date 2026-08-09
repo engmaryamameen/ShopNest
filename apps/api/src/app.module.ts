@@ -12,6 +12,7 @@ import { OptionalJwtAuthGuard } from './auth/guards/optional-jwt-auth.guard';
 import { OriginGuard } from './common/guards/origin.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import appConfig from './config/app.config';
+import { CatalogImportModule } from './catalog-import/catalog-import.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import appConfig from './config/app.config';
     CatalogModule,
     CartModule,
     OrdersModule,
+    CatalogImportModule,
   ],
   providers: [
     // Guard execution order: 1 → 2 → 3 (then controller/route guards)

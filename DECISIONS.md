@@ -101,3 +101,21 @@ Email is normalized (`trim().toLowerCase()`) at the application level in DTOs, a
 ### Full-text search
 
 A generated `tsvector` column with weights (A for name, B for description) and a GIN index enables PostgreSQL full-text search. `ts_rank` orders results by relevance.
+
+## Supplier Catalog Imports
+
+### ShopNest owns the canonical catalog
+
+The storefront reads only ShopNest's PostgreSQL catalog. DummyJSON is treated as an upstream supplier, never as a runtime dependency for customer requests. An upstream outage can prevent a new import but cannot take down product browsing, carts, or checkout.
+
+### External identity is separate from product identity
+
+`ProductSource` maps `(source, externalId)` to a canonical `Product`. This prevents supplier identifiers from becoming ShopNest primary keys and allows another supplier to be added without changing catalog ownership. Both `(source, externalId)` and `(productId, source)` are unique invariants.
+
+### Checksums make repeated imports idempotent
+
+Normalized supplier fields are hashed with SHA-256. If the checksum has not changed, the importer updates only `lastSeenAt`; it does not rewrite the product. Changed records update the existing canonical product, while unseen external identities create one product and one source mapping atomically.
+
+### Import runs are auditable
+
+Every attempt creates a `CatalogImportRun` with timestamps, final status, counts, and a bounded error message. A transaction-scoped PostgreSQL advisory lock rejects overlapping imports for the same source. The external HTTP request happens before the database transaction so slow supplier latency does not hold database locks.
