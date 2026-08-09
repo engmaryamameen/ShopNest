@@ -20,6 +20,16 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum CatalogSource {
+  DUMMY_JSON
+}
+
+enum CatalogImportStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   email        String   @unique
@@ -85,9 +95,42 @@ model Product {
 
   cartItems  CartItem[]
   orderItems OrderItem[]
+  sources    ProductSource[]
 
   @@index([categoryId])
   @@index([isActive, createdAt])
+}
+
+model ProductSource {
+  id         String        @id @default(uuid()) @db.Uuid
+  productId  String        @db.Uuid
+  product    Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  source     CatalogSource
+  externalId String
+  checksum   String
+  lastSeenAt DateTime
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@unique([source, externalId])
+  @@unique([productId, source])
+  @@index([productId])
+}
+
+model CatalogImportRun {
+  id              String              @id @default(uuid()) @db.Uuid
+  source          CatalogSource
+  status          CatalogImportStatus @default(RUNNING)
+  discoveredCount Int                 @default(0)
+  createdCount    Int                 @default(0)
+  updatedCount    Int                 @default(0)
+  unchangedCount  Int                 @default(0)
+  errorMessage    String?
+  startedAt       DateTime            @default(now())
+  completedAt     DateTime?
+
+  @@index([source, startedAt])
+  @@index([status, startedAt])
 }
 
 model Cart {
