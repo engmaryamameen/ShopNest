@@ -16,10 +16,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
   if (params.q) query.q = params.q;
   if (params.category) query.category = params.category;
 
-  const [productsData, categories] = await Promise.all([
-    api.listProducts(query),
-    api.listCategories(),
-  ]);
+  const productsData = await api.listProducts(query);
 
   return (
     <div>
@@ -30,34 +27,6 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
           {params.q ? ` matching "${params.q}"` : ''}
         </p>
       </div>
-
-      {/* Search and filter bar */}
-      <form method="GET" className="flex gap-3 mb-8">
-        <input
-          name="q"
-          defaultValue={params.q}
-          placeholder="Search products…"
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-        <select
-          name="category"
-          defaultValue={params.category}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="">All categories</option>
-          {(categories as Array<{ id: string; name: string; slug: string }>).map((cat) => (
-            <option key={cat.id} value={cat.slug}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors"
-        >
-          Search
-        </button>
-      </form>
 
       <Suspense fallback={<div>Loading products…</div>}>
         <ProductGrid products={productsData.items as Product[]} />

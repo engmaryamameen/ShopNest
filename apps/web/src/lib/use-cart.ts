@@ -26,7 +26,7 @@ export interface Cart {
 
 export const CART_QUERY_KEY = ['cart'] as const;
 
-export function useCart() {
+export function useCart(enabled = true) {
   return useQuery<Cart | null>({
     queryKey: CART_QUERY_KEY,
     queryFn: async () => {
@@ -38,11 +38,12 @@ export function useCart() {
       }
     },
     staleTime: 30_000,
+    enabled,
   });
 }
 
-export function useCartCount(): number {
-  const { data } = useCart();
+export function useCartCount(enabled = true): number {
+  const { data } = useCart(enabled);
   return data?.items?.length ?? 0;
 }
 

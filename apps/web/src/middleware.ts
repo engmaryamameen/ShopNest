@@ -10,27 +10,8 @@ const API_URL =
 
 const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3000';
 
-const PUBLIC_PATHS = [
-  '/login',
-  '/register',
-  '/shop',
-  '/products',
-  '/api/',
-  '/_next/',
-  '/favicon',
-  '/login.avif',
-  '/login-bg.avif',
-  '/login-bg.jpg',
-];
-
-function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
-}
-
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
-
-  if (isPublicPath(pathname)) return NextResponse.next();
 
   const accessToken = request.cookies.get('access_token')?.value;
   const refreshToken = request.cookies.get('refresh_token')?.value;
@@ -76,5 +57,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // Authentication is opt-in for account-specific areas. Public storefront
+  // routes never pass through session refresh or redirect logic.
+  matcher: ['/cart/:path*', '/orders/:path*', '/admin/:path*'],
 };
