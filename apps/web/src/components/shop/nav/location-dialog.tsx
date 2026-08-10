@@ -150,7 +150,7 @@ export function LocationDialog({ open, currentLocation, onClose, onSave }: Locat
   if (!present) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center font-poppins sm:items-center sm:p-6">
+    <div className="fixed font-lato inset-0 z-[120] flex items-end justify-center sm:items-center sm:p-6">
       <button
         type="button"
         aria-label="Close location dialog"
@@ -171,16 +171,10 @@ export function LocationDialog({ open, currentLocation, onClose, onSave }: Locat
         </div>
         <header className="flex items-start justify-between border-b border-black/[.07] px-5 pb-5 pt-2 sm:px-7 sm:py-6">
           <div>
-            <Image
-              src={ShopNestLogo}
-              alt="ShopNest"
-              width={116}
-              height={52}
-              className="mb-4 h-auto w-[116px] object-contain object-left"
-            />
+            <p>Location</p>
             <h2
               id="location-dialog-title"
-              className="text-xl font-semibold tracking-[-.02em] text-neutral-950 sm:text-2xl"
+              className="text-lg font-semibold tracking-[-.02em] text-neutral-950 sm:text-2xl"
             >
               Where should we deliver?
             </h2>
@@ -274,7 +268,7 @@ export function LocationDialog({ open, currentLocation, onClose, onSave }: Locat
                 onChange={(event) => setQuery(event.target.value)}
                 autoComplete="off"
                 placeholder="Start typing, e.g. Gulberg III, Lahore"
-                className={`h-12 w-full rounded-xl border border-black/[.12] bg-white pl-11 pr-4 text-sm text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-black/25 focus:border-black/60 focus:shadow-[0_0_0_3px_rgba(0,0,0,.06)] ${FOCUS_RING}`}
+                className={`h-12 w-full rounded-xl border border-black/[.12] bg-white pl-11 pr-4 text-sm text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-black/25}`}
               />
             </div>
             {status === 'searching' && (
@@ -310,7 +304,7 @@ export function LocationDialog({ open, currentLocation, onClose, onSave }: Locat
               </ul>
             )}
           </div>
-          <p className="border-t border-black/[.06] pt-4 text-[11px] leading-[17px] text-neutral-400">
+          <p className="pt-4 text-[11px] leading-[17px] text-neutral-400">
             Your chosen address is stored only on this device. ShopNest requests browser location
             only after you click the button.
           </p>
