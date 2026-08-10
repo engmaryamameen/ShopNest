@@ -1,6 +1,4 @@
 import Link from 'next/link';
-import { PackageIcon, ShieldCheckIcon, TruckIcon } from '@/assets/icons';
-import { FOCUS_RING } from './styles';
 
 /** Slim trust strip above the main header — desktop/laptop only; folded into the mobile drawer below `lg`. */
 export function UtilityBar() {

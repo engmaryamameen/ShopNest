@@ -24,6 +24,7 @@
   /* Fonts */
   --font-poppins: var(--font-poppins);
   --font-jakarta: var(--font-plus-jakarta);
+  --font-lato: var(--font-lato);
 
   --color-brand-50: #eaf7f2;
   --color-brand-100: #cfeee2;

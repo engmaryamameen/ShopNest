@@ -1,18 +1,22 @@
 'use client';
 
 import Link from 'next/link';
+
 import { ChevronDownIcon, PackageIcon, SignOutIcon, UserIcon } from '@/assets/icons';
-import { usePopover } from './use-popover';
-import { FOCUS_RING } from './styles';
+
 import type { UserIdentity } from '@/store/user.store';
 
-/**
- * Signed-out visitors get a plain link straight to /login (there's nothing
- * to expose in a menu yet). Signed-in users get a small popover so "your
- * orders" and "sign out" are reachable at every viewport — previously
- * sign-out only appeared above the xl breakpoint.
- */
-export function AccountMenu({ currentUser, onSignOut }: { currentUser: UserIdentity | null; onSignOut: () => void }) {
+import { FOCUS_RING } from './styles';
+import { usePopover } from './use-popover';
+import { AccountContent } from './account-content';
+import { MobileBottomSheet } from '@/components/shared/mobile-bottom-sheat';
+
+type AccountMenuProps = {
+  currentUser: UserIdentity | null;
+  onSignOut: () => void;
+};
+
+export function AccountMenu({ currentUser, onSignOut }: AccountMenuProps) {
   const popover = usePopover<HTMLDivElement, HTMLButtonElement>();
 
   if (!currentUser) {
@@ -20,69 +24,102 @@ export function AccountMenu({ currentUser, onSignOut }: { currentUser: UserIdent
       <Link
         href="/login"
         aria-label="Sign in"
-        className={`flex items-center gap-2 rounded-xl p-2.5 text-zinc-700 transition-colors hover:bg-zinc-100 lg:px-3 ${FOCUS_RING}`}
+        className={`
+          flex h-[38px] shrink-0 items-center gap-[7px]
+          rounded-[6px] px-2
+           text-black
+          transition-colors duration-200
+          hover:opacity-80
+          ${FOCUS_RING}
+        `}
       >
-        <UserIcon className="h-[22px] w-[22px]" />
-        <span className="hidden text-left lg:block">
-          <span className="block text-[10px] font-medium text-zinc-400">Hello, sign in</span>
-          <span className="block text-xs font-bold text-zinc-800">Account</span>
-        </span>
+        <UserIcon className="h-5 w-5 shrink-0" />
+        <span className="hidden text-[15px] font-normal leading-[18px] lg:block ">Login</span>
       </Link>
     );
   }
 
   return (
-    <div ref={popover.rootRef} className="relative">
+    <div ref={popover.rootRef} className="relative shrink-0">
+      {/* Account trigger */}
       <button
         ref={popover.triggerRef}
         type="button"
         onClick={popover.toggle}
         aria-haspopup="menu"
         aria-expanded={popover.open}
-        className={`flex items-center gap-1.5 rounded-xl p-2.5 text-zinc-700 transition-colors hover:bg-zinc-100 lg:px-3 ${FOCUS_RING}`}
+        className={`
+          flex h-[46px] items-center gap-[8px]
+          rounded-[6px] px-2.5
+          text-black
+          transition-colors duration-200
+          cursor-pointer
+
+
+          ${FOCUS_RING}
+        `}
       >
-        <UserIcon className="h-[22px] w-[22px]" />
-        <span className="hidden text-left lg:block">
-          <span className="block text-[10px] font-medium text-zinc-400">Welcome back</span>
-          <span className="block max-w-28 truncate text-xs font-bold text-zinc-800">{currentUser.email}</span>
-        </span>
+        <UserIcon className="h-5 w-5 shrink-0" />
+
+        <div className="hidden min-w-0 text-left lg:block">
+          <span
+            className="
+              block
+              text-[10px] font-normal leading-[14px]
+              text-black/40
+            "
+          >
+            Welcome back
+          </span>
+
+          <span
+            className="
+              block max-w-[135px] truncate
+              text-[12px] font-medium leading-[18px]
+              text-black
+            "
+          >
+            {currentUser.email} 
+          </span>
+        </div>
+
         <ChevronDownIcon
-          className={`hidden h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform duration-150 lg:block ${popover.open ? 'rotate-180' : ''}`}
+          className={`
+            hidden h-3 w-3 shrink-0
+            text-black/45
+            transition-transform duration-200
+            lg:block
+
+            ${popover.open ? 'rotate-180' : ''}
+          `}
         />
       </button>
 
       {popover.open && (
-        <div
-          role="menu"
-          aria-label="Account"
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-60 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl shadow-zinc-950/10"
-        >
-          <div className="border-b border-zinc-100 px-4 py-3">
-            <p className="text-[11px] font-medium text-zinc-400">Signed in as</p>
-            <p className="truncate text-sm font-semibold text-zinc-900">{currentUser.email}</p>
+        <>
+          {/* Desktop */}
+          <div
+            role="menu"
+            aria-label="Account"
+            className="absolute right-0 top-[calc(100%+8px)] z-50 hidden w-[280px] overflow-hidden  rounded-[6px]  border border-black/[0.08]  bg-white  shadow-[0_8px_28px_rgba(0,0,0,0.08)] lg:block "
+          >
+            <AccountContent
+              currentUser={currentUser}
+              onClose={popover.close}
+              onSignOut={onSignOut}
+            />
           </div>
-          <Link
-            href="/orders"
-            role="menuitem"
-            onClick={popover.close}
-            className={`flex items-center gap-2.5 px-4 py-2.5 text-sm text-zinc-700 transition-colors hover:bg-brand-50 hover:text-brand-800 ${FOCUS_RING}`}
-          >
-            <PackageIcon className="h-4 w-4 text-zinc-400" />
-            Your orders
-          </Link>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              popover.close();
-              onSignOut();
-            }}
-            className={`flex w-full items-center gap-2.5 border-t border-zinc-100 px-4 py-2.5 text-left text-sm text-red-600 transition-colors hover:bg-red-50 ${FOCUS_RING}`}
-          >
-            <SignOutIcon className="h-4 w-4" />
-            Sign out
-          </button>
-        </div>
+
+          {/* Mobile */}
+          <MobileBottomSheet open={popover.open} onClose={popover.close} title="Account">
+            <AccountContent
+              currentUser={currentUser}
+              onClose={popover.close}
+              onSignOut={onSignOut}
+              mobile
+            />
+          </MobileBottomSheet>
+        </>
       )}
     </div>
   );

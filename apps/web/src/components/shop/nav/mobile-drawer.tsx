@@ -50,7 +50,7 @@ export function MobileDrawer({ open, onClose, categories, currentUser, onSignOut
         }`}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-4 py-3.5">
-          <BrandLogo compact />
+          <BrandLogo />
           <button
             type="button"
             onClick={onClose}

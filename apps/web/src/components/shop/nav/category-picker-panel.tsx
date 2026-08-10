@@ -2,7 +2,9 @@
 
 import { useId, useMemo, useState, type KeyboardEvent } from 'react';
 import Link from 'next/link';
+
 import { CheckIcon, SearchIcon } from '@/assets/icons';
+
 import { FOCUS_RING_INSET } from './styles';
 import type { HeaderCategory } from './types';
 
@@ -13,23 +15,32 @@ interface PickerOption {
 
 interface CategoryPickerPanelProps {
   categories: HeaderCategory[];
-  /** Pinned option representing "no filter" / "browse everything". Omit to list categories only. */
+
+  /**
+   * Pinned option representing "no filter" / browse everything.
+   */
   allLabel?: string;
-  /** Currently chosen slug (or null for the "all" option) — renders a check mark. */
+
+  /**
+   * Currently selected category.
+   */
   selectedSlug?: string | null;
-  /** When provided, options render as links to this href and navigate on click. */
+
+  /**
+   * When provided, options navigate instead of reporting a selection.
+   */
   getHref?: (slug: string | null) => string;
-  /** When `getHref` is omitted, options are buttons that report the choice here instead. */
+
+  /**
+   * Called when an option is selected without `getHref`.
+   */
   onSelect?: (slug: string | null) => void;
+
   onRequestClose: () => void;
+
   className?: string;
 }
 
-/**
- * Shared, filterable listbox used by both the header's search-scope picker
- * and the "All categories" mega menu — a searchable, keyboard-navigable
- * dropdown with a scrollable list and an explicit empty state.
- */
 export function CategoryPickerPanel({
   categories,
   allLabel,
@@ -40,101 +51,242 @@ export function CategoryPickerPanel({
   className = '',
 }: CategoryPickerPanelProps) {
   const [query, setQuery] = useState('');
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
   const listId = useId();
 
   const options = useMemo<PickerOption[]>(() => {
-    const filtered = categories.filter((category) => category.name.toLowerCase().includes(query.trim().toLowerCase()));
-    const mapped = filtered.map((category) => ({ slug: category.slug, name: category.name }));
-    return allLabel && query.trim() === '' ? [{ slug: null, name: allLabel }, ...mapped] : mapped;
+    const normalizedQuery = query.trim().toLowerCase();
+
+    const filtered = categories.filter((category) =>
+      category.name.toLowerCase().includes(normalizedQuery),
+    );
+
+    const mapped = filtered.map((category) => ({
+      slug: category.slug,
+      name: category.name,
+    }));
+
+    if (allLabel && normalizedQuery === '') {
+      return [
+        {
+          slug: null,
+          name: allLabel,
+        },
+        ...mapped,
+      ];
+    }
+
+    return mapped;
   }, [categories, allLabel, query]);
 
   function commit(option: PickerOption) {
-    if (getHref) {
-      onRequestClose();
-      return;
+    if (!getHref) {
+      onSelect?.(option.slug);
     }
-    onSelect?.(option.slug);
+
     onRequestClose();
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (options.length === 0 && event.key !== 'Escape') return;
-
     switch (event.key) {
-      case 'ArrowDown':
+      case 'ArrowDown': {
         event.preventDefault();
-        setActiveIndex((index) => Math.min(index + 1, options.length - 1));
+
+        if (!options.length) return;
+
+        setActiveIndex((current) => (current < 0 ? 0 : Math.min(current + 1, options.length - 1)));
+
         break;
-      case 'ArrowUp':
+      }
+
+      case 'ArrowUp': {
         event.preventDefault();
-        setActiveIndex((index) => Math.max(index - 1, 0));
+
+        if (!options.length) return;
+
+        setActiveIndex((current) => (current <= 0 ? options.length - 1 : current - 1));
+
         break;
-      case 'Home':
+      }
+
+      case 'Home': {
+        if (!options.length) return;
+
         event.preventDefault();
         setActiveIndex(0);
+
         break;
-      case 'End':
+      }
+
+      case 'End': {
+        if (!options.length) return;
+
         event.preventDefault();
         setActiveIndex(options.length - 1);
+
         break;
-      case 'Enter':
+      }
+
+      case 'Enter': {
+        if (activeIndex < 0 || !options[activeIndex]) return;
+
         event.preventDefault();
-        if (options[activeIndex]) commit(options[activeIndex]);
+        commit(options[activeIndex]);
+
         break;
-      case 'Escape':
+      }
+
+      case 'Escape': {
         event.preventDefault();
         onRequestClose();
+
         break;
+      }
     }
   }
 
   return (
-    <div className={`overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl shadow-zinc-950/10 ${className}`}>
-      <div className="flex items-center gap-2 border-b border-zinc-100 px-3 py-2.5 transition-colors focus-within:border-brand-400 focus-within:bg-brand-50/40">
-        <SearchIcon className="h-4 w-4 shrink-0 text-zinc-400" />
+    <div
+      className={`
+        overflow-hidden
+        rounded-[6px]
+        border border-black/[0.08]
+        bg-white
+        shadow-[0_8px_28px_rgba(0,0,0,0.08)]
+        ${className}
+      `}
+    >
+      {/* Search */}
+      <div
+        className="
+          flex h-[42px] items-center
+          gap-2.5
+          border-b border-black/[0.07]
+          px-3.5
+        "
+      >
+        <SearchIcon className="h-4 w-4 shrink-0 text-black/65" />
+
         <input
           type="text"
           role="combobox"
           aria-expanded="true"
           aria-controls={listId}
-          aria-activedescendant={options[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+          aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
           autoFocus
           autoComplete="off"
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
-            setActiveIndex(0);
+            setActiveIndex(-1);
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Filter categories"
-          className="w-full min-w-0 bg-transparent text-sm text-zinc-800 outline-none placeholder:text-zinc-400"
+          placeholder="Search categories"
+          className="
+            min-w-0 flex-1
+            bg-transparent
+            text-[12px] font-normal
+            leading-[18px]
+            text-black
+            outline-none
+            placeholder:text-black/40
+          "
         />
       </div>
 
-      <ul id={listId} role="listbox" aria-label="Categories" className="max-h-72 overflow-y-auto py-1.5">
+      {/* Category options */}
+      <ul
+        id={listId}
+        role="listbox"
+        aria-label="Categories"
+        className="
+          max-h-[200px]
+          overflow-y-auto
+          py-1.5
+          [&::-webkit-scrollbar]:w-[5px]
+          [&::-webkit-scrollbar-track]:bg-transparent
+          [&::-webkit-scrollbar-thumb]:rounded-full
+          [&::-webkit-scrollbar-thumb]:bg-black/15
+          hover:[&::-webkit-scrollbar-thumb]:bg-black/25
+        "
+      >
         {options.length === 0 && (
-          <li className="px-3.5 py-6 text-center text-sm text-zinc-400" role="presentation">
-            No categories match &ldquo;{query}&rdquo;
+          <li
+            role="presentation"
+            className="
+              px-4 py-8
+              text-center
+              text-[12px]
+              font-normal
+              text-black/40
+            "
+          >
+            No categories found
           </li>
         )}
+
         {options.map((option, index) => {
           const isSelected = selectedSlug !== undefined && selectedSlug === option.slug;
+
           const isActive = index === activeIndex;
+
+          const itemClassName = `
+            group
+            flex min-h-[36px] w-full
+            items-center justify-between
+            gap-3
+            px-4
+            text-left
+            text-[12px]
+            leading-[18px]
+            transition-colors
+            duration-150
+
+          cursor-pointer
+
+            ${
+              isActive
+                ? 'bg-black/[0.045] text-black'
+                : 'text-black/70 hover:bg-black/[0.035] hover:text-black'
+            }
+
+            ${isSelected ? 'font-medium text-black' : 'font-normal'}
+
+            ${FOCUS_RING_INSET}
+          `;
+
           const content = (
             <>
               <span className="truncate">{option.name}</span>
-              {isSelected && <CheckIcon className="h-4 w-4 shrink-0 text-brand-600" />}
+
+              {isSelected && (
+                <CheckIcon
+                  className="
+                    h-4 w-4
+                    shrink-0
+                    text-brand-600
+                  "
+                />
+              )}
             </>
           );
-          const itemClassName = `flex w-full items-center justify-between gap-2 px-3.5 py-2 text-left text-sm transition-colors ${FOCUS_RING_INSET} ${
-            isActive ? 'bg-brand-50 text-brand-800' : 'text-zinc-700'
-          } ${isSelected ? 'font-semibold' : ''}`;
 
           return (
-            <li key={option.slug ?? '__all'} id={`${listId}-${index}`} role="option" aria-selected={isSelected} onMouseEnter={() => setActiveIndex(index)}>
+            <li
+              key={option.slug ?? '__all'}
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={isSelected}
+              onMouseEnter={() => setActiveIndex(index)}
+              onMouseLeave={() => setActiveIndex(-1)}
+            >
               {getHref ? (
-                <Link href={getHref(option.slug)} onClick={() => commit(option)} className={itemClassName}>
+                <Link
+                  href={getHref(option.slug)}
+                  onClick={() => commit(option)}
+                  className={itemClassName}
+                >
                   {content}
                 </Link>
               ) : (

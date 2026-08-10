@@ -1,12 +1,15 @@
 import { MenuIcon } from '@/assets/icons';
-import { BrandLogo } from './brand-logo';
-import { SearchBar } from './search-bar';
-import { LocationDisplay } from './location-display';
+
+import type { UserIdentity } from '@/store/user.store';
+
 import { AccountMenu } from './account-menu';
+import { BrandLogo } from './brand-logo';
 import { CartLink } from './cart-link';
+import { LocationDisplay } from './location-display';
+import { NavMenu } from './nav-menu';
+import { SearchBar } from './search-bar';
 import { FOCUS_RING } from './styles';
 import type { HeaderCategory } from './types';
-import type { UserIdentity } from '@/store/user.store';
 
 interface PrimaryHeaderProps {
   categories: HeaderCategory[];
@@ -16,35 +19,94 @@ interface PrimaryHeaderProps {
   onOpenMenu: () => void;
 }
 
-/**
- * The main header row. Layout is one flex container for every viewport:
- * on mobile it wraps onto two lines (icons row, then a full-width search
- * row) via the search bar's `basis-full`; from `lg` up nothing wraps and
- * the search bar instead flexes to fill the space between the logo and
- * the action icons. No absolute positioning or fixed pixel offsets.
- */
-export function PrimaryHeader({ categories, currentUser, cartCount, onSignOut, onOpenMenu }: PrimaryHeaderProps) {
+export function PrimaryHeader({
+  categories,
+  currentUser,
+  cartCount,
+  onSignOut,
+  onOpenMenu,
+}: PrimaryHeaderProps) {
   return (
-    <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-6">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-3 py-3 lg:flex-nowrap lg:gap-x-6 lg:py-0 lg:h-[76px]">
-        <button
-          type="button"
-          onClick={onOpenMenu}
-          aria-label="Open menu"
-          className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-zinc-700 transition-colors hover:bg-zinc-100 lg:hidden ${FOCUS_RING}`}
+    <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-6 font-lato">
+      <div
+        className="
+          flex flex-wrap items-center
+          gap-y-3 py-3
+
+          lg:h-[98px]
+          lg:flex-nowrap
+          lg:gap-x-6
+          lg:py-0
+        "
+      >
+        <div className="flex items-center justify-between lg:max-w-[500px] lg:w-full">
+          <div className="shrink-0">
+            <BrandLogo />
+          </div>
+          <NavMenu />
+        </div>
+
+        <div
+          className="
+            ml-auto flex shrink-0 items-center gap-1
+
+            lg:order-last
+            lg:ml-0
+            lg:gap-2
+          "
         >
-          <MenuIcon className="h-6 w-6" />
-        </button>
-
-        <BrandLogo />
-
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 lg:order-last lg:ml-0 lg:gap-1.5">
           <LocationDisplay />
+
           <AccountMenu currentUser={currentUser} onSignOut={onSignOut} />
+
           <CartLink count={cartCount} />
         </div>
 
-        <SearchBar categories={categories} className="order-last w-full basis-full lg:order-none lg:w-auto lg:basis-auto lg:flex-1" />
+        <div
+          className="
+            order-last
+            flex w-full basis-full
+            items-center gap-2
+            lg:order-none
+            lg:ml-auto
+            lg:w-auto
+            lg:basis-auto
+            lg:flex-1
+          "
+        >
+          {/* Mobile menu */}
+          <button
+            type="button"
+            onClick={onOpenMenu}
+            aria-label="Open menu"
+            className={`
+              grid h-[38px] w-[38px]
+              shrink-0 place-items-center
+              rounded-[4px]
+              bg-[#F5F5F5]
+              text-black
+              transition-colors
+              hover:bg-black/[0.07]
+
+              lg:hidden
+
+              ${FOCUS_RING}
+            `}
+          >
+            <MenuIcon className="h-[18px] w-[18px]" />
+          </button>
+
+          {/* Search */}
+          <SearchBar
+            categories={categories}
+            className="
+              min-w-0 flex-1
+
+              lg:ml-auto
+              lg:max-w-[460px]
+            "
+          />
+        </div>
       </div>
     </div>
   );

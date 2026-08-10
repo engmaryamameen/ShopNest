@@ -1,5 +1,9 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans, Poppins } from 'next/font/google';
+import {
+  Lato,
+  Plus_Jakarta_Sans,
+  Poppins,
+} from 'next/font/google';
 
 import './globals.css';
 
@@ -8,16 +12,21 @@ import { Providers } from './providers';
 const poppins = Poppins({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700'],
-  style: ['normal'],
   variable: '--font-poppins',
   display: 'swap',
 });
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700', '800'],
-  style: ['normal'],
   variable: '--font-plus-jakarta',
+  display: 'swap',
+});
+
+const lato = Lato({
+  subsets: ['latin'],
+  weight: ['100', '300', '400', '700', '900'],
+  style: ['normal', 'italic'],
+  variable: '--font-lato',
   display: 'swap',
 });
 
@@ -34,7 +43,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${poppins.variable} ${plusJakartaSans.variable}`}
+      className={`
+        ${poppins.variable}
+        ${plusJakartaSans.variable}
+        ${lato.variable}
+      `}
     >
       <body className="min-h-screen bg-gray-50 font-poppins antialiased">
         <Providers>{children}</Providers>

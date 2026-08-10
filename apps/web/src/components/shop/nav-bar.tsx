@@ -8,7 +8,6 @@ import { useCartCount } from '@/lib/use-cart';
 import type { UserIdentity } from '@/store/user.store';
 import { UtilityBar } from './nav/utility-bar';
 import { PrimaryHeader } from './nav/primary-header';
-import { CategoryNav } from './nav/category-nav';
 import { MobileDrawer } from './nav/mobile-drawer';
 import type { HeaderCategory } from './nav/types';
 
@@ -41,7 +40,6 @@ export function NavBar({ categories, initialUser }: { categories: HeaderCategory
         onSignOut={handleSignOut}
         onOpenMenu={() => setDrawerOpen(true)}
       />
-      <CategoryNav categories={categories} />
       <MobileDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}

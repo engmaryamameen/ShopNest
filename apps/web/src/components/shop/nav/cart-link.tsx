@@ -7,9 +7,9 @@ export function CartLink({ count }: { count: number }) {
     <Link
       href="/cart"
       aria-label={count > 0 ? `Cart, ${count} item${count === 1 ? '' : 's'}` : 'Cart'}
-      className={`relative rounded-xl p-2.5 text-zinc-700 transition-colors hover:bg-zinc-100 ${FOCUS_RING}`}
+      className={`relative rounded-xl p-2.5 text-zinc-700 transition-colors ${FOCUS_RING}`}
     >
-      <CartIcon className="h-6 w-6" />
+      <CartIcon className="h-7 w-7" />
       {count > 0 && (
         <span className="absolute right-0 top-0 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent-700 px-1 text-[10px] font-extrabold text-white ring-2 ring-white">
           {count > 99 ? '99+' : count}
