@@ -61,10 +61,25 @@ test.describe('Authentication', () => {
 });
 
 test.describe('Shop catalog', () => {
+  test('home page is a public storefront entry point', async ({ page }) => {
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/shop/);
+    await expect(page.getByRole('heading', { name: 'Shop' })).toBeVisible();
+  });
+
   test('shop page loads without auth', async ({ page }) => {
     await page.goto('/shop');
     await expect(page).toHaveURL(/\/shop/);
     // Page should not redirect to login
+    expect(page.url()).not.toContain('/login');
+  });
+
+  test('product details load without auth', async ({ page }) => {
+    await page.goto('/shop');
+    const firstProduct = page.locator('a[href^="/products/"]').first();
+    await expect(firstProduct).toBeVisible();
+    await firstProduct.click();
+    await expect(page).toHaveURL(/\/products\//);
     expect(page.url()).not.toContain('/login');
   });
 });
