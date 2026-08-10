@@ -15,20 +15,14 @@ import { FOCUS_RING } from './styles';
 
 export function LocationDisplay() {
   const [open, setOpen] = useState(false);
-  const [location, setLocation] =
-    useState<DeliveryLocation | null>(null);
+  const [location, setLocation] = useState<DeliveryLocation | null>(null);
 
   useEffect(() => {
-    setLocation(
-      readDeliveryLocation(window.localStorage),
-    );
+    setLocation(readDeliveryLocation(window.localStorage));
   }, []);
 
   function saveLocation(nextLocation: DeliveryLocation) {
-    writeDeliveryLocation(
-      window.localStorage,
-      nextLocation,
-    );
+    writeDeliveryLocation(window.localStorage, nextLocation);
 
     setLocation(nextLocation);
   }
@@ -49,6 +43,7 @@ export function LocationDisplay() {
           shrink-0
           items-center justify-center
           gap-[7px]
+          cursor-pointer
           text-left
           text-black
           transition-opacity duration-200

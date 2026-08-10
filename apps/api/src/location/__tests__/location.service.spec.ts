@@ -5,6 +5,7 @@ describe('LocationService', () => {
   it('delegates reverse geocoding to its provider', async () => {
     const provider: GeocodingProvider = {
       reverse: jest.fn().mockResolvedValue({ label: 'Lahore', details: 'Punjab, Pakistan' }),
+      search: jest.fn().mockResolvedValue([]),
     };
     const service = new LocationService(provider);
 

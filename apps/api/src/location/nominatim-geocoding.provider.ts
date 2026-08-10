@@ -1,6 +1,6 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { GeocodingProvider, ResolvedLocation } from './location.types';
+import type { GeocodingProvider, LocationSuggestion, ResolvedLocation } from './location.types';
 
 type NominatimAddress = {
   city?: string;
@@ -14,6 +14,7 @@ type NominatimAddress = {
 };
 
 type NominatimResponse = {
+  place_id?: number;
   display_name?: string;
   address?: NominatimAddress;
 };
@@ -74,6 +75,60 @@ export class NominatimGeocodingProvider implements GeocodingProvider {
     return {
       label,
       details: detailParts.join(', ') || body.display_name || label,
+    };
+  }
+
+  async search(query: string): Promise<LocationSuggestion[]> {
+    const url = new URL('/search', this.baseUrl);
+    url.search = new URLSearchParams({
+      q: `${query}, Punjab, Pakistan`,
+      format: 'jsonv2',
+      addressdetails: '1',
+      countrycodes: 'pk',
+      bounded: '1',
+      viewbox: '69.25,34.05,75.45,27.65',
+      limit: '6',
+    }).toString();
+
+    const response = await this.fetch(url);
+    const results = (await response.json()) as NominatimResponse[];
+
+    return results
+      .map((result) => this.toSuggestion(result))
+      .filter((result): result is LocationSuggestion => result !== null);
+  }
+
+  private async fetch(url: URL): Promise<Response> {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        signal: AbortSignal.timeout(this.timeoutMs),
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'ShopNest/1.0 (delivery-location)',
+        },
+      });
+    } catch {
+      throw new BadGatewayException('Location service is temporarily unavailable');
+    }
+
+    if (!response.ok) {
+      throw new BadGatewayException('Location service is temporarily unavailable');
+    }
+    return response;
+  }
+
+  private toSuggestion(result: NominatimResponse): LocationSuggestion | null {
+    const address = result.address ?? {};
+    const label =
+      address.city ?? address.town ?? address.village ?? address.municipality ?? address.county;
+    if (!label || !result.place_id) return null;
+
+    return {
+      id: `osm:${result.place_id}`,
+      label,
+      details:
+        result.display_name ?? [label, address.state, address.country].filter(Boolean).join(', '),
     };
   }
 }

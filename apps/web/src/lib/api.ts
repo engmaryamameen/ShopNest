@@ -117,6 +117,11 @@ export const api = {
     return request<{ label: string; details: string }>(`/location/reverse?${params}`);
   },
 
+  searchLocations: (query: string) =>
+    request<Array<{ id: string; label: string; details: string }>>(
+      `/location/suggestions?${new URLSearchParams({ query })}`,
+    ),
+
   // ── Cart ───────────────────────────────────────────────────────────────────
 
   getCart: (cookies?: string) => request<unknown>('/cart', { cookies }),

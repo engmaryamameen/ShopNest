@@ -1,21 +1,11 @@
 'use client';
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from 'react';
-
-import {
-  CloseIcon,
-  MapPinIcon,
-} from '@/assets/icons';
-
+import Image from 'next/image';
+import { useEffect, useRef, useState } from 'react';
+import { CloseIcon, MapPinIcon, SearchIcon } from '@/assets/icons';
+import ShopNestLogo from '@/assets/images/logo-shopnest.png';
 import { api } from '@/lib/api';
-
 import type { DeliveryLocation } from './delivery-location';
-
 import { FOCUS_RING } from './styles';
 import { useBodyScrollLock } from './use-body-scroll-lock';
 import { useEscapeKey } from './use-escape-key';
@@ -28,7 +18,9 @@ type LocationDialogProps = {
   onSave: (location: DeliveryLocation) => void;
 };
 
-type Status = 'idle' | 'locating' | 'error';
+type PermissionState = 'checking' | 'prompt' | 'granted' | 'denied' | 'unsupported';
+type Suggestion = { id: string; label: string; details: string };
+type Status = 'idle' | 'locating' | 'searching' | 'error';
 
 const GEOLOCATION_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
@@ -36,443 +28,291 @@ const GEOLOCATION_OPTIONS: PositionOptions = {
   maximumAge: 300_000,
 };
 
-function geolocationMessage(
-  error: GeolocationPositionError,
-): string {
-  if (error.code === error.PERMISSION_DENIED) {
-    return 'Location access is blocked. Allow location permission in your browser settings, or enter a location manually.';
-  }
-
-  if (error.code === error.TIMEOUT) {
-    return 'Finding your location took too long. Try again or enter it manually.';
-  }
-
-  return 'We could not determine your location. Try again or enter it manually.';
-}
-
-export function LocationDialog({
-  open,
-  currentLocation,
-  onClose,
-  onSave,
-}: LocationDialogProps) {
+export function LocationDialog({ open, currentLocation, onClose, onSave }: LocationDialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-
+  const searchRequestRef = useRef(0);
+  const [present, setPresent] = useState(open);
+  const [visible, setVisible] = useState(false);
+  const [permission, setPermission] = useState<PermissionState>('checking');
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
-  const [manualLocation, setManualLocation] = useState('');
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
   useBodyScrollLock(open);
   useEscapeKey(open, onClose);
   useFocusTrap(open, panelRef);
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setPresent(true);
       setStatus('idle');
       setError('');
-      setManualLocation('');
+      const frame = window.requestAnimationFrame(() => setVisible(true));
+      return () => window.cancelAnimationFrame(frame);
     }
+    setVisible(false);
+    const timer = window.setTimeout(() => setPresent(false), 220);
+    return () => window.clearTimeout(timer);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !navigator.permissions) {
+      setPermission(navigator.geolocation ? 'prompt' : 'unsupported');
+      return;
+    }
+    let active = true;
+    let permissionStatus: PermissionStatus | undefined;
+    void navigator.permissions
+      .query({ name: 'geolocation' })
+      .then((result) => {
+        if (!active) return;
+        permissionStatus = result;
+        const sync = () => setPermission(result.state);
+        sync();
+        result.onchange = sync;
+      })
+      .catch(() => setPermission('prompt'));
+    return () => {
+      active = false;
+      if (permissionStatus) permissionStatus.onchange = null;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || query.trim().length < 3) {
+      setSuggestions([]);
+      setStatus('idle');
+      return;
+    }
+    const requestId = ++searchRequestRef.current;
+    const timer = window.setTimeout(async () => {
+      setStatus('searching');
+      setError('');
+      try {
+        const results = await api.searchLocations(query.trim());
+        if (requestId !== searchRequestRef.current) return;
+        setSuggestions(results);
+        setStatus('idle');
+      } catch {
+        if (requestId !== searchRequestRef.current) return;
+        setSuggestions([]);
+        setStatus('error');
+        setError('Address search is temporarily unavailable. Please try again.');
+      }
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [open, query]);
 
   function useCurrentLocation() {
     setError('');
-
     if (!navigator.geolocation) {
-      setStatus('error');
-      setError(
-        'Your browser does not support location detection. Enter your location manually.',
-      );
+      setPermission('unsupported');
+      setError('Location detection is not supported. Search for your Punjab address below.');
       return;
     }
-
     setStatus('locating');
-
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
         try {
-          const resolved = await api.reverseGeocode(
-            coords.latitude,
-            coords.longitude,
-          );
-
-          onSave({
-            ...resolved,
-            source: 'device',
-          });
-
+          const resolved = await api.reverseGeocode(coords.latitude, coords.longitude);
+          onSave({ ...resolved, source: 'device' });
           onClose();
         } catch {
           setStatus('error');
           setError(
-            'Your position was found, but we could not identify the area. Enter it manually below.',
+            'We found your position but could not resolve the address. Search below instead.',
           );
         }
       },
       (positionError) => {
         setStatus('error');
-        setError(geolocationMessage(positionError));
+        if (positionError.code === positionError.PERMISSION_DENIED) {
+          setPermission('denied');
+          setError(
+            'Location is blocked for ShopNest. Allow it from your browser site settings, then click Try location again.',
+          );
+        } else if (positionError.code === positionError.TIMEOUT) {
+          setError('Finding your location took too long. Please try again.');
+        } else {
+          setError('We could not determine your location. Please try again or search below.');
+        }
       },
       GEOLOCATION_OPTIONS,
     );
   }
 
-  function saveManualLocation(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
-
-    const value = manualLocation
-      .trim()
-      .replace(/\s+/g, ' ');
-
-    if (value.length < 3) {
-      setStatus('error');
-      setError(
-        'Enter a city, area, postal code, or delivery address.',
-      );
-      return;
-    }
-
-    onSave({
-      label: value,
-      details: 'Manually selected delivery location',
-      source: 'manual',
-    });
-
+  function chooseSuggestion(suggestion: Suggestion) {
+    onSave({ label: suggestion.label, details: suggestion.details, source: 'manual' });
     onClose();
   }
 
-  if (!open) return null;
+  if (!present) return null;
 
   return (
-    <div
-      className="
-        fixed inset-0 z-[120]
-        flex items-end justify-center
-        font-poppins
-
-        sm:items-center
-        sm:p-6
-      "
-    >
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-[120] flex items-end justify-center font-poppins sm:items-center sm:p-6">
       <button
         type="button"
         aria-label="Close location dialog"
         onClick={onClose}
-        className="
-          absolute inset-0
-          h-full w-full
-          bg-black/40
-          transition-opacity
-        "
+        data-state={visible ? 'open' : 'closed'}
+        className="location-dialog-backdrop absolute inset-0 h-full w-full cursor-pointer bg-black/45 backdrop-blur-[2px]"
       />
-
-      {/* Dialog / mobile bottom sheet */}
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="location-dialog-title"
-        className="
-          relative
-          max-h-[90dvh]
-          w-full
-          overflow-y-auto
-          rounded-t-[18px]
-          bg-white
-          shadow-[0_-12px_40px_rgba(0,0,0,0.14)]
-
-          sm:max-w-[460px]
-          sm:rounded-[10px]
-          sm:shadow-[0_20px_60px_rgba(0,0,0,0.16)]
-        "
+        data-state={visible ? 'open' : 'closed'}
+        className="location-dialog-panel relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-[0_24px_80px_rgba(0,0,0,.24)] sm:max-w-[520px] sm:rounded-2xl"
       >
-        {/* Mobile drag handle */}
         <div className="flex h-5 items-center justify-center sm:hidden">
-          <span className="h-1 w-9 rounded-full bg-black/15" />
+          <span className="h-1 w-10 rounded-full bg-black/15" />
         </div>
-
-        {/* Header */}
-        <div
-          className="
-            flex items-start justify-between
-            border-b border-black/[0.07]
-            px-5 pb-4 pt-2
-
-            sm:px-6
-            sm:py-5
-          "
-        >
-          <div className="pr-4">
+        <header className="flex items-start justify-between border-b border-black/[.07] px-5 pb-5 pt-2 sm:px-7 sm:py-6">
+          <div>
+            <Image
+              src={ShopNestLogo}
+              alt="ShopNest"
+              width={116}
+              height={52}
+              className="mb-4 h-auto w-[116px] object-contain object-left"
+            />
             <h2
               id="location-dialog-title"
-              className="
-                text-[18px]
-                font-semibold
-                leading-[26px]
-                text-black
-              "
+              className="text-xl font-semibold tracking-[-.02em] text-neutral-950 sm:text-2xl"
             >
-              Choose delivery location
+              Where should we deliver?
             </h2>
-
-            <p
-              className="
-                mt-1
-                text-[12px]
-                font-normal
-                leading-[18px]
-                text-black/45
-              "
-            >
-              Used to show delivery availability and estimated
-              arrival times.
+            <p className="mt-1.5 max-w-[390px] text-[13px] leading-5 text-neutral-500">
+              Choose your current location or search for an address in Punjab, Pakistan.
             </p>
           </div>
-
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className={`
-              grid h-8 w-8
-              shrink-0 place-items-center
-              rounded-[5px]
-              text-black/45
-              transition-colors duration-150
-              hover:text-black
-
-              ${FOCUS_RING}
-            `}
+            className={`grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-black active:scale-95 ${FOCUS_RING}`}
           >
             <CloseIcon className="h-4 w-4" />
           </button>
-        </div>
+        </header>
 
-        <div className="space-y-5 px-5 py-5 sm:px-6">
-          {/* Current location */}
+        <div className="space-y-5 px-5 py-5 sm:px-7 sm:py-6">
           {currentLocation && (
-            <div
-              className="
-                flex items-start gap-3
-                rounded-[7px]
-                border border-black/[0.08]
-                bg-[#FAFAFA]
-                px-4 py-3.5
-              "
-            >
-              <div
-                className="
-                  mt-[2px]
-                  grid h-8 w-8
-                  shrink-0 place-items-center
-                  rounded-full
-                  bg-brand-50
-                  text-brand-700
-                "
-              >
-                <MapPinIcon className="h-4 w-4" />
-              </div>
-
+            <div className="flex items-start gap-3 rounded-xl border border-black/[.08] bg-neutral-50 px-4 py-3.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-neutral-950 text-white">
+                <MapPinIcon className="h-[18px] w-[18px]" />
+              </span>
               <div className="min-w-0">
-                <p
-                  className="
-                    text-[9px]
-                    font-medium
-                    uppercase
-                    tracking-[0.1em]
-                    text-black/40
-                  "
-                >
-                  Current location
+                <p className="text-[10px] font-semibold uppercase tracking-[.12em] text-neutral-400">
+                  Delivering to
                 </p>
-
-                <p
-                  className="
-                    mt-1 truncate
-                    text-[13px]
-                    font-medium
-                    leading-[18px]
-                    text-black
-                  "
-                >
+                <p className="mt-1 truncate text-sm font-semibold text-neutral-950">
                   {currentLocation.label}
                 </p>
-
-                {currentLocation.details && (
-                  <p
-                    className="
-                      mt-[2px] truncate
-                      text-[11px]
-                      leading-[16px]
-                      text-black/40
-                    "
-                  >
-                    {currentLocation.details}
-                  </p>
-                )}
+                <p className="mt-0.5 truncate text-xs text-neutral-500">
+                  {currentLocation.details}
+                </p>
               </div>
             </div>
           )}
 
-          {/* Device location CTA */}
           <button
             type="button"
             onClick={useCurrentLocation}
             disabled={status === 'locating'}
-            className={`
-              flex h-[44px] w-full
-              items-center justify-center
-              gap-2
-              rounded-[6px]
-              bg-brand-700
-              px-4
-              text-[12px]
-              font-medium
-              text-white
-              transition-all duration-200
-
-              hover:bg-brand-800
-              active:scale-[0.995]
-
-              disabled:cursor-wait
-              disabled:opacity-60
-
-              ${FOCUS_RING}
-            `}
+            className={`flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 active:scale-[.99] disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
           >
             <MapPinIcon className="h-[18px] w-[18px]" />
-
             {status === 'locating'
               ? 'Finding your location…'
-              : 'Use my current location'}
+              : permission === 'denied'
+                ? 'Try location again'
+                : 'Use my current location'}
           </button>
 
-          {/* Error */}
-          {error && (
-            <div
-              role="alert"
-              className="
-                rounded-[6px]
-                border border-red-200/70
-                bg-red-50/60
-                px-3.5 py-3
-                text-[11px]
-                leading-[17px]
-                text-red-600
-              "
-            >
-              {error}
+          {permission === 'denied' && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950">
+              <p className="font-semibold">Location permission is blocked</p>
+              <p className="mt-1">
+                Click the site icon beside the address bar, set Location to Allow, then click “Try
+                location again.” Chrome will not show the prompt again until you change this
+                setting.
+              </p>
             </div>
           )}
-
-          {/* Separator */}
-          <div
-            className="flex items-center gap-3"
-            aria-hidden="true"
-          >
-            <span className="h-px flex-1 bg-black/[0.08]" />
-
-            <span
-              className="
-                text-[9px]
-                font-medium
-                uppercase
-                tracking-[0.11em]
-                text-black/30
-              "
+          {error && (
+            <p
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs leading-5 text-red-700"
             >
-              Or enter manually
-            </span>
+              {error}
+            </p>
+          )}
 
-            <span className="h-px flex-1 bg-black/[0.08]" />
+          <div className="flex items-center gap-3" aria-hidden="true">
+            <span className="h-px flex-1 bg-black/[.08]" />
+            <span className="text-[10px] font-semibold uppercase tracking-[.12em] text-neutral-400">
+              or search address
+            </span>
+            <span className="h-px flex-1 bg-black/[.08]" />
           </div>
 
-          {/* Manual location */}
-          <form
-            onSubmit={saveManualLocation}
-            className="space-y-2.5"
-          >
+          <div>
             <label
-              htmlFor="manual-delivery-location"
-              className="
-                block
-                text-[11px]
-                font-medium
-                leading-[17px]
-                text-black/75
-              "
+              htmlFor="delivery-location-search"
+              className="text-xs font-semibold text-neutral-800"
             >
-              City, area, postal code, or address
+              Address in Punjab, Pakistan
             </label>
-
-            <div className="flex gap-2">
+            <div className="relative mt-2">
+              <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-neutral-400" />
               <input
-                id="manual-delivery-location"
-                value={manualLocation}
-                onChange={(event) =>
-                  setManualLocation(event.target.value)
-                }
-                maxLength={160}
-                autoComplete="street-address"
-                placeholder="e.g. Gulberg III, Lahore"
-                className={`
-                  h-[42px]
-                  min-w-0 flex-1
-                  rounded-[6px]
-                  border border-black/[0.12]
-                  bg-white
-                  px-3.5
-                  text-[12px]
-                  text-black
-                  outline-none
-                  transition-colors
-
-                  placeholder:text-black/30
-                  hover:border-black/25
-                  focus:border-black/40
-
-                  ${FOCUS_RING}
-                `}
+                id="delivery-location-search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                autoComplete="off"
+                placeholder="Start typing, e.g. Gulberg III, Lahore"
+                className={`h-12 w-full rounded-xl border border-black/[.12] bg-white pl-11 pr-4 text-sm text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-black/25 focus:border-black/60 focus:shadow-[0_0_0_3px_rgba(0,0,0,.06)] ${FOCUS_RING}`}
               />
-
-              <button
-                type="submit"
-                className={`
-                  h-[42px]
-                  shrink-0
-                  rounded-[6px]
-                  border border-black/[0.12]
-                  px-4
-                  text-[12px]
-                  font-medium
-                  text-black
-                  transition-colors
-
-                  hover:border-black/25
-
-                  ${FOCUS_RING}
-                `}
-              >
-                Save
-              </button>
             </div>
-          </form>
-
-          {/* Privacy */}
-          <p
-            className="
-              border-t border-black/[0.06]
-              pt-4
-              text-[10px]
-              leading-[16px]
-              text-black/35
-            "
-          >
-            Your delivery location is stored only on this device.
-            Browser location is requested only when you choose to
-            use it.
+            {status === 'searching' && (
+              <p className="mt-2 text-xs text-neutral-500">Searching Punjab addresses…</p>
+            )}
+            {query.trim().length > 0 && query.trim().length < 3 && (
+              <p className="mt-2 text-xs text-neutral-500">Enter at least 3 characters.</p>
+            )}
+            {suggestions.length > 0 && (
+              <ul
+                className="mt-2 overflow-hidden rounded-xl border border-black/[.09] bg-white shadow-lg"
+                role="listbox"
+              >
+                {suggestions.map((suggestion) => (
+                  <li key={suggestion.id}>
+                    <button
+                      type="button"
+                      onClick={() => chooseSuggestion(suggestion)}
+                      className={`flex w-full cursor-pointer items-start gap-3 border-b border-black/[.06] px-4 py-3 text-left transition last:border-0 hover:bg-neutral-50 active:bg-neutral-100 ${FOCUS_RING}`}
+                    >
+                      <MapPinIcon className="mt-0.5 h-[18px] w-[18px] shrink-0 text-neutral-500" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-neutral-950">
+                          {suggestion.label}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-neutral-500">
+                          {suggestion.details}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <p className="border-t border-black/[.06] pt-4 text-[11px] leading-[17px] text-neutral-400">
+            Your chosen address is stored only on this device. ShopNest requests browser location
+            only after you click the button.
           </p>
         </div>
       </div>

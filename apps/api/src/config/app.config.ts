@@ -19,4 +19,5 @@ export default registerAs('app', () => ({
   catalogScheduleIntervalMs: parseInt(process.env.CATALOG_SCHEDULE_INTERVAL_MS ?? '21600000', 10),
   geocodingUrl: process.env.GEOCODING_URL ?? 'https://nominatim.openstreetmap.org',
   geocodingTimeoutMs: parseInt(process.env.GEOCODING_TIMEOUT_MS ?? '5000', 10),
+  googlePlacesApiKey: process.env.GOOGLE_PLACES_API_KEY ?? '',
 }));
