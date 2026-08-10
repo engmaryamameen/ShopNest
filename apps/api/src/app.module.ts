@@ -13,6 +13,7 @@ import { OriginGuard } from './common/guards/origin.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import appConfig from './config/app.config';
 import { CatalogImportModule } from './catalog-import/catalog-import.module';
+import { LocationModule } from './location/location.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { CatalogImportModule } from './catalog-import/catalog-import.module';
     CartModule,
     OrdersModule,
     CatalogImportModule,
+    LocationModule,
   ],
   providers: [
     // Guard execution order: 1 → 2 → 3 (then controller/route guards)

@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   --background: #f9fafb;
@@ -54,8 +54,41 @@ body {
   color: var(--foreground);
 }
 
+a[href],
+button:not(:disabled),
+[role='button'] {
+  cursor: pointer;
+}
+
 /* Simple focus ring utility */
 .focus-ring:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+.location-dialog-backdrop,
+.location-dialog-panel {
+  transition-duration: 220ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.location-dialog-backdrop {
+  transition-property: opacity;
+}
+.location-dialog-backdrop[data-state='closed'] {
+  opacity: 0;
+}
+.location-dialog-panel {
+  transition-property: opacity, transform;
+}
+.location-dialog-panel[data-state='closed'] {
+  opacity: 0;
+  transform: translateY(20px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .location-dialog-backdrop,
+  .location-dialog-panel {
+    transition-duration: 1ms;
+  }
 }

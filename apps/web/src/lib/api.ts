@@ -1,7 +1,5 @@
 const SERVER_API_URL =
-  process.env.INTERNAL_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  'http://localhost:3001';
+  process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3000';
 const CLIENT_API_BASE = '/api';
@@ -50,13 +48,20 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   });
 
   if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({})) as { message?: string; errorCode?: string };
-    throw new ApiError(response.status, errorBody.message ?? response.statusText, errorBody.errorCode);
+    const errorBody = (await response.json().catch(() => ({}))) as {
+      message?: string;
+      errorCode?: string;
+    };
+    throw new ApiError(
+      response.status,
+      errorBody.message ?? response.statusText,
+      errorBody.errorCode,
+    );
   }
 
   if (response.status === 204) return undefined as unknown as T;
 
-  const json = await response.json() as { data: T };
+  const json = (await response.json()) as { data: T };
   return json.data;
 }
 
@@ -82,16 +87,14 @@ export const api = {
       isServer: true,
     }),
 
-  logout: (cookies?: string) =>
-    request<void>('/auth/logout', { method: 'POST', cookies }),
+  logout: (cookies?: string) => request<void>('/auth/logout', { method: 'POST', cookies }),
 
   me: (cookies?: string) =>
     request<{ user: { id: string; email: string; role: string } }>('/auth/me', { cookies }),
 
   // ── Catalog ────────────────────────────────────────────────────────────────
 
-  listCategories: (cookies?: string) =>
-    request<unknown[]>('/categories', { cookies }),
+  listCategories: (cookies?: string) => request<unknown[]>('/categories', { cookies }),
 
   listProducts: (params: Record<string, string | number>, cookies?: string) => {
     const qs = new URLSearchParams(
@@ -106,10 +109,22 @@ export const api = {
   getProduct: (slug: string, cookies?: string) =>
     request<unknown>(`/products/${slug}`, { cookies }),
 
+  reverseGeocode: (latitude: number, longitude: number) => {
+    const params = new URLSearchParams({
+      latitude: String(latitude),
+      longitude: String(longitude),
+    });
+    return request<{ label: string; details: string }>(`/location/reverse?${params}`);
+  },
+
+  searchLocations: (query: string) =>
+    request<Array<{ id: string; label: string; details: string }>>(
+      `/location/suggestions?${new URLSearchParams({ query })}`,
+    ),
+
   // ── Cart ───────────────────────────────────────────────────────────────────
 
-  getCart: (cookies?: string) =>
-    request<unknown>('/cart', { cookies }),
+  getCart: (cookies?: string) => request<unknown>('/cart', { cookies }),
 
   upsertCartItem: (body: { productId: string; quantity: number }, cookies?: string) =>
     request<unknown>('/cart/items', { method: 'PUT', body, cookies }),
@@ -117,19 +132,16 @@ export const api = {
   removeCartItem: (productId: string, cookies?: string) =>
     request<void>(`/cart/items/${productId}`, { method: 'DELETE', cookies }),
 
-  clearCart: (cookies?: string) =>
-    request<void>('/cart', { method: 'DELETE', cookies }),
+  clearCart: (cookies?: string) => request<void>('/cart', { method: 'DELETE', cookies }),
 
   // ── Orders ─────────────────────────────────────────────────────────────────
 
   checkout: (body: { idempotencyKey: string }, cookies?: string) =>
     request<unknown>('/orders/checkout', { method: 'POST', body, cookies }),
 
-  listOrders: (cookies?: string) =>
-    request<unknown[]>('/orders', { cookies }),
+  listOrders: (cookies?: string) => request<unknown[]>('/orders', { cookies }),
 
-  getOrder: (id: string, cookies?: string) =>
-    request<unknown>(`/orders/${id}`, { cookies }),
+  getOrder: (id: string, cookies?: string) => request<unknown>(`/orders/${id}`, { cookies }),
 
   cancelOrder: (id: string, cookies?: string) =>
     request<unknown>(`/orders/${id}/cancel`, { method: 'PATCH', cookies }),
@@ -149,8 +161,7 @@ export const api = {
 
   // ── Admin – Products ───────────────────────────────────────────────────────
 
-  adminListProducts: (cookies?: string) =>
-    request<unknown[]>('/admin/products', { cookies }),
+  adminListProducts: (cookies?: string) => request<unknown[]>('/admin/products', { cookies }),
 
   adminCreateProduct: (body: unknown, cookies?: string) =>
     request<unknown>('/products', { method: 'POST', body, cookies }),

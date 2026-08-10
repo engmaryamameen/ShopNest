@@ -3,7 +3,7 @@ import Link from 'next/link';
 /** Slim trust strip above the main header — desktop/laptop only; folded into the mobile drawer below `lg`. */
 export function UtilityBar() {
   return (
-    <div className=" font-poppines hidden bg-[#000000] text-[#FAFAFA] lg:block">
+    <div className=" font-lato hidden bg-[#000000] text-[#FAFAFA] lg:block">
       <div className="mx-auto flex h-8 max-w-[1440px] items-center justify-between px-6 text-[11px] font-medium tracking-wide">
         <p className='text-center mx-auto'>
           Summer Sale For All Swim Suits And Free Express Delivery - OFF 50%!{' '}
