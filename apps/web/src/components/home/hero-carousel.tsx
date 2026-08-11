@@ -48,7 +48,7 @@ export function HeroCarousel() {
     <section
       aria-roledescription="carousel"
       aria-label="Featured ShopNest campaigns"
-      className="group relative isolate min-h-[390px] overflow-hidden rounded-[28px] bg-[#151311] text-white shadow-[0_24px_70px_rgba(20,16,12,0.18)] sm:min-h-[430px] lg:min-h-[456px] lg:rounded-[32px]"
+      className="group relative isolate lg:max-h-[344px] lg:min-h-[344px] min-h-full  overflow-hidden rounded-[28px] bg-[#151311] text-white shadow-[0_24px_70px_rgba(20,16,12,0.18)] lg:rounded-[32px]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onFocusCapture={() => setIsPaused(true)}
@@ -80,23 +80,23 @@ export function HeroCarousel() {
               className="object-cover object-center sm:object-[58%_center]"
             />
             <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(12,11,10,0.98)_0%,rgba(12,11,10,0.91)_33%,rgba(12,11,10,0.42)_60%,rgba(12,11,10,0.08)_100%)] sm:bg-[linear-gradient(90deg,rgba(12,11,10,0.98)_0%,rgba(12,11,10,0.88)_38%,rgba(12,11,10,0.18)_72%)]" />
-            <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black/50 to-transparent sm:hidden" />
+            <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/50 to-transparent sm:hidden" />
 
-            <div className="relative z-10 flex min-h-[390px] max-w-[620px] flex-col justify-center px-6 pb-20 pt-8 sm:min-h-[430px] sm:px-10 lg:min-h-[456px] lg:px-14">
+            <div className="relative z-10 flex min-h-[390px] max-w-[620px] flex-col justify-center px-6 lg:pb-29 pb-10 sm:min-h-[430px] sm:px-10 lg:min-h-[456px] lg:px-14">
               <div className={`mb-5 h-1 w-10 rounded-full ${slide.tone === 'burgundy' ? 'bg-[#dc334f]' : slide.tone === 'espresso' ? 'bg-[#d8a567]' : 'bg-[#f5d37a]'}`} />
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/72 sm:text-xs">
                 {slide.eyebrow}
               </p>
-              <h1 className="max-w-[590px] font-jakarta text-[clamp(2rem,5vw,3.75rem)] font-semibold leading-[1.02] tracking-[-0.045em] text-white">
+              <h1 className="max-w-[590px] text-[clamp(2rem,5vw,3.00rem)] font-semibold leading-[1.02] tracking-[-0.045em] text-white">
                 {slide.title}
               </h1>
-              <p className="mt-5 max-w-[500px] text-sm leading-6 text-white/72 sm:text-base sm:leading-7">
+              <p className="max-w-[500px] text-sm leading-6 text-white/72 sm:text-base sm:leading-7">
                 {slide.description}
               </p>
               <Link
                 href={slide.href}
                 tabIndex={isActive ? 0 : -1}
-                className="mt-7 inline-flex w-fit items-center gap-2.5 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#17140f] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#f5f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black active:translate-y-0 motion-reduce:transform-none"
+                className="mt-4  mb-8 inline-flex w-fit items-center gap-2.5 rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#17140f] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#f5f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black active:translate-y-0 motion-reduce:transform-none"
               >
                 {slide.ctaLabel}
                 <ArrowRightIcon />
@@ -106,7 +106,7 @@ export function HeroCarousel() {
         );
       })}
 
-      <div className="absolute bottom-6 left-6 z-20 flex items-center gap-2.5 sm:left-10 lg:left-14">
+      <div className="absolute bottom-4 left-6 z-20 flex items-center gap-2.5 sm:left-10 lg:left-14">
         {HERO_SLIDES.map((slide, index) => (
           <button
             key={slide.id}

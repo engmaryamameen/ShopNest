@@ -5,10 +5,11 @@ import { HeroCarousel } from './hero-carousel';
 
 export function HomeHero({ categories }: { categories: HeaderCategory[] }) {
   return (
-    <div className="mx-auto max-w-[1440px] px-4 pb-10 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-14 xl:pt-8">
-      <div className="flex items-stretch gap-7 2xl:gap-9">
+    <div className="mx-auto max-w-[1440px] font-lato">
+      <div className="flex items-stretch gap-4 2xl:gap-4">
         <CategoryRail categories={categories} />
-        <div className="min-w-0 flex-1">
+        <div className="h-[374px] w-[.5px] bg-black/30" />
+        <div className="min-w-0  flex-1 lg:pt-[45px] py-4 sm:px-6 sm:pt-7 pr-4 lg:pl-[41px]">
           <HeroCarousel />
         </div>
       </div>
