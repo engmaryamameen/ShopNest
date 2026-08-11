@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 
 import { HomeHero } from '@/components/home/home-hero';
+import { CategoryBrowser } from '@/components/home/category-browser';
 import { NavBar, type HeaderCategory } from '@/components/shop/nav-bar';
 import { api } from '@/lib/api';
 import type { UserIdentity } from '@/store/user.store';
@@ -30,6 +31,7 @@ export default async function RootPage() {
       <NavBar categories={categories} initialUser={initialUser} />
       <main>
         <HomeHero categories={categories} />
+        <CategoryBrowser categories={categories} />
       </main>
     </div>
   );
