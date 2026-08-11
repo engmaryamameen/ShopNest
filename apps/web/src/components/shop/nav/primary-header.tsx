@@ -27,7 +27,7 @@ export function PrimaryHeader({
   onOpenMenu,
 }: PrimaryHeaderProps) {
   return (
-    <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-6 font-lato">
+    <div className="mx-auto w-full font-lato px-4 sm:px-6 lg:px-6">
       <div
         className="
           flex flex-wrap items-center

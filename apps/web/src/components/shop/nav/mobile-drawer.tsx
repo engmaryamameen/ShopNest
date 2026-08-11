@@ -33,7 +33,7 @@ export function MobileDrawer({ open, onClose, categories, currentUser, onSignOut
   useEscapeKey(open, onClose);
 
   return (
-    <div className="fixed inset-0 z-50 lg:hidden" inert={!open}>
+    <div className="fixed inset-0 z-50 lg:hidden px-4 sm:px-6 lg:px-6" inert={!open}>
       <div
         onClick={onClose}
         aria-hidden="true"

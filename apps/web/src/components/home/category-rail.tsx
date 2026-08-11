@@ -20,7 +20,7 @@ export function CategoryRail({ categories }: { categories: HeaderCategory[] }) {
   return (
     <aside
       aria-label="Shop by category"
-      className="hidden min-w-[224px] lg:max-h-[344px] lg:min-h-[344px] shrink-0 xl:block pt-[30px]  pl-4 sm:pl-6 lg:pl-8 "
+      className="hidden min-w-[224px] lg:max-h-[344px] lg:min-h-[344px] shrink-0 xl:block pt-[30px]"
     >
       <nav className="h-[344px] overflow-hidden">
         <ul className="w-full space-y-4">
