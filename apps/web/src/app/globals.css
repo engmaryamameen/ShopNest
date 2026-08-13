@@ -92,3 +92,19 @@ button:not(:disabled),
     transition-duration: 1ms;
   }
 }
+
+.horizontal-scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.horizontal-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.horizontal-scrollbar-hidden {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}

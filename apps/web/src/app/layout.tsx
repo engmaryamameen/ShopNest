@@ -49,7 +49,7 @@ export default function RootLayout({
         ${lato.variable}
       `}
     >
-      <body className="min-h-screen bg-gray-50 font-poppins antialiased">
+      <body className="min-h-screen bg-gray-50 font-lato antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

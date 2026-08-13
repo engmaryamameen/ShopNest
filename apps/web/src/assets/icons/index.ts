@@ -14,4 +14,7 @@ export { SignOutIcon } from './sign-out';
 export { TagIcon } from './tag';
 export { TruckIcon } from './truck';
 export { UserIcon } from './user';
+export { DeliveryServiceIcon } from './delivery-service';
+export { CustomerServiceIcon } from './customer-service';
+export { MoneyBackIcon } from './money-back';
 export type { IconProps } from './types';

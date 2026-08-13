@@ -7,6 +7,8 @@ import { api } from '@/lib/api';
 import type { UserIdentity } from '@/store/user.store';
 import { ProductSection } from '@/components/product/product-section';
 import { ProductCardData } from '@/components/product/product.types';
+import { NewArrivals } from '@/components/home/new-arrival';
+import { ServiceBenefits } from '@/components/home/service-benefits';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,12 +49,21 @@ export default async function RootPage() {
         <HomeHero categories={categories} />
         <CategoryBrowser categories={categories} />
         <ProductSection
-          eyebrow="Our Products"
-          title="Explore Our Products"
+          eyebrow="Best Selling"
+          title="Best Selling Products"
           products={products}
           viewAllHref="/shop"
           showCategory
         />
+        <NewArrivals />
+        <ProductSection
+          eyebrow="Our Products"
+          title="Explore Our Products"
+          products={products}
+          viewAllHref="/shop"
+          rows={2}
+          />
+        <ServiceBenefits />
       </main>
     </div>
   );
