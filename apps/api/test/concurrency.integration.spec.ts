@@ -1,24 +1,51 @@
 /**
  * PostgreSQL concurrency integration tests
  *
- * Run against the live Docker Compose stack (api on http://localhost:13001).
- * Requires the `shopnest-db-1` container to be reachable via `docker exec`.
+ * Boots the real Nest application in-process (via `createApp()` from
+ * `src/main.ts`) on an ephemeral port and talks to it over HTTP, exactly
+ * like a real client — no dependency on a separately-running server or on
+ * `docker exec`/a specific container name. Runs against whatever
+ * `DATABASE_URL` is configured (the CI `api` job's Postgres service
+ * container, or a local Postgres instance for `pnpm test:e2e` locally).
  *
  * Run: cd apps/api && pnpm test:e2e
  */
 
-import { execSync } from 'child_process';
+import type { INestApplication } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { createApp } from '../src/main';
 
-const API = process.env.API_URL ?? 'http://localhost:13001';
-const WEB_ORIGIN = 'http://localhost:3000'; // must match WEB_URL on the API container
-const DB_EXEC = (sql: string) =>
-  execSync(
-    `docker exec shopnest-db-1 psql -U shopnest -d shopnest_dev -c "${sql.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`,
-    { encoding: 'utf8' },
-  );
-
+const WEB_ORIGIN = process.env.WEB_URL ?? 'http://localhost:3000';
 const run = `${Date.now()}`;
+
+let app: INestApplication;
+let API: string;
+const prisma = new PrismaClient();
+
+beforeAll(async () => {
+  // The catalog-import scheduler/worker are irrelevant to these tests and
+  // would otherwise make live outbound HTTP calls / DB writes on a timer
+  // while assertions run — disabled for this process only.
+  process.env.CATALOG_WORKER_ENABLED = 'false';
+  process.env.CATALOG_SCHEDULE_ENABLED = 'false';
+
+  app = await createApp();
+  await app.listen(0); // ephemeral port — never collides across parallel runs
+  const address = app.getHttpServer().address();
+  const port = typeof address === 'object' && address ? address.port : address;
+  API = `http://localhost:${port}`;
+}, 30000);
+
+afterAll(async () => {
+  await app?.close();
+  await prisma.$disconnect();
+});
+
+/** Raw, parameterized SQL against the test database — replaces the old `docker exec psql` dependency. */
+async function dbExec(strings: TemplateStringsArray, ...values: unknown[]): Promise<void> {
+  await prisma.$executeRaw(strings, ...values);
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,14 +118,14 @@ async function login(email: string): Promise<Cookies> {
   return parseCookies(res);
 }
 
-function promoteToAdmin(email: string): void {
-  DB_EXEC(`UPDATE "User" SET role = 'ADMIN' WHERE email = '${email}'`);
+async function promoteToAdmin(email: string): Promise<void> {
+  await dbExec`UPDATE "User" SET role = 'ADMIN' WHERE email = ${email}`;
 }
 
 async function createAdminSession(suffix: string): Promise<Cookies> {
   const email = `admin-${suffix}-${run}@test.local`;
   await register(email);
-  promoteToAdmin(email);
+  await promoteToAdmin(email);
   return login(email);
 }
 
@@ -270,10 +297,7 @@ describe('Concurrent refresh token rotation — grace period', () => {
     // PostgreSQL equivalent: encode(sha256(raw::bytea), 'hex')
     const rawToken = tokenCookies['refresh_token'];
     if (rawToken) {
-      DB_EXEC(
-        `UPDATE "RefreshToken" SET "usedAt" = NOW() - INTERVAL '60 seconds' ` +
-        `WHERE "tokenHash" = encode(sha256('${rawToken}'::bytea), 'hex')`,
-      );
+      await dbExec`UPDATE "RefreshToken" SET "usedAt" = NOW() - INTERVAL '60 seconds' WHERE "tokenHash" = encode(sha256(${rawToken}::bytea), 'hex')`;
     }
 
     // Reusing the original token after the grace period → theft signal → family revoked → 401

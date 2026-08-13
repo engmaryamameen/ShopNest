@@ -20,4 +20,11 @@ export default registerAs('app', () => ({
   geocodingUrl: process.env.GEOCODING_URL ?? 'https://nominatim.openstreetmap.org',
   geocodingTimeoutMs: parseInt(process.env.GEOCODING_TIMEOUT_MS ?? '5000', 10),
   googlePlacesApiKey: process.env.GOOGLE_PLACES_API_KEY ?? '',
+  // Global rate limiting (applies to every route via the ThrottlerGuard
+  // APP_GUARD). Auth-sensitive routes (register/login/refresh) additionally
+  // set a stricter `@Throttle()` override in their controller.
+  throttleTtlMs: parseInt(process.env.THROTTLE_TTL_MS ?? '60000', 10),
+  throttleLimit: parseInt(process.env.THROTTLE_LIMIT ?? '120', 10),
+  authThrottleTtlMs: parseInt(process.env.AUTH_THROTTLE_TTL_MS ?? '60000', 10),
+  authThrottleLimit: parseInt(process.env.AUTH_THROTTLE_LIMIT ?? '5', 10),
 }));

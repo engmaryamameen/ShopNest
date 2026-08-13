@@ -1,3 +1,15 @@
+import type { components } from '@shopnest/api-client';
+
+import type {
+  CartResponse,
+  CategoryResponse,
+  OrderResponse,
+  ProductListResponse,
+  ProductResponse,
+} from './api-types';
+
+type Schemas = components['schemas'];
+
 const SERVER_API_URL =
   process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -67,21 +79,18 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
 export const api = {
   // ── Auth ───────────────────────────────────────────────────────────────────
+  // Request bodies and the auth response shape below are the generated
+  // OpenAPI types from `@shopnest/api-client` — real types sourced from the
+  // committed, CI-verified spec instead of hand-typed duplicates.
 
-  register: (body: { email: string; password: string }) =>
-    request<{ user: { id: string; email: string; role: string } }>('/auth/register', {
-      method: 'POST',
-      body,
-    }),
+  register: (body: Schemas['RegisterDto']) =>
+    request<Schemas['AuthResponseDto']>('/auth/register', { method: 'POST', body }),
 
-  login: (body: { email: string; password: string }) =>
-    request<{ user: { id: string; email: string; role: string } }>('/auth/login', {
-      method: 'POST',
-      body,
-    }),
+  login: (body: Schemas['LoginDto']) =>
+    request<Schemas['AuthResponseDto']>('/auth/login', { method: 'POST', body }),
 
   refresh: (cookies: string) =>
-    request<{ user: { id: string; email: string; role: string } }>('/auth/refresh', {
+    request<Schemas['AuthResponseDto']>('/auth/refresh', {
       method: 'POST',
       cookies,
       isServer: true,
@@ -89,25 +98,24 @@ export const api = {
 
   logout: (cookies?: string) => request<void>('/auth/logout', { method: 'POST', cookies }),
 
-  me: (cookies?: string) =>
-    request<{ user: { id: string; email: string; role: string } }>('/auth/me', { cookies }),
+  me: (cookies?: string) => request<Schemas['AuthResponseDto']>('/auth/me', { cookies }),
 
   // ── Catalog ────────────────────────────────────────────────────────────────
+  // Response shapes come from `./api-types` (see that file's header comment
+  // for why — the API doesn't yet describe these response bodies in its
+  // OpenAPI spec, so the generated client has nothing to type them with).
 
-  listCategories: (cookies?: string) => request<unknown[]>('/categories', { cookies }),
+  listCategories: (cookies?: string) => request<CategoryResponse[]>('/categories', { cookies }),
 
   listProducts: (params: Record<string, string | number>, cookies?: string) => {
     const qs = new URLSearchParams(
       Object.entries(params).map(([k, v]) => [k, String(v)]),
     ).toString();
-    return request<{ items: unknown[]; total: number; page: number; limit: number }>(
-      `/products?${qs}`,
-      { cookies },
-    );
+    return request<ProductListResponse>(`/products?${qs}`, { cookies });
   },
 
   getProduct: (slug: string, cookies?: string) =>
-    request<unknown>(`/products/${slug}`, { cookies }),
+    request<ProductResponse>(`/products/${slug}`, { cookies }),
 
   reverseGeocode: (latitude: number, longitude: number) => {
     const params = new URLSearchParams({
@@ -124,10 +132,10 @@ export const api = {
 
   // ── Cart ───────────────────────────────────────────────────────────────────
 
-  getCart: (cookies?: string) => request<unknown>('/cart', { cookies }),
+  getCart: (cookies?: string) => request<CartResponse>('/cart', { cookies }),
 
-  upsertCartItem: (body: { productId: string; quantity: number }, cookies?: string) =>
-    request<unknown>('/cart/items', { method: 'PUT', body, cookies }),
+  upsertCartItem: (body: Schemas['UpsertCartItemDto'], cookies?: string) =>
+    request<CartItemFromUpsert>('/cart/items', { method: 'PUT', body, cookies }),
 
   removeCartItem: (productId: string, cookies?: string) =>
     request<void>(`/cart/items/${productId}`, { method: 'DELETE', cookies }),
@@ -136,50 +144,66 @@ export const api = {
 
   // ── Orders ─────────────────────────────────────────────────────────────────
 
-  checkout: (body: { idempotencyKey: string }, cookies?: string) =>
-    request<unknown>('/orders/checkout', { method: 'POST', body, cookies }),
+  checkout: (body: Schemas['CheckoutDto'], cookies?: string) =>
+    request<OrderResponse>('/orders/checkout', { method: 'POST', body, cookies }),
 
-  listOrders: (cookies?: string) => request<unknown[]>('/orders', { cookies }),
+  listOrders: (cookies?: string) => request<OrderResponse[]>('/orders', { cookies }),
 
-  getOrder: (id: string, cookies?: string) => request<unknown>(`/orders/${id}`, { cookies }),
+  getOrder: (id: string, cookies?: string) => request<OrderResponse>(`/orders/${id}`, { cookies }),
 
   cancelOrder: (id: string, cookies?: string) =>
-    request<unknown>(`/orders/${id}/cancel`, { method: 'PATCH', cookies }),
+    request<OrderResponse>(`/orders/${id}/cancel`, { method: 'PATCH', cookies }),
 
   // ── Admin – Orders ─────────────────────────────────────────────────────────
 
   adminListOrders: (status?: string, cookies?: string) => {
     const qs = status ? `?status=${status}` : '';
-    return request<unknown[]>(`/admin/orders${qs}`, { cookies });
+    return request<OrderResponse[]>(`/admin/orders${qs}`, { cookies });
   },
 
   adminGetOrder: (id: string, cookies?: string) =>
-    request<unknown>(`/admin/orders/${id}`, { cookies }),
+    request<OrderResponse>(`/admin/orders/${id}`, { cookies }),
 
-  adminUpdateOrderStatus: (id: string, body: { status: string }, cookies?: string) =>
-    request<unknown>(`/admin/orders/${id}/status`, { method: 'PATCH', body, cookies }),
+  adminUpdateOrderStatus: (id: string, body: Schemas['UpdateOrderStatusDto'], cookies?: string) =>
+    request<OrderResponse>(`/admin/orders/${id}/status`, { method: 'PATCH', body, cookies }),
 
   // ── Admin – Products ───────────────────────────────────────────────────────
 
-  adminListProducts: (cookies?: string) => request<unknown[]>('/admin/products', { cookies }),
+  adminListProducts: (cookies?: string) => request<ProductResponse[]>('/admin/products', { cookies }),
 
-  adminCreateProduct: (body: unknown, cookies?: string) =>
-    request<unknown>('/products', { method: 'POST', body, cookies }),
+  adminCreateProduct: (body: Schemas['CreateProductDto'], cookies?: string) =>
+    request<ProductResponse>('/products', { method: 'POST', body, cookies }),
 
-  adminUpdateProduct: (id: string, body: unknown, cookies?: string) =>
-    request<unknown>(`/products/${id}`, { method: 'PATCH', body, cookies }),
+  adminUpdateProduct: (id: string, body: Schemas['UpdateProductDto'], cookies?: string) =>
+    request<ProductResponse>(`/products/${id}`, { method: 'PATCH', body, cookies }),
 
   adminArchiveProduct: (id: string, cookies?: string) =>
     request<void>(`/products/${id}`, { method: 'DELETE', cookies }),
 
   // ── Admin – Categories ─────────────────────────────────────────────────────
 
-  adminCreateCategory: (body: { name: string; slug?: string }, cookies?: string) =>
-    request<unknown>('/categories', { method: 'POST', body, cookies }),
+  adminCreateCategory: (body: Schemas['CreateCategoryDto'], cookies?: string) =>
+    request<CategoryResponse>('/categories', { method: 'POST', body, cookies }),
 
   adminUpdateCategory: (id: string, body: { name?: string; slug?: string }, cookies?: string) =>
-    request<unknown>(`/categories/${id}`, { method: 'PATCH', body, cookies }),
+    request<CategoryResponse>(`/categories/${id}`, { method: 'PATCH', body, cookies }),
 
   adminDeleteCategory: (id: string, cookies?: string) =>
     request<void>(`/categories/${id}`, { method: 'DELETE', cookies }),
 };
+
+// `PUT /cart/items` returns the created/updated cart item with only a partial
+// product projection (`id, name, slug, priceCents`) — narrower than the full
+// `CartItemResponse.product` shape returned by `GET /cart`, per
+// `cart.service.ts`'s `upsertItem()`. Typed separately so callers aren't led
+// to expect fields (`imageUrl`, `stockQuantity`, `isActive`) that this
+// specific response doesn't actually carry.
+interface CartItemFromUpsert {
+  id: string;
+  cartId: string;
+  productId: string;
+  quantity: number;
+  addedAt: string;
+  updatedAt: string;
+  product: { id: string; name: string; slug: string; priceCents: number };
+}

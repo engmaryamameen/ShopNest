@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
+import type { OrderStatus } from '@/lib/api-types';
 import { AdminOrderStatusForm } from '@/components/admin/admin-order-status-form';
 
 export const dynamic = 'force-dynamic';
@@ -43,7 +44,11 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
     throw err;
   }
 
-  const nextStatuses: Record<string, string[]> = {
+  // Mirrors apps/api/src/orders/order-state-machine.ts's admin transition
+  // table. Duplicated here (not derived from the API) — tracked as a known
+  // cleanup item, not fixed in this pass: see DECISIONS.md / the retain-vs-
+  // refactor list in the architecture plan.
+  const nextStatuses: Record<OrderStatus, OrderStatus[]> = {
     PENDING: ['CONFIRMED', 'CANCELLED'],
     CONFIRMED: ['SHIPPED', 'CANCELLED'],
     SHIPPED: ['DELIVERED'],
@@ -51,7 +56,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
     CANCELLED: [],
   };
 
-  const available = nextStatuses[order.status] ?? [];
+  const available = nextStatuses[order.status as OrderStatus] ?? [];
 
   return (
     <div className="max-w-3xl">

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -9,11 +10,19 @@ import { ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseTransformInterceptor } from './common/interceptors/response-transform.interceptor';
 
-async function bootstrap(): Promise<void> {
+/**
+ * Builds and fully configures the Nest application (middleware, pipes,
+ * filters, interceptors, CORS) without starting an HTTP listener or mounting
+ * Swagger. Shared by the production `bootstrap()` below and by
+ * `test/concurrency.integration.spec.ts`, which boots the real app in-process
+ * against an ephemeral port instead of depending on a separately-running
+ * server — one source of truth for "what does a real ShopNest app instance
+ * look like" instead of a second, drifting copy in test code.
+ */
+export async function createApp(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   const config = app.get(ConfigService);
-  const port = config.get<number>('PORT', 3001);
   const webUrl = config.get<string>('WEB_URL', 'http://localhost:3000');
 
   app.useLogger(app.get(Logger));
@@ -39,6 +48,14 @@ async function bootstrap(): Promise<void> {
   app.useGlobalFilters(new AllExceptionsFilter(app.get(Logger)));
   app.useGlobalInterceptors(new ResponseTransformInterceptor());
 
+  return app;
+}
+
+async function bootstrap(): Promise<void> {
+  const app = await createApp();
+  const config = app.get(ConfigService);
+  const port = config.get<number>('PORT', 3001);
+
   const swaggerConfig = new DocumentBuilder()
     .setTitle('ShopNest API')
     .setDescription('Production-grade e-commerce REST API')
@@ -54,4 +71,9 @@ async function bootstrap(): Promise<void> {
   logger.log(`API listening on port ${port}`);
 }
 
-bootstrap();
+// Only auto-start the server when this file is the process entrypoint — not
+// when it's imported (e.g. by the integration test suite, which calls
+// `createApp()` directly and manages its own listen/close lifecycle).
+if (require.main === module) {
+  bootstrap();
+}

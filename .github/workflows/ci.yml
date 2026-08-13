@@ -50,6 +50,7 @@ jobs:
       DATABASE_URL: postgresql://shopnest:shopnest@localhost:5432/shopnest_test
       JWT_ACCESS_SECRET: test-access-secret-placeholder
       JWT_REFRESH_SECRET: test-refresh-secret-placeholder
+      WEB_URL: http://localhost:3000
       NODE_ENV: test
 
     steps:
@@ -75,6 +76,13 @@ jobs:
 
       - name: Run API unit tests
         run: pnpm --filter @shopnest/api test --coverage
+
+      - name: Apply migrations to the ephemeral test database
+        working-directory: apps/api
+        run: pnpm exec prisma migrate deploy
+
+      - name: Run API integration tests (concurrency suite, ephemeral Postgres)
+        run: pnpm --filter @shopnest/api test:e2e
 
       - name: Verify generated types are committed
         run: test -s packages/api-client/src/types.ts

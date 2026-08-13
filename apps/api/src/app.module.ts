@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
@@ -12,6 +13,7 @@ import { OptionalJwtAuthGuard } from './auth/guards/optional-jwt-auth.guard';
 import { OriginGuard } from './common/guards/origin.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import appConfig from './config/app.config';
+import { validate } from './config/env.validation';
 import { CatalogImportModule } from './catalog-import/catalog-import.module';
 import { LocationModule } from './location/location.module';
 
@@ -21,6 +23,7 @@ import { LocationModule } from './location/location.module';
       isGlobal: true,
       load: [appConfig],
       cache: true,
+      validate,
     }),
     LoggerModule.forRootAsync({
       useFactory: () => ({
@@ -47,6 +50,19 @@ import { LocationModule } from './location/location.module';
         },
       }),
     }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          {
+            name: 'default',
+            ttl: config.get<number>('app.throttleTtlMs', 60_000),
+            limit: config.get<number>('app.throttleLimit', 120),
+          },
+        ],
+      }),
+      inject: [ConfigService],
+    }),
     PrismaModule,
     HealthModule,
     AuthModule,
@@ -57,12 +73,14 @@ import { LocationModule } from './location/location.module';
     LocationModule,
   ],
   providers: [
-    // Guard execution order: 1 → 2 → 3 (then controller/route guards)
-    // 1. Populate request.user from JWT cookie if present (never throws)
+    // Guard execution order: 1 → 2 → 3 → 4 (then controller/route guards)
+    // 1. Reject requests over the per-IP rate limit before any other work
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // 2. Populate request.user from JWT cookie if present (never throws)
     { provide: APP_GUARD, useClass: OptionalJwtAuthGuard },
-    // 2. Reject mutating requests whose Origin doesn't match WEB_URL
+    // 3. Reject mutating requests whose Origin doesn't match WEB_URL
     { provide: APP_GUARD, useClass: OriginGuard },
-    // 3. Enforce @Roles() metadata — request.user is already set by step 1
+    // 4. Enforce @Roles() metadata — request.user is already set by step 2
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })

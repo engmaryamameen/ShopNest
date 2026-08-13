@@ -84,6 +84,20 @@ Both `access_token` and `refresh_token`:
 
 Admins are created via seed script or CLI only — never through an HTTP endpoint. There is no admin registration route.
 
+### Rate limiting via `@nestjs/throttler`
+
+A global `ThrottlerGuard` (registered first in the `APP_GUARD` chain, before `OptionalJwtAuthGuard`) applies a per-IP default limit (`app.throttleLimit`/`app.throttleTtlMs`, env-configurable) to every route. `register`, `login`, and `refresh` — the credential-guessing and account-enumeration surface — additionally carry a stricter static `@Throttle()` override on the route itself; `/health` is exempt (`@SkipThrottle()`) so orchestrator liveness/readiness probes are never rate-limited. Per-route throttle values are static (decorator arguments are evaluated at class-definition time, before dependency injection provides `ConfigService` to an instance) — only the module-wide default is env-driven.
+
+### Environment validation fails fast at boot
+
+`ConfigModule.forRoot({ validate })` (`config/env.validation.ts`) validates `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `NODE_ENV`/`PORT` with `class-validator` before the application finishes bootstrapping — a missing or malformed secret now throws immediately with every problem listed at once, instead of the previous behavior (secrets silently defaulting to `''`, only surfacing as a runtime failure the first time something tried to sign a JWT). Operational tuning knobs (timeouts, poll intervals, feature flags) keep their `??` defaults in `app.config.ts` unvalidated — enforcing every tunable would be enforcement theater, not safety.
+
+## Testing
+
+### The concurrency integration suite boots the real app in-process
+
+`test/concurrency.integration.spec.ts` previously required a separately-running server (`http://localhost:13001`) and shelled out to `docker exec shopnest-db-1 psql ...` for direct-SQL test setup (backdating a token's `usedAt`, promoting a user to admin) — a hard dependency on a specific container name and the dev database, and consequently never run in CI. `createApp()` (`src/main.ts`) was factored out of `bootstrap()` so the test suite can build the exact same, fully-configured Nest application (same pipes, filters, interceptors, CORS) and `app.listen(0)` on an ephemeral port itself; direct-SQL setup goes through `PrismaClient` (`$executeRaw` tagged templates, parameterized) instead of a shell-out. The suite now runs against whatever `DATABASE_URL` is configured — the CI `api` job's Postgres service container, or a local Postgres for `pnpm test:e2e` — and is wired into `.github/workflows/ci.yml` as a real CI step.
+
 ## Data Model
 
 ### Integer cents

@@ -11,6 +11,7 @@ import {
   ConflictException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiCookieAuth } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
@@ -32,7 +33,15 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
+  // `register`/`login`/`refresh` are the credential-guessing and
+  // account-enumeration surface — throttled far tighter than the global
+  // default (`app.throttleLimit`/min, applied everywhere else) via a static
+  // per-route `@Throttle()` override. Decorator arguments are evaluated at
+  // class-definition time, so these are fixed values rather than sourced
+  // from injected config (which only exists per-instance, after DI runs).
+
   @Post('register')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register a new customer account' })
   async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response): Promise<AuthResponseDto> {
@@ -50,6 +59,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Throttle({ default: { ttl: 60_000, limit: 15 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with email and password' })
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response): Promise<AuthResponseDto> {
@@ -67,6 +77,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate refresh token and issue new access token' })
   async refresh(
