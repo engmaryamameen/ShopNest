@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { Logger } from 'nestjs-pino';
 import { AuthService } from '../auth.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../../mail/mail.service';
 import * as argon2 from 'argon2';
 import { generateRefreshToken, hashToken } from '../token.util';
 import { Role } from '@prisma/client';
@@ -14,6 +16,7 @@ function makePrismaMock() {
     user: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
     cart: {
       create: jest.fn(),
@@ -21,15 +24,35 @@ function makePrismaMock() {
     refreshTokenFamily: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
       updateMany: jest.fn(),
     },
     refreshToken: {
       update: jest.fn(),
       create: jest.fn(),
     },
+    emailVerificationToken: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    passwordResetToken: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
     $transaction: jest.fn(),
     $queryRaw: jest.fn(),
   };
+}
+
+function makeMailMock() {
+  return { sendVerificationEmail: jest.fn(), sendPasswordResetEmail: jest.fn() };
+}
+
+function makeLoggerMock() {
+  return { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() };
 }
 
 function makeConfigMock(overrides: Record<string, unknown> = {}) {
@@ -48,11 +71,13 @@ describe('AuthService', () => {
   let service: AuthService;
   let prisma: ReturnType<typeof makePrismaMock>;
   let jwtService: jest.Mocked<Pick<JwtService, 'sign'>>;
+  let mail: ReturnType<typeof makeMailMock>;
 
   beforeEach(async () => {
     prisma = makePrismaMock();
     prisma.$transaction.mockImplementation(async (callback) => callback(prisma));
     jwtService = { sign: jest.fn().mockReturnValue('signed-jwt') };
+    mail = makeMailMock();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -60,6 +85,8 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: makeConfigMock() },
+        { provide: MailService, useValue: mail },
+        { provide: Logger, useValue: makeLoggerMock() },
       ],
     }).compile();
 
@@ -134,6 +161,7 @@ describe('AuthService', () => {
         email: 'test@example.com',
         passwordHash: hash,
         role: Role.CUSTOMER,
+        status: 'ACTIVE',
       });
       prisma.refreshTokenFamily.create.mockResolvedValue({ id: 'family-id' });
 
@@ -284,6 +312,7 @@ describe('AuthService', () => {
               newTokenCreated = true;
             }),
           },
+          refreshTokenFamily: { update: jest.fn() },
         };
         return fn(txMock);
       });
@@ -330,6 +359,171 @@ describe('AuthService', () => {
         where: { userId: 'user-id' },
         data: { isRevoked: true },
       });
+    });
+  });
+
+  describe('email verification', () => {
+    it('rejects an unknown token as invalid', async () => {
+      prisma.emailVerificationToken.findUnique.mockResolvedValue(null);
+      await expect(service.verifyEmail('bogus')).resolves.toBe('invalid');
+    });
+
+    it('rejects an already-consumed token as invalid (single use)', async () => {
+      prisma.emailVerificationToken.findUnique.mockResolvedValue({
+        id: 'tok-1',
+        userId: 'user-id',
+        expiresAt: new Date(Date.now() + 60_000),
+        consumedAt: new Date(),
+      });
+      await expect(service.verifyEmail('used-token')).resolves.toBe('invalid');
+    });
+
+    it('rejects an expired token', async () => {
+      prisma.emailVerificationToken.findUnique.mockResolvedValue({
+        id: 'tok-1',
+        userId: 'user-id',
+        expiresAt: new Date(Date.now() - 1000),
+        consumedAt: null,
+      });
+      await expect(service.verifyEmail('expired-token')).resolves.toBe('expired');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('marks the user verified on a valid, unconsumed token — and consumes it', async () => {
+      prisma.emailVerificationToken.findUnique.mockResolvedValue({
+        id: 'tok-1',
+        userId: 'user-id',
+        expiresAt: new Date(Date.now() + 60_000),
+        consumedAt: null,
+      });
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-id', emailVerifiedAt: null });
+
+      await expect(service.verifyEmail('good-token')).resolves.toBe('verified');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-id' },
+        data: { emailVerifiedAt: expect.any(Date) },
+      });
+      expect(prisma.emailVerificationToken.update).toHaveBeenCalledWith({
+        where: { id: 'tok-1' },
+        data: { consumedAt: expect.any(Date) },
+      });
+    });
+
+    it('reports already-verified without re-touching the user row', async () => {
+      prisma.emailVerificationToken.findUnique.mockResolvedValue({
+        id: 'tok-1',
+        userId: 'user-id',
+        expiresAt: new Date(Date.now() + 60_000),
+        consumedAt: null,
+      });
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-id', emailVerifiedAt: new Date() });
+
+      await expect(service.verifyEmail('good-token')).resolves.toBe('already-verified');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('resendVerification is a silent no-op for an unknown email (no enumeration signal)', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      await service.resendVerification('nobody@example.com');
+      expect(prisma.emailVerificationToken.create).not.toHaveBeenCalled();
+    });
+
+    it('resendVerification is a silent no-op once already verified', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-id', email: 'a@b.com', emailVerifiedAt: new Date() });
+      await service.resendVerification('a@b.com');
+      expect(prisma.emailVerificationToken.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('password reset', () => {
+    it('requestPasswordReset is a silent no-op for an unknown email (no enumeration signal)', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      await service.requestPasswordReset('nobody@example.com');
+      expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
+      expect(mail.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it('creates a token and emails it for a known user', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-id', email: 'a@b.com' });
+
+      await service.requestPasswordReset('a@b.com', '203.0.113.5');
+
+      expect(prisma.passwordResetToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ userId: 'user-id', requestIp: '203.0.113.5' }) }),
+      );
+      expect(mail.sendPasswordResetEmail).toHaveBeenCalledWith('a@b.com', expect.any(String));
+    });
+
+    it('rejects an unknown reset token as invalid', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue(null);
+      await expect(service.resetPassword('bogus', 'newStr0ngPassword123')).resolves.toBe('invalid');
+    });
+
+    it('rejects an expired reset token', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        id: 'reset-1',
+        userId: 'user-id',
+        expiresAt: new Date(Date.now() - 1000),
+        consumedAt: null,
+      });
+      await expect(service.resetPassword('expired', 'newStr0ngPassword123')).resolves.toBe('expired');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('updates the password, consumes the token, and revokes every session — all in one transaction', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue({
+        id: 'reset-1',
+        userId: 'user-id',
+        expiresAt: new Date(Date.now() + 60_000),
+        consumedAt: null,
+      });
+
+      await expect(service.resetPassword('good-token', 'newStr0ngPassword123')).resolves.toBe('reset');
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'user-id' } }),
+      );
+      expect(prisma.passwordResetToken.update).toHaveBeenCalledWith({
+        where: { id: 'reset-1' },
+        data: { consumedAt: expect.any(Date) },
+      });
+      expect(prisma.refreshTokenFamily.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-id' },
+        data: { isRevoked: true },
+      });
+    });
+  });
+
+  describe('sessions', () => {
+    it('lists non-revoked sessions ordered by lastSeenAt, flagging the caller-current one', async () => {
+      const rows = [
+        { id: 'fam-current', label: 'Chrome on macOS', userAgent: 'ua', ipAddress: '1.1.1.1', createdAt: new Date(), lastSeenAt: new Date() },
+        { id: 'fam-other', label: null, userAgent: null, ipAddress: null, createdAt: new Date(), lastSeenAt: new Date() },
+      ];
+      prisma.refreshTokenFamily.findMany.mockResolvedValue(rows);
+
+      const result = await service.listSessions('user-id', 'fam-current');
+
+      expect(prisma.refreshTokenFamily.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 'user-id', isRevoked: false } }),
+      );
+      expect(result.find((s) => s.id === 'fam-current')?.isCurrent).toBe(true);
+      expect(result.find((s) => s.id === 'fam-other')?.isCurrent).toBe(false);
+    });
+
+    it('revokes a session scoped to the caller', async () => {
+      prisma.refreshTokenFamily.updateMany.mockResolvedValue({ count: 1 });
+      await service.revokeSession('user-id', 'fam-1');
+      expect(prisma.refreshTokenFamily.updateMany).toHaveBeenCalledWith({
+        where: { id: 'fam-1', userId: 'user-id' },
+        data: { isRevoked: true },
+      });
+    });
+
+    it('throws NotFoundException revoking a session that does not belong to the caller (or does not exist)', async () => {
+      prisma.refreshTokenFamily.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.revokeSession('user-id', 'someone-elses-fam')).rejects.toThrow(NotFoundException);
     });
   });
 });

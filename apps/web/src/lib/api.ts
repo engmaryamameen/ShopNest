@@ -6,6 +6,7 @@ import type {
   OrderResponse,
   ProductListResponse,
   ProductResponse,
+  UserSummary,
 } from './api-types';
 
 type Schemas = components['schemas'];
@@ -98,7 +99,26 @@ export const api = {
 
   logout: (cookies?: string) => request<void>('/auth/logout', { method: 'POST', cookies }),
 
+  logoutAll: (cookies?: string) => request<void>('/auth/logout-all', { method: 'POST', cookies }),
+
   me: (cookies?: string) => request<Schemas['AuthResponseDto']>('/auth/me', { cookies }),
+
+  verifyEmail: (body: Schemas['VerifyEmailDto']) =>
+    request<{ status: 'verified' | 'already-verified' }>('/auth/verify-email', { method: 'POST', body }),
+
+  resendVerification: (body: Schemas['ResendVerificationDto']) =>
+    request<void>('/auth/resend-verification', { method: 'POST', body }),
+
+  forgotPassword: (body: Schemas['ForgotPasswordDto']) =>
+    request<void>('/auth/forgot-password', { method: 'POST', body }),
+
+  resetPassword: (body: Schemas['ResetPasswordDto']) =>
+    request<void>('/auth/reset-password', { method: 'POST', body }),
+
+  listSessions: (cookies?: string) => request<Schemas['SessionDto'][]>('/auth/sessions', { cookies }),
+
+  revokeSession: (id: string, cookies?: string) =>
+    request<void>(`/auth/sessions/${id}`, { method: 'DELETE', cookies }),
 
   // ── Catalog ────────────────────────────────────────────────────────────────
   // Response shapes come from `./api-types` (see that file's header comment
@@ -190,6 +210,21 @@ export const api = {
 
   adminDeleteCategory: (id: string, cookies?: string) =>
     request<void>(`/categories/${id}`, { method: 'DELETE', cookies }),
+
+  // ── Admin – Users ──────────────────────────────────────────────────────────
+
+  adminListUsers: (page = 1, limit = 20, cookies?: string) =>
+    request<{ items: UserSummary[]; total: number; page: number; limit: number }>(
+      `/admin/users?page=${page}&limit=${limit}`,
+      { cookies },
+    ),
+
+  adminUpdateUserStatus: (id: string, body: Schemas['UpdateUserStatusDto'], cookies?: string) =>
+    request<{ id: string; email: string; status: string }>(`/admin/users/${id}/status`, {
+      method: 'PATCH',
+      body,
+      cookies,
+    }),
 };
 
 // `PUT /cart/items` returns the created/updated cart item with only a partial

@@ -27,4 +27,14 @@ export default registerAs('app', () => ({
   throttleLimit: parseInt(process.env.THROTTLE_LIMIT ?? '120', 10),
   authThrottleTtlMs: parseInt(process.env.AUTH_THROTTLE_TTL_MS ?? '60000', 10),
   authThrottleLimit: parseInt(process.env.AUTH_THROTTLE_LIMIT ?? '5', 10),
+  // Mail — provider-selected-by-env, same pattern as GEOCODING_PROVIDER.
+  // `local` (default) logs instead of sending; `smtp` requires SMTP_HOST at minimum.
+  mailProvider: process.env.MAIL_PROVIDER ?? 'local',
+  mailFromAddress: process.env.MAIL_FROM_ADDRESS ?? 'no-reply@shopnest.local',
+  smtpHost: process.env.SMTP_HOST ?? '',
+  smtpPort: parseInt(process.env.SMTP_PORT ?? '587', 10),
+  smtpUser: process.env.SMTP_USER ?? '',
+  smtpPassword: process.env.SMTP_PASSWORD ?? '',
+  emailVerificationTokenTtlMs: parseInt(process.env.EMAIL_VERIFICATION_TOKEN_TTL_MS ?? `${24 * 60 * 60 * 1000}`, 10),
+  passwordResetTokenTtlMs: parseInt(process.env.PASSWORD_RESET_TOKEN_TTL_MS ?? `${60 * 60 * 1000}`, 10),
 }));

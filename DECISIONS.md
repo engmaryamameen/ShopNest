@@ -92,6 +92,28 @@ A global `ThrottlerGuard` (registered first in the `APP_GUARD` chain, before `Op
 
 `ConfigModule.forRoot({ validate })` (`config/env.validation.ts`) validates `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `NODE_ENV`/`PORT` with `class-validator` before the application finishes bootstrapping — a missing or malformed secret now throws immediately with every problem listed at once, instead of the previous behavior (secrets silently defaulting to `''`, only surfacing as a runtime failure the first time something tried to sign a JWT). Operational tuning knobs (timeouts, poll intervals, feature flags) keep their `??` defaults in `app.config.ts` unvalidated — enforcing every tunable would be enforcement theater, not safety.
 
+## Account Lifecycle (Phase 1)
+
+### Mail provider is selected by env, same pattern as geocoding
+
+`MailModule` picks `SmtpMailAdapter` vs. `LocalMailAdapter` based on `app.mailProvider`, mirroring `LocationModule`'s existing `GEOCODING_PROVIDER` factory. `LocalMailAdapter` logs the rendered email (link included) via Pino instead of sending it — every flow that depends on "receiving an email" (verification, password reset, later vendor staff invites) is fully functional and testable without real SMTP credentials configured.
+
+### Verification/reset tokens are single-use and structurally separate from `User`
+
+`EmailVerificationToken` and `PasswordResetToken` are their own tables (not columns on `User`), each with `tokenHash` (SHA-256 of a 64-random-byte raw token, same primitive as refresh tokens — `generateSecureToken()` in `token.util.ts`), `expiresAt`, and `consumedAt`. A token is marked consumed on its *first* use regardless of outcome — reusing the same verification link a second time correctly returns "invalid," not "already verified" (that outcome is reserved for a still-valid, different token used after the user was already verified by another one).
+
+### Password reset revokes every session
+
+`resetPassword()` updates the password hash, consumes the reset token, and revokes every `RefreshTokenFamily` for that user — all inside one transaction. A reset proves control of the account via email, but any device holding a session from before the reset (e.g. an attacker who had the old password) must not remain trusted. Same effect as `logout-all`, folded into the same transaction as the password change rather than a separate call.
+
+### Account suspension is enforced at both login and mid-session
+
+`login()` rejects a non-`ACTIVE` user after password verification (403, not 401 — credentials were valid, access is what's denied). `JwtAccessStrategy.validate()` additionally re-checks `user.status` on every authenticated request in the same round trip it already uses to check `RefreshTokenFamily.isRevoked` — an access token can be live for up to 15 minutes after an admin suspends the account, so login-time enforcement alone isn't sufficient. `UsersService.updateStatus()` also revokes every refresh-token family when suspending, so a suspended user can't silently refresh their way to a new access token either. An admin can never suspend their own account (checked before the update, not just relied on as a UI constraint).
+
+### Audit logging is declarative, not manually threaded through services
+
+`AuditLogInterceptor` (global `APP_INTERCEPTOR`) is a no-op on any route without an `@Audit({ action, targetType })` decorator; on a decorated route, it writes one `AuditLog` row after the handler succeeds — never before, so a subsequently-thrown error never produces a misleading "this happened" row. This was chosen over manually calling an audit service at each of the ~9 existing admin mutation call sites specifically because a decorator can't be forgotten on a *new* route the way a manual call can — the enforcement lives with the route metadata, not with each service's implementation.
+
 ## Testing
 
 ### The concurrency integration suite boots the real app in-process

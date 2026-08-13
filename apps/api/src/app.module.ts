@@ -16,6 +16,9 @@ import appConfig from './config/app.config';
 import { validate } from './config/env.validation';
 import { CatalogImportModule } from './catalog-import/catalog-import.module';
 import { LocationModule } from './location/location.module';
+import { MailModule } from './mail/mail.module';
+import { AuditModule } from './audit/audit.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -65,7 +68,10 @@ import { LocationModule } from './location/location.module';
     }),
     PrismaModule,
     HealthModule,
+    AuditModule,
+    MailModule,
     AuthModule,
+    UsersModule,
     CatalogModule,
     CartModule,
     OrdersModule,

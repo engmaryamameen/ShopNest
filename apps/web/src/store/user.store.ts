@@ -8,6 +8,7 @@ export interface UserIdentity {
   id: string;
   email: string;
   role: UserRole;
+  emailVerifiedAt: string | null;
 }
 
 interface UserState {

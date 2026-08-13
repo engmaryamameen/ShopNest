@@ -1,0 +1,39 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { MAIL_PROVIDER, type MailProvider } from './mail.types';
+
+/**
+ * Composes the (small, fixed) set of transactional emails ShopNest sends.
+ * Callers never touch `MailProvider` directly — one place to keep subject
+ * lines and link shapes consistent as more token-driven flows (staff
+ * invites, Phase 3) are added on top of the same `MAIL_PROVIDER`.
+ */
+@Injectable()
+export class MailService {
+  constructor(
+    @Inject(MAIL_PROVIDER) private readonly provider: MailProvider,
+    private readonly config: ConfigService,
+  ) {}
+
+  async sendVerificationEmail(to: string, token: string): Promise<void> {
+    const webUrl = this.config.get<string>('app.webUrl', 'http://localhost:3000');
+    const link = `${webUrl}/verify-email?token=${encodeURIComponent(token)}`;
+
+    await this.provider.send({
+      to,
+      subject: 'Verify your ShopNest email address',
+      text: `Welcome to ShopNest! Confirm your email address by visiting:\n\n${link}\n\nThis link expires in 24 hours. If you didn't create a ShopNest account, you can ignore this email.`,
+    });
+  }
+
+  async sendPasswordResetEmail(to: string, token: string): Promise<void> {
+    const webUrl = this.config.get<string>('app.webUrl', 'http://localhost:3000');
+    const link = `${webUrl}/reset-password?token=${encodeURIComponent(token)}`;
+
+    await this.provider.send({
+      to,
+      subject: 'Reset your ShopNest password',
+      text: `We received a request to reset your ShopNest password. Visit the link below to choose a new one:\n\n${link}\n\nThis link expires in 1 hour and can only be used once. If you didn't request this, you can safely ignore this email — your password will not be changed.`,
+    });
+  }
+}

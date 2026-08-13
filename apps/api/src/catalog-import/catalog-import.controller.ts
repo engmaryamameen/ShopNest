@@ -3,6 +3,7 @@ import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { Audit } from '../audit/audit.decorator';
 import { CatalogImportService } from './catalog-import.service';
 
 @ApiTags('catalog imports')
@@ -15,6 +16,7 @@ export class CatalogImportController {
 
   @Post('dummy-json')
   @HttpCode(HttpStatus.ACCEPTED)
+  @Audit({ action: 'ADMIN_CATALOG_IMPORT_TRIGGER', targetType: 'CatalogImportRun', idSource: 'body:id' })
   @ApiOperation({ summary: '[Admin] Queue a DummyJSON catalog synchronization' })
   importDummyJson() {
     return this.imports.enqueueDummyJson();

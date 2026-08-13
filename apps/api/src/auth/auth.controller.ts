@@ -1,10 +1,13 @@
 import {
+  BadRequestException,
   Controller,
   Post,
   Body,
+  Delete,
   Res,
   Req,
   Get,
+  Param,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -17,6 +20,11 @@ import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SessionDto } from './dto/session.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
@@ -24,6 +32,13 @@ import { ConfigService } from '@nestjs/config';
 
 const ACCESS_COOKIE = 'access_token';
 const REFRESH_COOKIE = 'refresh_token';
+
+function deviceContext(req: Request): { userAgent?: string; ipAddress?: string } {
+  return {
+    userAgent: req.headers['user-agent'],
+    ipAddress: req.ip,
+  };
+}
 
 @ApiTags('auth')
 @Controller('auth')
@@ -44,8 +59,12 @@ export class AuthController {
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register a new customer account' })
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response): Promise<AuthResponseDto> {
-    const { userId, familyId, rawToken } = await this.authService.register(dto);
+  async register(
+    @Body() dto: RegisterDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponseDto> {
+    const { userId, familyId, rawToken } = await this.authService.register(dto, deviceContext(req));
     const user = (await this.authService.getUserById(userId))!;
     const accessToken = this.authService.signAccessToken({
       sub: userId,
@@ -55,15 +74,19 @@ export class AuthController {
     });
 
     this.setCookies(res, accessToken, rawToken);
-    return { user: { id: user.id, email: user.email, role: user.role } };
+    return { user };
   }
 
   @Post('login')
   @Throttle({ default: { ttl: 60_000, limit: 15 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with email and password' })
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response): Promise<AuthResponseDto> {
-    const { userId, role, familyId, rawToken } = await this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResponseDto> {
+    const { userId, role, familyId, rawToken } = await this.authService.login(dto, deviceContext(req));
     const user = (await this.authService.getUserById(userId))!;
     const accessToken = this.authService.signAccessToken({
       sub: userId,
@@ -73,7 +96,7 @@ export class AuthController {
     });
 
     this.setCookies(res, accessToken, rawToken);
-    return { user: { id: user.id, email: user.email, role: user.role } };
+    return { user };
   }
 
   @Post('refresh')
@@ -113,7 +136,7 @@ export class AuthController {
     });
 
     this.setCookies(res, accessToken, outcome.newRawToken);
-    return { user: { id: user.id, email: user.email, role: user.role } };
+    return { user };
   }
 
   @Post('logout')
@@ -149,7 +172,70 @@ export class AuthController {
   async me(@CurrentUser() user: JwtPayload): Promise<AuthResponseDto> {
     const dbUser = await this.authService.getUserById(user.sub);
     if (!dbUser) throw new UnauthorizedException('User not found');
-    return { user: { id: dbUser.id, email: dbUser.email, role: dbUser.role } };
+    return { user: dbUser };
+  }
+
+  // ── Email verification ────────────────────────────────────────────────────
+
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify an email address using the token from the verification link' })
+  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<{ status: 'verified' | 'already-verified' }> {
+    const outcome = await this.authService.verifyEmail(dto.token);
+    if (outcome === 'invalid') throw new BadRequestException('This verification link is invalid.');
+    if (outcome === 'expired') {
+      throw new BadRequestException('This verification link has expired. Request a new one.');
+    }
+    return { status: outcome };
+  }
+
+  @Post('resend-verification')
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Resend the verification email (no-op if already verified or unknown email)' })
+  async resendVerification(@Body() dto: ResendVerificationDto): Promise<void> {
+    await this.authService.resendVerification(dto.email);
+  }
+
+  // ── Password reset ────────────────────────────────────────────────────────
+
+  @Post('forgot-password')
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Request a password reset email (always responds the same way, to avoid leaking which emails are registered)' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request): Promise<void> {
+    await this.authService.requestPasswordReset(dto.email, req.ip);
+  }
+
+  @Post('reset-password')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Reset password using the token from the reset-password email; revokes every session' })
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+    const outcome = await this.authService.resetPassword(dto.token, dto.newPassword);
+    if (outcome === 'invalid') throw new BadRequestException('This reset link is invalid.');
+    if (outcome === 'expired') {
+      throw new BadRequestException('This reset link has expired. Request a new one.');
+    }
+  }
+
+  // ── Sessions ───────────────────────────────────────────────────────────────
+
+  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'List active sessions (devices) for the current user' })
+  async listSessions(@CurrentUser() user: JwtPayload): Promise<SessionDto[]> {
+    return this.authService.listSessions(user.sub, user.familyId);
+  }
+
+  @Delete('sessions/:id')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Revoke one session (device) — the current session may be revoked, which logs that device out' })
+  async revokeSession(@CurrentUser() user: JwtPayload, @Param('id') id: string): Promise<void> {
+    await this.authService.revokeSession(user.sub, id);
   }
 
   private setCookies(res: Response, accessToken: string, refreshToken: string): void {

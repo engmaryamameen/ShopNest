@@ -12,6 +12,25 @@ enum Role {
   ADMIN
 }
 
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum AuditAction {
+  ADMIN_PRODUCT_CREATE
+  ADMIN_PRODUCT_UPDATE
+  ADMIN_PRODUCT_ARCHIVE
+  ADMIN_CATEGORY_CREATE
+  ADMIN_CATEGORY_UPDATE
+  ADMIN_CATEGORY_DELETE
+  ADMIN_ORDER_STATUS_UPDATE
+  ADMIN_CATALOG_IMPORT_TRIGGER
+  ADMIN_USER_SUSPEND
+  ADMIN_USER_REACTIVATE
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED
@@ -32,30 +51,85 @@ enum CatalogImportStatus {
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(CUSTOMER)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String     @id @default(uuid()) @db.Uuid
+  email           String     @unique
+  passwordHash    String
+  role            Role       @default(CUSTOMER)
+  status          UserStatus @default(ACTIVE)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
-  tokenFamilies RefreshTokenFamily[]
-  cart          Cart?
-  orders        Order[]
-  statusChanges OrderStatusHistory[] @relation("changedBy")
+  tokenFamilies           RefreshTokenFamily[]
+  cart                    Cart?
+  orders                  Order[]
+  statusChanges           OrderStatusHistory[]     @relation("changedBy")
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  auditLogEntries         AuditLog[]               @relation("auditActor")
+
+  @@index([status])
 }
 
 model RefreshTokenFamily {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isRevoked Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isRevoked  Boolean  @default(false)
+  // Customer-facing "active sessions" metadata — captured at login, updated on
+  // each successful refresh. Purely descriptive; revocation logic is
+  // unaffected by these fields.
+  userAgent  String?
+  ipAddress  String?
+  label      String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   tokens RefreshToken[]
 
   @@index([userId])
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  requestIp  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id          String      @id @default(uuid()) @db.Uuid
+  actorUserId String?     @db.Uuid
+  actor       User?       @relation("auditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      AuditAction
+  targetType  String
+  targetId    String
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime    @default(now())
+
+  @@index([actorUserId, createdAt])
+  @@index([targetType, targetId])
+  @@index([action, createdAt])
 }
 
 model RefreshToken {

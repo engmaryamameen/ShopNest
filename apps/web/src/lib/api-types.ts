@@ -101,6 +101,18 @@ export interface OrderStatusHistoryResponse {
   createdAt: string;
 }
 
+export type UserRole = 'CUSTOMER' | 'ADMIN';
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+
+export interface UserSummary {
+  id: string;
+  email: string;
+  role: UserRole;
+  status: AccountStatus;
+  emailVerifiedAt: string | null;
+  createdAt: string;
+}
+
 export interface OrderResponse {
   id: string;
   userId: string;

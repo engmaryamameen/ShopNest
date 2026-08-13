@@ -27,15 +27,22 @@ export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt-access') 
   }
 
   async validate(payload: JwtPayload): Promise<JwtPayload> {
-    // Check that the token family has not been revoked.
-    // This ensures instant revocation on logout-all — no token blacklist needed.
+    // Check that the token family has not been revoked, and that the user
+    // is still ACTIVE — both in one round trip. This ensures instant
+    // revocation on logout-all AND instant enforcement of a mid-session
+    // suspension (an access token can be live for up to 15 minutes after an
+    // admin suspends the account) — no token blacklist needed for either.
     const family = await this.prisma.refreshTokenFamily.findUnique({
       where: { id: payload.familyId },
-      select: { isRevoked: true },
+      select: { isRevoked: true, user: { select: { status: true } } },
     });
 
     if (!family || family.isRevoked) {
       throw new UnauthorizedException('Session has been revoked');
+    }
+
+    if (family.user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('Account is no longer active');
     }
 
     return payload;

@@ -26,6 +26,13 @@ export default function AdminDashboardPage() {
           <h2 className="text-xl font-semibold text-gray-900">Categories</h2>
           <p className="text-gray-500 mt-1">Manage product categories</p>
         </Link>
+        <Link
+          href="/admin/users"
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow"
+        >
+          <h2 className="text-xl font-semibold text-gray-900">Users</h2>
+          <p className="text-gray-500 mt-1">Suspend or reactivate accounts</p>
+        </Link>
       </div>
     </div>
   );
