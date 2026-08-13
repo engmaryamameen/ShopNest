@@ -6,12 +6,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { HERO_SLIDES } from './hero-slides';
 
-const AUTOPLAY_DELAY_MS = 6500;
+const AUTOPLAY_DELAY_MS = 4500;
+const SLIDE_TRANSITION_MS = 900;
 
 function ArrowRightIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none">
-      <path d="M5 12h14M14 7l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M5 12h14M14 7l5 5-5 5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -19,6 +26,7 @@ function ArrowRightIcon() {
 export function HeroCarousel() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [loadedSlides, setLoadedSlides] = useState<Set<number>>(() => new Set([0]));
   const touchStartX = useRef<number | null>(null);
 
   const showSlide = useCallback((index: number) => {
@@ -29,11 +37,14 @@ export function HeroCarousel() {
     if (isPaused) return;
 
     const interval = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % HERO_SLIDES.length);
+      setActiveIndex((current) => {
+        const nextIndex = (current + 1) % HERO_SLIDES.length;
+        return loadedSlides.has(nextIndex) ? nextIndex : current;
+      });
     }, AUTOPLAY_DELAY_MS);
 
     return () => window.clearInterval(interval);
-  }, [isPaused]);
+  }, [isPaused, loadedSlides]);
 
   function handleTouchEnd(event: React.TouchEvent<HTMLElement>) {
     if (touchStartX.current === null) return;
@@ -67,23 +78,37 @@ export function HeroCarousel() {
           <article
             key={slide.id}
             aria-hidden={!isActive}
-            className={`absolute inset-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
-              isActive ? 'z-10 translate-x-0 opacity-100' : 'pointer-events-none z-0 translate-x-3 opacity-0'
+            className={`absolute inset-0 will-change-[opacity] transition-opacity ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+              isActive
+                ? 'z-10 translate-x-0 opacity-100'
+                : 'pointer-events-none z-0 translate-x-3 opacity-0'
             }`}
+            style={{ transitionDuration: `${SLIDE_TRANSITION_MS}ms` }}
           >
             <Image
               src={slide.image}
               alt={slide.imageAlt}
               fill
               priority={index === 0}
+              loading={index === 0 ? undefined : 'eager'}
               sizes="(max-width: 1024px) 100vw, 1020px"
               className="object-cover object-center sm:object-[58%_center]"
+              onLoad={() => {
+                setLoadedSlides((current) => {
+                  if (current.has(index)) return current;
+                  const next = new Set(current);
+                  next.add(index);
+                  return next;
+                });
+              }}
             />
             <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(12,11,10,0.98)_0%,rgba(12,11,10,0.91)_33%,rgba(12,11,10,0.42)_60%,rgba(12,11,10,0.08)_100%)] sm:bg-[linear-gradient(90deg,rgba(12,11,10,0.98)_0%,rgba(12,11,10,0.88)_38%,rgba(12,11,10,0.18)_72%)]" />
             <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/50 to-transparent sm:hidden" />
 
             <div className="relative z-10 flex min-h-[390px] max-w-[620px] flex-col justify-center px-6 lg:pb-29 pb-10 sm:min-h-[430px] sm:px-10 lg:min-h-[456px] lg:px-14">
-              <div className={`mb-5 h-1 w-10 rounded-full ${slide.tone === 'burgundy' ? 'bg-[#dc334f]' : slide.tone === 'espresso' ? 'bg-[#d8a567]' : 'bg-[#f5d37a]'}`} />
+              <div
+                className={`mb-5 h-1 w-10 rounded-full ${slide.tone === 'burgundy' ? 'bg-[#dc334f]' : slide.tone === 'espresso' ? 'bg-[#d8a567]' : 'bg-[#f5d37a]'}`}
+              />
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/72 sm:text-xs">
                 {slide.eyebrow}
               </p>
@@ -118,7 +143,9 @@ export function HeroCarousel() {
           >
             <span
               className={`block h-1.5 rounded-full transition-all duration-300 ${
-                index === activeIndex ? 'w-7 bg-white' : 'w-1.5 bg-white/45 group-hover/dot:bg-white/75'
+                index === activeIndex
+                  ? 'w-7 bg-white'
+                  : 'w-1.5 bg-white/45 group-hover/dot:bg-white/75'
               }`}
             />
           </button>
