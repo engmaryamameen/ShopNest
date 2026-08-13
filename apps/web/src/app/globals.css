@@ -47,6 +47,13 @@
 
   --color-ink-800: #201c17;
   --color-ink-900: #17140f;
+
+  /*
+   * The project's de-facto "smooth" curve — already hand-typed in the
+   * location dialog and hero carousel. Promoted to a token so every new
+   * transition can reference `ease-smooth` instead of re-typing it.
+   */
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 body {
@@ -93,18 +100,18 @@ button:not(:disabled),
   }
 }
 
-.horizontal-scrollbar-hidden {
+/* Axis-agnostic scroll container: hides the native scrollbar so the fade
+ * spans (HorizontalFadeScroll, VerticalFadeScroll) are the only visible
+ * scroll affordance, while keeping the area natively scrollable. */
+.scrollbar-hidden {
   scrollbar-width: none;
   -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }
 
-.horizontal-scrollbar-hidden::-webkit-scrollbar {
+.scrollbar-hidden::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
-}
-
-.horizontal-scrollbar-hidden {
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
 }

@@ -8,6 +8,7 @@ import type { UserIdentity } from '@/store/user.store';
 
 import { FOCUS_RING } from './styles';
 import { usePopover } from './use-popover';
+import { usePresence } from './use-presence';
 import { AccountContent } from './account-content';
 import { MobileBottomSheet } from '@/components/shared/mobile-bottom-sheat';
 
@@ -18,6 +19,7 @@ type AccountMenuProps = {
 
 export function AccountMenu({ currentUser, onSignOut }: AccountMenuProps) {
   const popover = usePopover<HTMLDivElement, HTMLButtonElement>();
+  const desktopPresence = usePresence(popover.open, 160);
 
   if (!currentUser) {
     return (
@@ -95,32 +97,50 @@ export function AccountMenu({ currentUser, onSignOut }: AccountMenuProps) {
         />
       </button>
 
-      {popover.open && (
-        <>
-          {/* Desktop */}
-          <div
-            role="menu"
-            aria-label="Account"
-            className="absolute right-0 top-[calc(100%+8px)] z-50 hidden w-[280px] overflow-hidden  rounded-[6px]  border border-black/[0.08]  bg-white  shadow-[0_8px_28px_rgba(0,0,0,0.08)] lg:block "
-          >
-            <AccountContent
-              currentUser={currentUser}
-              onClose={popover.close}
-              onSignOut={onSignOut}
-            />
-          </div>
+      {/* Desktop */}
+      {desktopPresence.mounted && (
+        <div
+          role="menu"
+          aria-label="Account"
+          className={`
+            absolute right-0 top-[calc(100%+8px)]
+            z-50
+            hidden w-[280px]
+            origin-top-right
+            overflow-hidden
+            rounded-[6px]
+            border border-black/[0.08]
+            bg-white
+            shadow-[0_8px_28px_rgba(0,0,0,0.08)]
+            transition-[opacity,transform]
+            duration-150
+            ease-smooth
+            lg:block
 
-          {/* Mobile */}
-          <MobileBottomSheet open={popover.open} onClose={popover.close} title="Account">
-            <AccountContent
-              currentUser={currentUser}
-              onClose={popover.close}
-              onSignOut={onSignOut}
-              mobile
-            />
-          </MobileBottomSheet>
-        </>
+            ${
+              desktopPresence.entered
+                ? 'translate-y-0 scale-100 opacity-100'
+                : 'pointer-events-none -translate-y-1 scale-[0.98] opacity-0'
+            }
+          `}
+        >
+          <AccountContent
+            currentUser={currentUser}
+            onClose={popover.close}
+            onSignOut={onSignOut}
+          />
+        </div>
       )}
+
+      {/* Mobile — always mounted so its own open/close transition can play */}
+      <MobileBottomSheet open={popover.open} onClose={popover.close} title="Account">
+        <AccountContent
+          currentUser={currentUser}
+          onClose={popover.close}
+          onSignOut={onSignOut}
+          mobile
+        />
+      </MobileBottomSheet>
     </div>
   );
 }
