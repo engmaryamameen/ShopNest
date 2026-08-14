@@ -36,4 +36,15 @@ export class MailService {
       text: `We received a request to reset your ShopNest password. Visit the link below to choose a new one:\n\n${link}\n\nThis link expires in 1 hour and can only be used once. If you didn't request this, you can safely ignore this email — your password will not be changed.`,
     });
   }
+
+  async sendVendorStaffInviteEmail(to: string, vendorName: string, token: string): Promise<void> {
+    const webUrl = this.config.get<string>('app.webUrl', 'http://localhost:3000');
+    const link = `${webUrl}/vendor/staff/accept?token=${encodeURIComponent(token)}`;
+
+    await this.provider.send({
+      to,
+      subject: `You've been invited to join ${vendorName} on ShopNest`,
+      text: `You've been invited to join ${vendorName}'s ShopNest vendor account. If you already have a ShopNest account, sign in first, then visit:\n\n${link}\n\nThis invite expires in 7 days. If you weren't expecting this, you can ignore this email.`,
+    });
+  }
 }

@@ -553,6 +553,332 @@ export interface paths {
         patch: operations["OrdersController_adminUpdateOrderStatus"];
         trace?: never;
     };
+    "/vendor/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply to become a vendor (any authenticated customer) */
+        post: operations["VendorOnboardingController_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vendor/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the caller's vendor application/store, whatever its current status */
+        get: operations["VendorOnboardingController_getMyVendor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** [Vendor owner] Update the store profile — name/description/logo/contact */
+        patch: operations["VendorOnboardingController_updateProfile"];
+        trace?: never;
+    };
+    "/vendor/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Basic revenue/order/offer aggregates for the caller's vendor */
+        get: operations["VendorOnboardingController_getAnalyticsSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vendors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** [Admin] List vendors, optionally filtered by status */
+        get: operations["AdminVendorController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vendors/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** [Admin] Get one vendor with its members */
+        get: operations["AdminVendorController_getOne"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/vendors/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** [Admin] Approve a pending or previously-suspended vendor */
+        patch: operations["AdminVendorController_approve"];
+        trace?: never;
+    };
+    "/admin/vendors/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** [Admin] Reject a pending vendor application */
+        patch: operations["AdminVendorController_reject"];
+        trace?: never;
+    };
+    "/admin/vendors/{id}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** [Admin] Suspend an approved vendor */
+        patch: operations["AdminVendorController_suspend"];
+        trace?: never;
+    };
+    "/vendor/offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's vendor's offers */
+        get: operations["VendorOffersController_list"];
+        put?: never;
+        /** Create an offer against an existing canonical product */
+        post: operations["VendorOffersController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vendor/offers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update price/SKU/condition/status of one of your offers */
+        patch: operations["VendorOffersController_update"];
+        trace?: never;
+    };
+    "/vendor/offers/{id}/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent inventory adjustment history for one offer */
+        get: operations["VendorOffersController_inventoryHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Adjust stock by a signed delta (restock or correction), never an absolute set */
+        patch: operations["VendorOffersController_adjustInventory"];
+        trace?: never;
+    };
+    "/vendor/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's vendor's order fulfilments */
+        get: operations["VendorOrdersController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vendor/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one of your fulfilments with its status history */
+        get: operations["VendorOrdersController_getOne"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vendor/orders/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Confirm or ship one of your fulfilments */
+        patch: operations["VendorOrdersController_updateStatus"];
+        trace?: never;
+    };
+    "/vendor/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** [Owner] List members and pending invites */
+        get: operations["VendorStaffController_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vendor/staff/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** [Owner] Invite someone to join as staff by email */
+        post: operations["VendorStaffController_invite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vendor/staff/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a staff invite sent to your account email */
+        post: operations["VendorStaffController_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vendor/staff/{memberId}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** [Owner] Change a member's role */
+        patch: operations["VendorStaffController_updateRole"];
+        trace?: never;
+    };
+    "/vendor/staff/{memberId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** [Owner] Revoke a member's access */
+        delete: operations["VendorStaffController_revoke"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/catalog-imports/dummy-json": {
         parameters: {
             query?: never;
@@ -638,7 +964,7 @@ export interface components {
             id: string;
             email: string;
             /** @enum {string} */
-            role: "CUSTOMER" | "ADMIN";
+            role: "CUSTOMER" | "VENDOR" | "ADMIN";
             /**
              * Format: date-time
              * @description null if the email has not been verified yet
@@ -821,6 +1147,112 @@ export interface components {
         UpdateOrderStatusDto: {
             /** @enum {string} */
             status: "PENDING" | "CONFIRMED" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+        };
+        ApplyVendorDto: {
+            /** @example Acme Outdoor Co. */
+            name: string;
+            /** @description Shown on the vendor storefront */
+            description?: string;
+            /** Format: uri */
+            logoUrl?: string;
+            /**
+             * Format: email
+             * @example sales@acme-outdoor.example
+             */
+            contactEmail: string;
+        };
+        UpdateVendorProfileDto: {
+            /** @example Acme Outdoor Co. */
+            name?: string;
+            /** @description Shown on the vendor storefront */
+            description?: string;
+            /** Format: uri */
+            logoUrl?: string;
+            /**
+             * Format: email
+             * @example sales@acme-outdoor.example
+             */
+            contactEmail?: string;
+        };
+        CreateVendorOfferDto: {
+            /**
+             * Format: uuid
+             * @description Canonical product this offer sells — must already exist in the catalog
+             */
+            productId: string;
+            /**
+             * Format: uuid
+             * @description Specific variant of the product, if it has any
+             */
+            variantId?: string;
+            /** @example ACME-TENT-2P-GRN */
+            vendorSku: string;
+            /** @enum {string} */
+            condition?: "NEW" | "USED" | "REFURBISHED";
+            /**
+             * @description Price in USD cents (integer)
+             * @example 8999
+             */
+            priceCents: number;
+            /** @description Strike-through "was" price — must be greater than priceCents */
+            compareAtPriceCents?: number;
+            /** @example 25 */
+            stockQuantity: number;
+        };
+        UpdateVendorOfferDto: {
+            /**
+             * Format: uuid
+             * @description Specific variant of the product, if it has any
+             */
+            variantId?: string;
+            /** @example ACME-TENT-2P-GRN */
+            vendorSku?: string;
+            /** @enum {string} */
+            condition?: "NEW" | "USED" | "REFURBISHED";
+            /**
+             * @description Price in USD cents (integer)
+             * @example 8999
+             */
+            priceCents?: number;
+            /** @description Strike-through "was" price — must be greater than priceCents */
+            compareAtPriceCents?: number;
+            /** @enum {string} */
+            status?: "DRAFT" | "ACTIVE" | "INACTIVE";
+        };
+        AdjustInventoryDto: {
+            /**
+             * @description Positive to add stock, negative to remove — never an absolute "set to" value
+             * @example 10
+             */
+            delta: number;
+            /**
+             * @description Vendor-initiated reasons only — SALE/RETURN are written by checkout/cancellation, never directly
+             * @enum {string}
+             */
+            reason: "RESTOCK" | "CORRECTION";
+            /** @example PO-2026-0143 */
+            reference?: string;
+        };
+        UpdateVendorOrderStatusDto: {
+            /**
+             * @description A vendor may confirm or ship their own order — see order-state-machine.ts for the full transition table
+             * @enum {string}
+             */
+            status: "CONFIRMED" | "SHIPPED";
+        };
+        InviteVendorStaffDto: {
+            /**
+             * Format: email
+             * @example staff@example.com
+             */
+            email: string;
+        };
+        AcceptVendorStaffInviteDto: {
+            token: string;
+        };
+        UpdateVendorStaffRoleDto: {
+            /** @enum {string} */
+            role: "OWNER" | "STAFF";
         };
     };
     responses: never;
@@ -1580,6 +2012,454 @@ export interface operations {
                 content: {
                     "application/json": Record<string, never>;
                 };
+            };
+        };
+    };
+    VendorOnboardingController_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyVendorDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorOnboardingController_getMyVendor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorOnboardingController_updateProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVendorProfileDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorOnboardingController_getAnalyticsSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminVendorController_list: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>[];
+                };
+            };
+        };
+    };
+    AdminVendorController_getOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    AdminVendorController_approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminVendorController_reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminVendorController_suspend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorOffersController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>[];
+                };
+            };
+        };
+    };
+    VendorOffersController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVendorOfferDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorOffersController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVendorOfferDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorOffersController_inventoryHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorOffersController_adjustInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustInventoryDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorOrdersController_list: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>[];
+                };
+            };
+        };
+    };
+    VendorOrdersController_getOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    VendorOrdersController_updateStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVendorOrderStatusDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    VendorStaffController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorStaffController_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteVendorStaffDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorStaffController_accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptVendorStaffInviteDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorStaffController_updateRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVendorStaffRoleDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorStaffController_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -309,7 +309,11 @@ export class OrdersService {
    * moves every VendorOrder under an order together; Phase 3's vendor-app
    * fulfilment updates will move exactly one and call this same helper
    * afterward, so the aggregation logic is written once). */
-  private async recomputeOrderStatus(tx: Prisma.TransactionClient, orderId: string) {
+  /** Public — reused by VendorOrdersService after moving a single
+   * VendorOrder's status, so the aggregation rule lives in exactly one
+   * place. Must be called from within the caller's own transaction (or
+   * this service's), same as every other write in this class. */
+  async recomputeOrderStatus(tx: Prisma.TransactionClient, orderId: string) {
     const vendorOrders = await tx.vendorOrder.findMany({ where: { orderId }, select: { status: true } });
     const nextStatus = aggregateOrderStatus(vendorOrders.map((vo) => vo.status));
 

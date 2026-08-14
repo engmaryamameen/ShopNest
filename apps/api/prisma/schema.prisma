@@ -9,6 +9,7 @@ datasource db {
 
 enum Role {
   CUSTOMER
+  VENDOR
   ADMIN
 }
 
@@ -29,6 +30,9 @@ enum AuditAction {
   ADMIN_CATALOG_IMPORT_TRIGGER
   ADMIN_USER_SUSPEND
   ADMIN_USER_REACTIVATE
+  ADMIN_VENDOR_APPROVE
+  ADMIN_VENDOR_REJECT
+  ADMIN_VENDOR_SUSPEND
 }
 
 enum OrderStatus {
@@ -113,6 +117,7 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   auditLogEntries         AuditLog[]               @relation("auditActor")
   vendorMemberships       VendorMember[]
+  sentVendorStaffInvites  VendorStaffInvite[]
 
   @@index([status])
 }
@@ -363,9 +368,10 @@ model Vendor {
   approvedAt        DateTime?
   approvedByUserId  String?      @db.Uuid
 
-  members VendorMember[]
-  offers  VendorOffer[]
-  orders  VendorOrder[]
+  members      VendorMember[]
+  offers       VendorOffer[]
+  orders       VendorOrder[]
+  staffInvites VendorStaffInvite[]
 
   @@index([status])
 }
@@ -386,6 +392,28 @@ model VendorMember {
 
   @@unique([vendorId, userId])
   @@index([userId])
+}
+
+/// A pending staff invitation — same token lifecycle as
+/// EmailVerificationToken/PasswordResetToken (hashed at rest, single-use,
+/// expiring), scoped to one vendor + one email address rather than a User
+/// row, since the invitee may not have a ShopNest account yet. Accepting
+/// creates the VendorMember row and consumes the invite in one transaction.
+model VendorStaffInvite {
+  id              String           @id @default(uuid()) @db.Uuid
+  vendorId        String           @db.Uuid
+  vendor          Vendor           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  email           String
+  role            VendorMemberRole @default(STAFF)
+  tokenHash       String           @unique
+  invitedByUserId String           @db.Uuid
+  invitedBy       User             @relation(fields: [invitedByUserId], references: [id], onDelete: Restrict)
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime         @default(now())
+
+  @@index([vendorId])
+  @@index([email])
 }
 
 /// Where price and stock actually live. One row is one vendor's listing of

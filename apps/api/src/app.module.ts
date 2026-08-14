@@ -19,6 +19,7 @@ import { LocationModule } from './location/location.module';
 import { MailModule } from './mail/mail.module';
 import { AuditModule } from './audit/audit.module';
 import { UsersModule } from './users/users.module';
+import { VendorModule } from './vendor/vendor.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { UsersModule } from './users/users.module';
     CatalogModule,
     CartModule,
     OrdersModule,
+    VendorModule,
     CatalogImportModule,
     LocationModule,
   ],

@@ -40,4 +40,5 @@ export default registerAs('app', () => ({
   smtpPassword: process.env.SMTP_PASSWORD ?? '',
   emailVerificationTokenTtlMs: parseInt(process.env.EMAIL_VERIFICATION_TOKEN_TTL_MS ?? `${24 * 60 * 60 * 1000}`, 10),
   passwordResetTokenTtlMs: parseInt(process.env.PASSWORD_RESET_TOKEN_TTL_MS ?? `${60 * 60 * 1000}`, 10),
+  vendorStaffInviteTtlMs: parseInt(process.env.VENDOR_STAFF_INVITE_TTL_MS ?? `${7 * 24 * 60 * 60 * 1000}`, 10),
 }));
