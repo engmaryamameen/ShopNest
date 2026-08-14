@@ -36,9 +36,15 @@ Each source implements the same `CatalogSourceAdapter` interface (`fetchProducts
 
 ## Runtime flow
 
-1. An admin queues a run from `/admin/imports`, or the scheduler does (only if re-enabled — see below).
-2. A worker claims one eligible run with `FOR UPDATE SKIP LOCKED` and writes a lease.
-3. The chosen source's adapter fetches and validates the complete response.
+1. An admin queues a run from `/admin/imports` (`POST /admin/catalog-imports/run`), or the scheduler
+   does (only if re-enabled — see below).
+2. The controller fires one immediate, unawaited `CatalogImportWorker.poll()` right after queuing —
+   the background worker loop is off by default, so without this a run would just sit `QUEUED`
+   forever with nothing to ever claim it. This is a single on-demand invocation triggered by the
+   admin's own click, not a recurring background job — it reuses the exact same claim/lease/retry path
+   the interval-based worker uses when it *is* enabled.
+3. Whichever process claims it (`FOR UPDATE SKIP LOCKED`, writes a lease) — the chosen source's
+   adapter fetches and validates the complete response.
 4. The import service normalizes money (when present), categories, inventory, and image URLs.
 5. Canonical products and supplier mappings are written transactionally to PostgreSQL, batched and
    checkpointed so a crash/retry resumes rather than restarting.
@@ -59,9 +65,10 @@ since priced and published.
   catalog is admin-curated, not supplier-driven. If re-enabled, the scheduler only ever queues
   DummyJSON runs; Open Food Facts stays manual-only (see `catalog-import.scheduler.ts`).
 - `CATALOG_SCHEDULE_INTERVAL_MS` controls the recurring interval when enabled (default: six hours).
-- `CATALOG_WORKER_ENABLED=false` (default) disables execution in this process, allowing a dedicated
-  worker deployment. The manual "Preview"/"Run synchronization" buttons still work when this is off —
-  they queue a run for whichever worker process picks it up.
+- `CATALOG_WORKER_ENABLED=false` (default) disables the *recurring interval poll* in this process,
+  allowing a dedicated worker deployment. It does not disable manual triggers — "Run synchronization"
+  always fires one immediate `poll()` regardless of this flag (see Runtime flow, step 2), so a click
+  processes right away even with the interval loop off.
 - `CATALOG_WORKER_POLL_MS` controls claim frequency (default: two seconds).
 - `CATALOG_WORKER_LEASE_SECONDS` controls crash recovery (default: five minutes).
 - `OPEN_FOOD_FACTS_URL`, `OPEN_FOOD_FACTS_TIMEOUT_MS`, `OPEN_FOOD_FACTS_PAGE_SIZE` configure the Open

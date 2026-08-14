@@ -67,7 +67,7 @@ export function CatalogImportPanel() {
     startTransition(async () => {
       try {
         await api.adminTriggerImport(buildScope());
-        setNotice('Synchronization queued. It will appear below once the background worker picks it up.');
+        setNotice('Synchronization started — see its live progress in the table below.');
         setPreview(null);
         router.refresh();
       } catch (err) {

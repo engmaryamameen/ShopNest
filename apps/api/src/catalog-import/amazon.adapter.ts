@@ -21,15 +21,21 @@ type AmazonMetaRecord = {
 // the fetch is scoped to a fixed set of real category files. Each file can
 // run into the hundreds of megabytes; streamCategory() stops reading once
 // it has enough valid records rather than downloading the whole thing.
+// Chosen for broad general-marketplace coverage — every name here is a
+// real file, checked live (HEAD request) before being added.
 const AMAZON_CATEGORIES = [
-  'All_Beauty',
-  'Office_Products',
-  'Software',
+  'Electronics',
+  'Home_and_Kitchen',
+  'Cell_Phones_and_Accessories',
+  'Clothing_Shoes_and_Jewelry',
+  'Sports_and_Outdoors',
   'Toys_and_Games',
-  'Musical_Instruments',
+  'Office_Products',
+  'Grocery_and_Gourmet_Food',
   'Pet_Supplies',
   'Video_Games',
-  'Grocery_and_Gourmet_Food',
+  'All_Beauty',
+  'Tools_and_Home_Improvement',
 ];
 
 /** Amazon Reviews 2023 catalog metadata — open, keyless, real, verified
