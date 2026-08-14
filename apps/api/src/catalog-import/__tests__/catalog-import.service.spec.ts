@@ -324,6 +324,36 @@ describe('CatalogImportService', () => {
       expect(result).toEqual(expect.objectContaining({ discoveredCount: 2, scopedCount: 1, createdCount: 1 }));
     });
 
+    it('categoryScope matches by substring, not exact equality — a supplier rarely uses the same vocabulary an admin types', async () => {
+      const allElectronics = { ...supplierProduct, externalId: '20', name: 'USB Hub', categoryName: 'All Electronics' };
+      const prisma = makePrismaMock({ categoryScope: ['Electronics'] }); // narrower than the real category name
+      const adapter: CatalogSourceAdapter = {
+        fetchProducts: jest.fn().mockResolvedValue({ products: [allElectronics, otherCategoryProduct], skippedCount: 0 }),
+      };
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+      const result = await service.executeRun('run-id');
+
+      expect(prisma.tx.productSource.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ externalId: '20' }) }),
+      );
+      expect(result).toEqual(expect.objectContaining({ scopedCount: 1, createdCount: 1 })); // Home Office excluded
+    });
+
+    it('a categoryScope entry that slugifies to nothing is dropped, not treated as "matches everything"', async () => {
+      const prisma = makePrismaMock({ categoryScope: ['   '] }); // whitespace-only, slugifies to ''
+      const adapter: CatalogSourceAdapter = {
+        fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
+      };
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+      const result = await service.executeRun('run-id');
+
+      // Every needle was blank, so scoping is effectively skipped — both
+      // products pass, same as an empty categoryScope would behave.
+      expect(result).toEqual(expect.objectContaining({ scopedCount: 2, createdCount: 2 }));
+    });
+
     it('executeRun respects maxRecords as a hard cap on the scoped set', async () => {
       const prisma = makePrismaMock({ maxRecords: 1 });
       const adapter: CatalogSourceAdapter = {

@@ -195,8 +195,22 @@ export class CatalogImportService {
     let result = products;
 
     if (scope.categoryScope && scope.categoryScope.length > 0) {
-      const allowed = new Set(scope.categoryScope.map((c) => this.slugify(c)));
-      result = result.filter((p) => allowed.has(this.slugify(p.categoryName)));
+      // Substring, not exact-slug equality — a supplier's own category
+      // vocabulary rarely matches what an admin types verbatim (Amazon's
+      // "Electronics" file lists every record under "All Electronics";
+      // DummyJSON has no umbrella "electronics" at all, only
+      // "smartphones"/"laptops"/"tablets"). Requiring an exact match made
+      // scoping unusable in practice — verified live, an admin scoping to
+      // "Electronics" got zero results against real Amazon data that
+      // plainly included electronics. A needle that slugifies to nothing
+      // (blank input) is dropped, not treated as "matches everything."
+      const needles = scope.categoryScope.map((c) => this.slugify(c)).filter((needle) => needle.length > 0);
+      if (needles.length > 0) {
+        result = result.filter((p) => {
+          const haystack = this.slugify(p.categoryName);
+          return needles.some((needle) => haystack.includes(needle));
+        });
+      }
     }
 
     if (scope.minImageCount !== undefined) {

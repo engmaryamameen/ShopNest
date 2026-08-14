@@ -132,7 +132,7 @@ export function CatalogImportPanel() {
             id="import-category-scope"
             value={categoryScope}
             onChange={(e) => setCategoryScope(e.target.value)}
-            placeholder={source === 'DUMMY_JSON' ? 'e.g. smartphones, laptops' : 'run Preview first — filter by the exact names it shows'}
+            placeholder={source === 'DUMMY_JSON' ? 'e.g. smartphones, laptops' : 'e.g. electronics, beauty — matches any category containing it'}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
           />
         </div>
