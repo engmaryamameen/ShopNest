@@ -35,12 +35,8 @@ export class VendorStaffService {
     return { members, pendingInvites };
   }
 
-  /** Owner-only. A revoked invite's token stops working immediately —
-   * `acceptInvite` checks `revokedAt` alongside `consumedAt`/`expiresAt`,
-   * so this takes effect on the very next accept attempt, not on some
-   * later cleanup pass. Revoking an invite that's already been accepted
-   * doesn't make sense (the membership it created is revoked via
-   * `revoke()` instead) and is rejected rather than silently no-op'd. */
+  /** Owner-only. Can't revoke an already-accepted invite — use revoke()
+   * on the membership instead. */
   async revokeInvite(userId: string, inviteId: string): Promise<void> {
     const { vendorId } = await this.membership.requireOwner(userId);
     const invite = await this.prisma.vendorStaffInvite.findUnique({ where: { id: inviteId } });
@@ -81,24 +77,15 @@ export class VendorStaffService {
     return { status: 'invited' as const };
   }
 
-  /** The accepting user must already be authenticated, and their account
-   * email must match the invited address — otherwise anyone who guesses/
-   * intercepts a token could join a vendor under a different identity than
-   * the one it was actually sent to. */
+  /** Accepting account's email must match the invited address. */
   async acceptInvite(userId: string, userEmail: string, rawToken: string) {
     const hash = hashToken(rawToken);
     const invite = await this.prisma.vendorStaffInvite.findUnique({ where: { tokenHash: hash } });
 
-    // Covers revoked, already-accepted, and expired invites with the same
-    // message — deliberately not distinguishing which, so a stale/guessed
-    // token doesn't leak which failure mode applies.
+    // One message for revoked/accepted/expired — don't leak which.
     if (!invite || invite.consumedAt || invite.revokedAt || invite.expiresAt < new Date()) {
       throw new BadRequestException('This invite is invalid or has expired');
     }
-    // Both sides normalized the same way (trim + lowercase) — the invite's
-    // email was already normalized at creation time (InviteVendorStaffDto),
-    // this is defense-in-depth against any invite row that predates that
-    // normalization or was written by a different path.
     if (invite.email.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
       throw new BadRequestException('This invite was sent to a different email address');
     }
@@ -121,13 +108,8 @@ export class VendorStaffService {
         return member;
       });
     } catch (error) {
-      // Two concurrent accept calls (double-click, a retried request) can
-      // both pass the consumedAt check above before either commits, then
-      // race on the same (vendorId, userId) upsert — the loser hits a real
-      // P2002 rather than silently falling back to its own update branch.
-      // Accepting the same invite twice should be a harmless no-op from
-      // the caller's point of view, not a 500 or a spurious duplicate —
-      // resolve it by returning the membership the winner just created.
+      // Concurrent double-accept can race on the upsert — the loser gets
+      // the winner's row instead of a 500.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const existing = await this.prisma.vendorMember.findUnique({
           where: { vendorId_userId: { vendorId: invite.vendorId, userId } },

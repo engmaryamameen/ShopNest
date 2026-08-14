@@ -1,5 +1,5 @@
--- Phase 2 destructive migration — drops the pre-Phase-2 commercial fields
--- on Product and the superseded productId FKs on CartItem/OrderItem, now
+-- Destructive migration — drops the pre-remodel commercial fields on
+-- Product and the superseded productId FKs on CartItem/OrderItem, now
 -- that the additive migration (0006) + backfill + application cutover are
 -- complete and independently verified (unit + integration suites green
 -- against a full clone of the dev database with this migration applied —

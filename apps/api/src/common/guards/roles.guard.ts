@@ -19,14 +19,7 @@ export class RolesGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request & { user: JwtPayload }>();
     const actualRole = request.user?.role as Role;
 
-    // SUPER_ADMIN implicitly satisfies every plain ADMIN-gated route — a
-    // one-directional hierarchy, not a role alias. This is the one place
-    // that rule is expressed, so every existing and future
-    // `@Roles(Role.ADMIN)` call site keeps working for a SUPER_ADMIN
-    // without having to be rewritten to list both roles explicitly.
-    // SUPER_ADMIN-only routes (e.g. admin account management) still gate on
-    // `@Roles(Role.SUPER_ADMIN)` alone and are correctly refused to a plain
-    // ADMIN — the hierarchy only runs one way.
+    // SUPER_ADMIN satisfies ADMIN-gated routes; not the reverse.
     if (actualRole === Role.SUPER_ADMIN && requiredRoles.includes(Role.ADMIN)) return true;
 
     return requiredRoles.includes(actualRole);

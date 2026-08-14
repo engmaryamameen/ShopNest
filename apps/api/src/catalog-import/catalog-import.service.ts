@@ -17,9 +17,8 @@ type BatchCounts = {
 };
 
 export interface ImportScope {
-  /** Category names to include (case-insensitive, compared by slug — same
-   * normalization already used for canonical category matching). Empty or
-   * omitted means no restriction, never "match nothing". */
+  /** Category names, matched case-insensitively by slug. Empty/omitted =
+   * no restriction. */
   categoryScope?: string[];
   maxRecords?: number;
   minImageCount?: number;
@@ -39,10 +38,8 @@ export interface ImportPreview {
   wouldCreateCount: number;
   wouldUpdateCount: number;
   wouldBeUnchangedCount: number;
-  /** First N scoped items, for a human to sanity-check the scope before
-   * committing to a real run — not the full scoped set (see `scopedCount`
-   * for the true total; this is a bounded sample, not a silent truncation
-   * of what the real run would process). */
+  /** First N scoped items, for sanity-checking — not the full set
+   * (see scopedCount for the true total). */
   sample: ImportPreviewItem[];
 }
 
@@ -120,21 +117,9 @@ export class CatalogImportService {
     };
   }
 
-  /** Processes a run as a series of small, independently-committed batches
-   * rather than one long transaction spanning the whole catalog. This is
-   * deliberate, not an optimization: one monolithic transaction holds its
-   * locks, its connection, and its rollback cost for the entire run's
-   * duration — all of which scale with catalog size, not with what's
-   * actually safe to hold a lock for. Bounded batches keep each of those
-   * bounded too, and — just as importantly — make the run resumable:
-   * `processedCount` is checkpointed after every batch commits, so a crash,
-   * a lease-expiry reclaim by a different worker, or a plain retry all
-   * resume from the last committed batch instead of redoing (or losing)
-   * work. Every individual product upsert is also independently idempotent
-   * (checksum-compared, unique-constrained), so even reprocessing an
-   * already-committed batch — which shouldn't happen given the checkpoint,
-   * but isn't assumed impossible — is still safe.
-   */
+  /** Runs in small, independently-committed batches, not one transaction
+   * for the whole catalog — bounds lock/connection time per batch, and
+   * makes a crash/reclaim/retry resumable via processedCount. */
   async executeRun(runId: string) {
     const source = CatalogSource.DUMMY_JSON;
     const run = await this.prisma.catalogImportRun.findUniqueOrThrow({ where: { id: runId } });
@@ -145,10 +130,8 @@ export class CatalogImportService {
       minImageCount: run.minImageCount ?? undefined,
     });
 
-    // Only the very first entry into a run records totals — a resumed run
-    // (processedCount > 0) must not overwrite them from a second live
-    // fetch, which could in principle disagree slightly with the first
-    // (the supplier's catalog is live, not a frozen snapshot).
+    // Only the first entry records totals — a resumed run shouldn't
+    // overwrite them from a second, possibly-different live fetch.
     if (run.processedCount === 0) {
       await this.prisma.catalogImportRun.update({
         where: { id: runId },
@@ -180,21 +163,12 @@ export class CatalogImportService {
     });
   }
 
-  /** One batch, one short transaction. If this throws, everything already
-   * committed by prior batches (and the run row's counters/processedCount
-   * alongside them) stands — only this batch rolls back. The caller
-   * (executeRun, ultimately the worker) surfaces the failure for its
-   * existing retry/backoff handling; the next attempt resumes exactly
-   * here via processedCount, not from batch 1. */
+  /** One batch, one short transaction — only this batch rolls back on
+   * failure; prior batches stand. */
   private async processBatch(runId: string, source: CatalogSource, batch: SupplierProduct[]): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      // Re-acquired per batch, not held for the whole run — cheap, and the
-      // real cross-run guard is the partial unique index on
-      // CatalogImportRun(source) WHERE status IN (QUEUED, RUNNING), which
-      // already makes two concurrently-active runs for the same source
-      // impossible. This is defense-in-depth on top of that, scoped to
-      // "don't let two batches for the same source interleave their
-      // writes," not the sole mechanism preventing concurrent runs.
+      // Defense-in-depth — the real cross-run guard is the partial unique
+      // index on CatalogImportRun(source) WHERE status IN (QUEUED, RUNNING).
       const [lock] = await tx.$queryRaw<Array<{ acquired: boolean }>>`
         SELECT pg_try_advisory_xact_lock(hashtext(${`shopnest:catalog-import:${source}`})) AS acquired
       `;
@@ -216,11 +190,7 @@ export class CatalogImportService {
         },
       });
     });
-    // No explicit timeout override here, unlike the single-transaction
-    // version this replaced — a bounded batch comfortably fits Prisma's
-    // default interactive-transaction timeout regardless of total catalog
-    // size, which is the actual fix; a larger timeout was papering over
-    // the real problem (see DECISIONS.md).
+    // No timeout override needed — a bounded batch fits Prisma's default.
   }
 
   /** Applied identically by `preview()` and `executeRun()` — the whole
@@ -272,16 +242,8 @@ export class CatalogImportService {
     return vendor.id;
   }
 
-  /** Writes only canonical fields (name/description/category/media) to
-   * `Product` — price and stock go to the system vendor's `VendorOffer`
-   * instead, never to `Product.priceCents`/`stockQuantity` directly. This
-   * is the mechanical half of "imports never overwrite vendor-owned
-   * commercial data": once the destructive migration drops those columns,
-   * there will be nothing on Product for an import to overwrite even by
-   * mistake — for now (columns not yet dropped), this method simply never
-   * writes to them, deliberately, unlike CatalogService's admin-facing
-   * create/update which still echoes them (see that file's doc comment).
-   */
+  /** Writes only canonical fields to Product — price/stock go to the
+   * system vendor's VendorOffer. */
   private async upsertProduct(
     tx: Prisma.TransactionClient,
     source: CatalogSource,

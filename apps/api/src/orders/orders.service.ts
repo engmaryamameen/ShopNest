@@ -238,13 +238,12 @@ export class OrdersService {
   }
 
   /**
-   * Applies `toStatus` to every VendorOrder under this Order — today that's
-   * always exactly one (only the system vendor exists until Phase 3), but
-   * the loop is correct for the real multi-vendor case too: all-or-nothing,
-   * the same way a single customer/admin action has always applied to "the
-   * order" as a whole. Per-vendor-only transitions (one seller ships while
-   * another hasn't) are the vendor app's job (Phase 3), operating on a
-   * single VendorOrder instead of looping every one under the order.
+   * Applies `toStatus` to every VendorOrder under this Order — used by
+   * customer/admin actions that apply to "the order" as a whole,
+   * all-or-nothing. Per-vendor-only transitions (one seller ships while
+   * another hasn't) are the vendor app's job (VendorOrdersService),
+   * operating on a single VendorOrder instead of looping every one under
+   * the order.
    */
   private async transitionStatus(
     orderId: string,
@@ -303,16 +302,8 @@ export class OrdersService {
     });
   }
 
-  /** Reads every VendorOrder's *current* status for this order and writes
-   * the aggregate onto Order.status — shared by every code path that
-   * changes a VendorOrder's status (today: transitionStatus above, which
-   * moves every VendorOrder under an order together; Phase 3's vendor-app
-   * fulfilment updates will move exactly one and call this same helper
-   * afterward, so the aggregation logic is written once). */
-  /** Public — reused by VendorOrdersService after moving a single
-   * VendorOrder's status, so the aggregation rule lives in exactly one
-   * place. Must be called from within the caller's own transaction (or
-   * this service's), same as every other write in this class. */
+  /** Recomputes Order.status from its VendorOrders. Public — also called
+   * by VendorOrdersService. Must run inside the caller's transaction. */
   async recomputeOrderStatus(tx: Prisma.TransactionClient, orderId: string) {
     const vendorOrders = await tx.vendorOrder.findMany({ where: { orderId }, select: { status: true } });
     const nextStatus = aggregateOrderStatus(vendorOrders.map((vo) => vo.status));

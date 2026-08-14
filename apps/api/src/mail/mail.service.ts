@@ -2,12 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MAIL_PROVIDER, type MailProvider } from './mail.types';
 
-/**
- * Composes the (small, fixed) set of transactional emails ShopNest sends.
- * Callers never touch `MailProvider` directly — one place to keep subject
- * lines and link shapes consistent as more token-driven flows (staff
- * invites, Phase 3) are added on top of the same `MAIL_PROVIDER`.
- */
+/** Composes ShopNest's transactional emails. Callers never touch
+ * `MailProvider` directly — subject lines and link shapes stay consistent
+ * here. */
 @Injectable()
 export class MailService {
   constructor(

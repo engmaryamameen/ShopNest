@@ -105,8 +105,8 @@ export class CartService {
   /** Flattens vendorOffer→{vendor,product} into the shape the frontend
    * already expects a cart item to have (productId/name/slug/imageUrl/
    * priceCents), plus the new vendor identity — grouping items by vendor
-   * for split-checkout display is a frontend concern (Phase 5), this just
-   * makes every field available. */
+   * for split-checkout display is a frontend concern, this just makes
+   * every field available. */
   private toCartResponse(cart: Prisma.CartGetPayload<{ include: typeof CART_INCLUDE }>) {
     return {
       id: cart.id,
