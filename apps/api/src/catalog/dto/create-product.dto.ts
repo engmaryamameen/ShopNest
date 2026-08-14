@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsPositive, IsOptional, IsUrl, MinLength, MaxLength, Matches, Min } from 'class-validator';
+import { IsString, IsInt, IsPositive, IsOptional, IsUrl, MinLength, MaxLength, Matches, Min, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProductDto {
@@ -38,4 +38,9 @@ export class CreateProductDto {
   @ApiProperty({ example: 'uuid-of-category' })
   @IsString()
   categoryId!: string;
+
+  @ApiPropertyOptional({ example: 'uuid-of-brand' })
+  @IsOptional()
+  @IsUUID()
+  brandId?: string;
 }

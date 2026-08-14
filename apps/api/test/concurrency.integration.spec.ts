@@ -137,10 +137,13 @@ async function createCategory(adminCookies: Cookies, name: string, slug: string)
   return data.id;
 }
 
+/** Admin product creation now also creates a system-vendor VendorOffer
+ * transactionally (Phase 2) — the response's `offers[0].id` is what cart/
+ * checkout calls actually key on, not the canonical product id. */
 async function createProduct(
   adminCookies: Cookies,
   payload: { name: string; slug: string; priceCents: number; stockQuantity: number; categoryId: string },
-): Promise<string> {
+): Promise<{ id: string; offerId: string }> {
   const data = (await assertOk(
     await api('/products', {
       method: 'POST',
@@ -148,8 +151,8 @@ async function createProduct(
       cookies: adminCookies,
     }),
     `createProduct(${payload.slug})`,
-  )) as { id: string };
-  return data.id;
+  )) as { id: string; offers: Array<{ id: string }> };
+  return { id: data.id, offerId: data.offers[0].id };
 }
 
 // ── Suite 1: Concurrent checkout — inventory race protection ──────────────────
@@ -164,7 +167,7 @@ describe('Concurrent checkout — inventory race protection', () => {
 
     const categoryId = await createCategory(adminCookies, `ChkCat-${run}`, `chk-cat-${run}`);
     productSlug = `race-product-${run}`;
-    const productId = await createProduct(adminCookies, {
+    const { offerId } = await createProduct(adminCookies, {
       name: `RaceProduct-${run}`,
       slug: productSlug,
       priceCents: 1000,
@@ -177,11 +180,11 @@ describe('Concurrent checkout — inventory race protection', () => {
 
     // Both buyers add the scarce product to their carts
     await assertOk(
-      await api('/cart/items', { method: 'PUT', body: { productId, quantity: 1 }, cookies: user1Cookies }),
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: 1 }, cookies: user1Cookies }),
       'buyer1 add to cart',
     );
     await assertOk(
-      await api('/cart/items', { method: 'PUT', body: { productId, quantity: 1 }, cookies: user2Cookies }),
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: 1 }, cookies: user2Cookies }),
       'buyer2 add to cart',
     );
   });
@@ -217,7 +220,7 @@ describe('Concurrent checkout — inventory race protection', () => {
     // Register a third user with a product that has stock
     const adminCookies = await createAdminSession('idem');
     const categoryId = await createCategory(adminCookies, `IdemCat-${run}`, `idem-cat-${run}`);
-    const productId = await createProduct(adminCookies, {
+    const { offerId } = await createProduct(adminCookies, {
       name: `IdemProduct-${run}`,
       slug: `idem-product-${run}`,
       priceCents: 500,
@@ -226,7 +229,7 @@ describe('Concurrent checkout — inventory race protection', () => {
     });
     const buyerCookies = await register(`idem-buyer-${run}@test.local`);
     await assertOk(
-      await api('/cart/items', { method: 'PUT', body: { productId, quantity: 1 }, cookies: buyerCookies }),
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: 1 }, cookies: buyerCookies }),
       'idem buyer add to cart',
     );
 
@@ -315,25 +318,27 @@ describe('Concurrent refresh token rotation — grace period', () => {
 
 describe('Concurrent cart mutations — no lost updates', () => {
   let userCookies: Cookies;
-  let productId1: string;
-  let productId2: string;
+  let offerId1: string;
+  let offerId2: string;
 
   beforeAll(async () => {
     const adminCookies = await createAdminSession('cart');
     const categoryId = await createCategory(adminCookies, `CartCat-${run}`, `cart-cat-${run}`);
 
-    [productId1, productId2] = await Promise.all([
+    const [p1, p2] = await Promise.all([
       createProduct(adminCookies, { name: `CartP1-${run}`, slug: `cart-p1-${run}`, priceCents: 500, stockQuantity: 50, categoryId }),
       createProduct(adminCookies, { name: `CartP2-${run}`, slug: `cart-p2-${run}`, priceCents: 750, stockQuantity: 50, categoryId }),
     ]);
+    offerId1 = p1.offerId;
+    offerId2 = p2.offerId;
 
     userCookies = await register(`cart-user-${run}@test.local`);
   });
 
-  it('concurrent upserts to different products both persist — no lost writes', async () => {
+  it('concurrent upserts to different offers both persist — no lost writes', async () => {
     const [r1, r2] = await Promise.all([
-      api('/cart/items', { method: 'PUT', body: { productId: productId1, quantity: 3 }, cookies: userCookies }),
-      api('/cart/items', { method: 'PUT', body: { productId: productId2, quantity: 2 }, cookies: userCookies }),
+      api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId1, quantity: 3 }, cookies: userCookies }),
+      api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId2, quantity: 2 }, cookies: userCookies }),
     ]);
 
     expect(r1.status).toBe(200);
@@ -341,27 +346,27 @@ describe('Concurrent cart mutations — no lost updates', () => {
 
     const cartRes = await api('/cart', { cookies: userCookies });
     expect(cartRes.status).toBe(200);
-    const cart = (await cartRes.json()) as { data: { items: Array<{ productId: string; quantity: number }> } };
+    const cart = (await cartRes.json()) as { data: { items: Array<{ vendorOfferId: string; quantity: number }> } };
     const items = cart.data.items;
 
     // Both writes must have persisted
     expect(items).toHaveLength(2);
-    expect(items.find((i) => i.productId === productId1)?.quantity).toBe(3);
-    expect(items.find((i) => i.productId === productId2)?.quantity).toBe(2);
+    expect(items.find((i) => i.vendorOfferId === offerId1)?.quantity).toBe(3);
+    expect(items.find((i) => i.vendorOfferId === offerId2)?.quantity).toBe(2);
   });
 
-  it('concurrent upserts to the same product yield a consistent final quantity', async () => {
+  it('concurrent upserts to the same offer yield a consistent final quantity', async () => {
     const [r1, r2] = await Promise.all([
-      api('/cart/items', { method: 'PUT', body: { productId: productId1, quantity: 5 }, cookies: userCookies }),
-      api('/cart/items', { method: 'PUT', body: { productId: productId1, quantity: 7 }, cookies: userCookies }),
+      api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId1, quantity: 5 }, cookies: userCookies }),
+      api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId1, quantity: 7 }, cookies: userCookies }),
     ]);
 
     expect(r1.status).toBe(200);
     expect(r2.status).toBe(200);
 
     const cartRes = await api('/cart', { cookies: userCookies });
-    const cart = (await cartRes.json()) as { data: { items: Array<{ productId: string; quantity: number }> } };
-    const qty = cart.data.items.find((i) => i.productId === productId1)?.quantity;
+    const cart = (await cartRes.json()) as { data: { items: Array<{ vendorOfferId: string; quantity: number }> } };
+    const qty = cart.data.items.find((i) => i.vendorOfferId === offerId1)?.quantity;
 
     // Must be one of the two requested values — never a partial/corrupted mix
     expect([5, 7]).toContain(qty);
@@ -373,25 +378,25 @@ describe('Concurrent cart mutations — no lost updates', () => {
 describe('Order state machine — transition enforcement', () => {
   let adminCookies: Cookies;
   let userCookies: Cookies;
-  let productId: string;
+  let offerId: string;
 
   beforeAll(async () => {
     adminCookies = await createAdminSession('sm');
     userCookies = await register(`sm-user-${run}@test.local`);
 
     const categoryId = await createCategory(adminCookies, `SMCat-${run}`, `sm-cat-${run}`);
-    productId = await createProduct(adminCookies, {
+    ({ offerId } = await createProduct(adminCookies, {
       name: `SMProduct-${run}`,
       slug: `sm-product-${run}`,
       priceCents: 2000,
       stockQuantity: 100,
       categoryId,
-    });
+    }));
   });
 
   async function placeOrder(key: string): Promise<string> {
     await assertOk(
-      await api('/cart/items', { method: 'PUT', body: { productId, quantity: 1 }, cookies: userCookies }),
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: 1 }, cookies: userCookies }),
       'add to cart',
     );
     const data = (await assertOk(
@@ -439,7 +444,7 @@ describe('Order state machine — transition enforcement', () => {
 
   it('inventory is restored transactionally on cancellation', async () => {
     const qty = 5;
-    await api('/cart/items', { method: 'PUT', body: { productId, quantity: qty }, cookies: userCookies });
+    await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: qty }, cookies: userCookies });
     const data = (await assertOk(
       await api('/orders/checkout', { method: 'POST', body: { idempotencyKey: randomUUID() }, cookies: userCookies }),
       'checkout for cancel test',

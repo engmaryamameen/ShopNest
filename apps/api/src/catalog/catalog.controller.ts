@@ -33,6 +33,12 @@ import { Audit } from '../audit/audit.decorator';
 export class CatalogController {
   constructor(private readonly catalog: CatalogService) {}
 
+  @Get('brands')
+  @ApiOperation({ summary: 'List all brands' })
+  listBrands() {
+    return this.catalog.listBrands();
+  }
+
   @Post('categories')
   @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)

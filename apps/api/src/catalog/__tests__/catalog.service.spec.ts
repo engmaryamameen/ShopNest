@@ -5,6 +5,8 @@ import { CatalogService } from '../catalog.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const CATEGORY_ID = '00000000-0000-4000-a000-000000000001';
+const PRODUCT_ID = '00000000-0000-4000-a000-000000000002';
+const SYSTEM_VENDOR_ID = '00000000-0000-4000-a000-000000000099';
 
 function prismaUniqueViolation(): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError('duplicate', {
@@ -15,8 +17,12 @@ function prismaUniqueViolation(): Prisma.PrismaClientKnownRequestError {
 
 function makeTxMock() {
   return {
-    category: { findUnique: jest.fn(), delete: jest.fn() },
-    product: { count: jest.fn() },
+    category: { findUnique: jest.fn(), findMany: jest.fn(), delete: jest.fn(), count: jest.fn() },
+    product: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), update: jest.fn(), create: jest.fn(), count: jest.fn() },
+    productMedia: { create: jest.fn() },
+    vendor: { findUnique: jest.fn() },
+    vendorOffer: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+    inventoryAdjustment: { create: jest.fn() },
   };
 }
 
@@ -27,7 +33,10 @@ function makePrismaMock(tx: ReturnType<typeof makeTxMock>) {
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
     },
+    brand: { findMany: jest.fn(), findUnique: jest.fn() },
+    vendor: { findUnique: jest.fn().mockResolvedValue({ id: SYSTEM_VENDOR_ID }) },
     product: {
       create: jest.fn(),
       findUnique: jest.fn(),
@@ -64,7 +73,7 @@ describe('CatalogService', () => {
       await service.createCategory({ name: 'Home & Garden' } as never);
 
       expect(prisma.category.create).toHaveBeenCalledWith({
-        data: { name: 'Home & Garden', slug: 'home-garden' },
+        data: { name: 'Home & Garden', slug: 'home-garden', parentId: null },
       });
     });
 
@@ -76,7 +85,9 @@ describe('CatalogService', () => {
 
       await service.createCategory({ name: 'Books' } as never);
 
-      expect(prisma.category.create).toHaveBeenCalledWith({ data: { name: 'Books', slug: 'books-2' } });
+      expect(prisma.category.create).toHaveBeenCalledWith({
+        data: { name: 'Books', slug: 'books-2', parentId: null },
+      });
     });
 
     it('translates a Prisma unique-constraint race into a 409 ConflictException', async () => {
@@ -85,10 +96,19 @@ describe('CatalogService', () => {
 
       await expect(service.createCategory({ name: 'Books' } as never)).rejects.toThrow(ConflictException);
     });
+
+    it('rejects a category pointed at a parent that does not exist', async () => {
+      prisma.category.findUnique.mockResolvedValue(null); // parent lookup fails
+
+      await expect(
+        service.createCategory({ name: 'Laptops', parentId: 'missing-parent' } as never),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.category.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateCategory', () => {
-    it('rejects an update with neither name nor slug provided', async () => {
+    it('rejects an update with no fields provided', async () => {
       await expect(service.updateCategory(CATEGORY_ID, {} as never)).rejects.toThrow(BadRequestException);
       expect(prisma.category.findUnique).not.toHaveBeenCalled();
     });
@@ -111,6 +131,25 @@ describe('CatalogService', () => {
         data: { name: 'New' },
       });
     });
+
+    it('rejects setting a category as its own parent', async () => {
+      await expect(
+        service.updateCategory(CATEGORY_ID, { parentId: CATEGORY_ID } as never),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects moving a category under one of its own descendants (cycle prevention)', async () => {
+      const CHILD_ID = 'child-cat';
+      prisma.category.findUnique.mockResolvedValueOnce({ id: CHILD_ID }); // ensureCategoryExists(parentId)
+      // getDescendantCategoryIds(CATEGORY_ID) walks children — CHILD_ID is one of them
+      prisma.category.findMany
+        .mockResolvedValueOnce([{ id: CHILD_ID }])
+        .mockResolvedValueOnce([]);
+
+      await expect(
+        service.updateCategory(CATEGORY_ID, { parentId: CHILD_ID } as never),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe('deleteCategory', () => {
@@ -123,14 +162,25 @@ describe('CatalogService', () => {
     it('refuses to delete a category that still has products (atomically, inside one transaction)', async () => {
       tx.category.findUnique.mockResolvedValue({ id: CATEGORY_ID });
       tx.product.count.mockResolvedValue(3);
+      tx.category.count.mockResolvedValue(0);
 
       await expect(service.deleteCategory(CATEGORY_ID)).rejects.toThrow(ConflictException);
       expect(tx.category.delete).not.toHaveBeenCalled();
     });
 
-    it('deletes the category once it has zero referencing products', async () => {
+    it('refuses to delete a category that still has subcategories', async () => {
       tx.category.findUnique.mockResolvedValue({ id: CATEGORY_ID });
       tx.product.count.mockResolvedValue(0);
+      tx.category.count.mockResolvedValue(2);
+
+      await expect(service.deleteCategory(CATEGORY_ID)).rejects.toThrow(ConflictException);
+      expect(tx.category.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes the category once it has zero referencing products and zero children', async () => {
+      tx.category.findUnique.mockResolvedValue({ id: CATEGORY_ID });
+      tx.product.count.mockResolvedValue(0);
+      tx.category.count.mockResolvedValue(0);
       tx.category.delete.mockResolvedValue(undefined);
 
       await service.deleteCategory(CATEGORY_ID);
@@ -144,9 +194,50 @@ describe('CatalogService', () => {
       prisma.category.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.createProduct({ name: 'Widget', categoryId: 'missing-cat' } as never),
+        service.createProduct({ name: 'Widget', categoryId: 'missing-cat', priceCents: 100, stockQuantity: 1 } as never),
       ).rejects.toThrow(NotFoundException);
-      expect(prisma.product.create).not.toHaveBeenCalled();
+      expect(tx.product.create).not.toHaveBeenCalled();
+    });
+
+    it('creates the canonical Product and a system-vendor VendorOffer in the same transaction', async () => {
+      prisma.category.findUnique.mockResolvedValue({ id: CATEGORY_ID });
+      tx.product.create.mockResolvedValue({ id: PRODUCT_ID, slug: 'widget' });
+      tx.vendorOffer.create.mockResolvedValue({ id: 'offer-1' });
+      tx.product.findUniqueOrThrow.mockResolvedValue({
+        id: PRODUCT_ID,
+        name: 'Widget',
+        slug: 'widget',
+        description: 'desc',
+        categoryId: CATEGORY_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        category: { id: CATEGORY_ID, name: 'Cat', slug: 'cat' },
+        brand: null,
+        media: [],
+        offers: [],
+      });
+
+      await service.createProduct({
+        name: 'Widget',
+        categoryId: CATEGORY_ID,
+        description: 'desc',
+        priceCents: 999,
+        stockQuantity: 5,
+      } as never);
+
+      expect(tx.product.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ priceCents: 999, stockQuantity: 5 }) }),
+      );
+      expect(tx.vendorOffer.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ vendorId: SYSTEM_VENDOR_ID, productId: PRODUCT_ID, priceCents: 999, stockQuantity: 5 }),
+        }),
+      );
+      // Non-zero initial stock gets a matching InventoryAdjustment — the
+      // "every stock mutation has an audit row" invariant.
+      expect(tx.inventoryAdjustment.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ vendorOfferId: 'offer-1', delta: 5 }) }),
+      );
     });
   });
 
@@ -160,33 +251,60 @@ describe('CatalogService', () => {
       expect(prisma.product.findMany).not.toHaveBeenCalled();
     });
 
-    it('always scopes the default listing path to isActive products only', async () => {
+    it('scopes the default listing to published products with at least one active offer', async () => {
       prisma.product.findMany.mockResolvedValue([]);
       prisma.product.count.mockResolvedValue(0);
 
       await service.listProducts({} as never);
 
       expect(prisma.product.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ isActive: true }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({
+            publishStatus: 'PUBLISHED',
+            offers: { some: { status: 'ACTIVE' } },
+          }),
+        }),
+      );
+    });
+
+    it('filters by every descendant of the requested category, not just an exact id match', async () => {
+      const PARENT_ID = 'parent-cat';
+      const CHILD_ID = 'child-cat';
+      prisma.category.findUnique.mockResolvedValue({ id: PARENT_ID, slug: 'electronics' });
+      prisma.category.findMany
+        .mockResolvedValueOnce([{ id: CHILD_ID }]) // one child of parent
+        .mockResolvedValueOnce([]); // no grandchildren
+      prisma.product.findMany.mockResolvedValue([]);
+      prisma.product.count.mockResolvedValue(0);
+
+      await service.listProducts({ category: 'electronics' } as never);
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ categoryId: { in: [PARENT_ID, CHILD_ID] } }) }),
       );
     });
   });
 
   describe('archiveProduct', () => {
     it('throws NotFoundException for a product that does not exist', async () => {
-      prisma.product.findUnique.mockResolvedValue(null);
+      tx.product.findUnique.mockResolvedValue(null);
       await expect(service.archiveProduct('missing')).rejects.toThrow(NotFoundException);
     });
 
-    it('soft-deletes by setting isActive to false — never a physical delete', async () => {
-      prisma.product.findUnique.mockResolvedValue({ id: 'p1', isActive: true });
-      prisma.product.update.mockResolvedValue(undefined);
+    it('soft-archives the product and deactivates every one of its offers (never a physical delete)', async () => {
+      tx.product.findUnique.mockResolvedValue({ id: 'p1' });
+      tx.product.update.mockResolvedValue(undefined);
+      tx.vendorOffer.updateMany.mockResolvedValue({ count: 1 });
 
       await service.archiveProduct('p1');
 
-      expect(prisma.product.update).toHaveBeenCalledWith({
+      expect(tx.product.update).toHaveBeenCalledWith({
         where: { id: 'p1' },
-        data: { isActive: false },
+        data: { isActive: false, publishStatus: 'ARCHIVED' },
+      });
+      expect(tx.vendorOffer.updateMany).toHaveBeenCalledWith({
+        where: { productId: 'p1' },
+        data: { status: 'INACTIVE' },
       });
     });
   });

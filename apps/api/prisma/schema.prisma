@@ -39,6 +39,51 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum ProductPublishStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum VendorStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
+  REJECTED
+}
+
+enum VendorMemberRole {
+  OWNER
+  STAFF
+}
+
+enum OfferCondition {
+  NEW
+  USED
+  REFURBISHED
+}
+
+enum OfferStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+enum InventoryAdjustmentReason {
+  RESTOCK
+  SALE
+  RETURN
+  CORRECTION
+  IMPORT_INITIAL
+}
+
+enum AttributeInputType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  SELECT
+}
+
 enum CatalogSource {
   DUMMY_JSON
 }
@@ -67,6 +112,7 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
   auditLogEntries         AuditLog[]               @relation("auditActor")
+  vendorMemberships       VendorMember[]
 
   @@index([status])
 }
@@ -145,35 +191,304 @@ model RefreshToken {
   @@index([familyId])
 }
 
+/// A product belongs to exactly one canonical leaf category (no
+/// multi-category bridge table — deliberately: nothing in this catalog's
+/// scope needs a product to live in two places at once, and a bridge table
+/// would just move the "which one is primary for breadcrumbs/canonical URL"
+/// question rather than answer it). Browsing a *parent* category shows every
+/// product in that category or any of its descendants — computed by walking
+/// `parentId` down from the requested category (CatalogService) and
+/// filtering `WHERE categoryId IN (thoseIds)`, not by a product having
+/// multiple category rows.
 model Category {
+  id                   String                @id @default(uuid()) @db.Uuid
+  name                 String                @unique
+  slug                 String                @unique
+  // Self-relation for the hierarchy. Cycle prevention (a category can't
+  // become its own ancestor) is enforced in CategoriesService before an
+  // update — Postgres has no declarative way to forbid graph cycles, only
+  // application logic can walk the chain and check.
+  parentId             String?               @db.Uuid
+  parent               Category?             @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children             Category[]            @relation("CategoryHierarchy")
+  position             Int                   @default(0)
+  isActive             Boolean               @default(true)
+  imageUrl             String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  products             Product[]
+  attributeDefinitions AttributeDefinition[]
+
+  @@index([parentId])
+}
+
+model Brand {
   id        String    @id @default(uuid()) @db.Uuid
   name      String    @unique
   slug      String    @unique
+  logoUrl   String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   products  Product[]
 }
 
+/// Canonical product — "what the item is," never "who sells it, at what
+/// price, with how much stock." `priceCents`/`stockQuantity`/`imageUrl`
+/// below are the pre-Phase-2 commercial fields, kept temporarily so the
+/// additive migration + backfill + application cutover can land before
+/// they're dropped in the follow-up destructive migration (DECISIONS.md
+/// "Phase 2 migration sequence") — do not read them in any new code; use
+/// `VendorOffer` for price/stock and `ProductMedia` for images instead.
 model Product {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String               @id @default(uuid()) @db.Uuid
   name          String
-  slug          String   @unique
+  slug          String               @unique
   description   String
-  priceCents    Int
-  stockQuantity Int      @default(0)
-  imageUrl      String?
-  categoryId    String   @db.Uuid
-  category      Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  brandId       String?              @db.Uuid
+  brand         Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  categoryId    String               @db.Uuid
+  category      Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  publishStatus ProductPublishStatus @default(PUBLISHED)
 
-  cartItems  CartItem[]
-  orderItems OrderItem[]
-  sources    ProductSource[]
+  /// @deprecated commercial data — moving to VendorOffer, see model doc above.
+  priceCents    Int
+  /// @deprecated commercial data — moving to VendorOffer, see model doc above.
+  stockQuantity Int     @default(0)
+  /// @deprecated superseded by ProductMedia (ordered, multi-image).
+  imageUrl      String?
+  /// @deprecated superseded by publishStatus.
+  isActive      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+  sources         ProductSource[]
+  media           ProductMedia[]
+  attributeValues ProductAttributeValue[]
+  variants        ProductVariant[]
+  offers          VendorOffer[]
 
   @@index([categoryId])
+  @@index([brandId])
   @@index([isActive, createdAt])
+  @@index([publishStatus, createdAt])
+}
+
+/// Ordered product images — replaces `Product.imageUrl`. Position is
+/// caller-assigned (not an auto-increment) so reordering is a plain update,
+/// not a resequencing of every row; uniqueness still prevents two images
+/// silently claiming the same slot.
+model ProductMedia {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @db.Uuid
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  position  Int
+  altText   String?
+  createdAt DateTime @default(now())
+
+  @@unique([productId, position])
+  @@index([productId])
+}
+
+/// EAV-lite descriptive attributes ("Material: Cotton", "Battery life: 10h")
+/// and the PLP filters built from them — deliberately not a heavier
+/// attribute-group/template system, since nothing in scope needs one.
+/// `categoryId = null` means the attribute applies platform-wide (e.g.
+/// "Brand" itself could be modeled this way, though Brand already has its
+/// own first-class model here); a set categoryId scopes it to that category
+/// and its descendants.
+model AttributeDefinition {
+  id         String             @id @default(uuid()) @db.Uuid
+  name       String
+  slug       String             @unique
+  categoryId String?            @db.Uuid
+  category   Category?          @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  inputType  AttributeInputType @default(TEXT)
+  createdAt  DateTime           @default(now())
+
+  productValues ProductAttributeValue[]
+  variantValues VariantAttributeValue[]
+
+  @@index([categoryId])
+}
+
+model ProductAttributeValue {
+  id                    String              @id @default(uuid()) @db.Uuid
+  productId             String              @db.Uuid
+  product               Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attributeDefinitionId String              @db.Uuid
+  attributeDefinition   AttributeDefinition @relation(fields: [attributeDefinitionId], references: [id], onDelete: Cascade)
+  value                 String
+
+  @@unique([productId, attributeDefinitionId])
+  @@index([attributeDefinitionId, value])
+}
+
+/// A purchasable variation of a canonical product (e.g. Color=Red, Size=L).
+/// A product with no variants is sold directly (VendorOffer.variantId =
+/// null, see that model's uniqueness note); a product with variants is only
+/// ever sold *through* one of them once any variant exists — enforced at
+/// the service level when an offer is created, not by the schema (the
+/// schema alone can't express "either every offer for this product has a
+/// variantId, or none do").
+model ProductVariant {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @db.Uuid
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku       String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  attributeValues VariantAttributeValue[]
+  offers          VendorOffer[]
+
+  @@index([productId])
+}
+
+model VariantAttributeValue {
+  id                    String              @id @default(uuid()) @db.Uuid
+  variantId             String              @db.Uuid
+  variant               ProductVariant      @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  attributeDefinitionId String              @db.Uuid
+  attributeDefinition   AttributeDefinition @relation(fields: [attributeDefinitionId], references: [id], onDelete: Cascade)
+  value                 String
+
+  @@unique([variantId, attributeDefinitionId])
+}
+
+/// A marketplace seller. `slug` is the public storefront identity
+/// (`/vendors/:slug`); `status` gates everything a vendor can do — only
+/// `APPROVED` vendors can have `ACTIVE` offers surfaced to shoppers
+/// (enforced in CatalogService's query, not just by hiding a button).
+model Vendor {
+  id                String       @id @default(uuid()) @db.Uuid
+  name              String
+  slug              String       @unique
+  status            VendorStatus @default(PENDING)
+  description       String?
+  logoUrl           String?
+  contactEmail      String
+  /// Basis points (1/100th of a percent); 500 = 5%. Integer, same
+  /// no-float discipline as every monetary/rate field in this schema.
+  commissionRateBps Int?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  approvedAt        DateTime?
+  approvedByUserId  String?      @db.Uuid
+
+  members VendorMember[]
+  offers  VendorOffer[]
+  orders  VendorOrder[]
+
+  @@index([status])
+}
+
+/// Who can act for a vendor, and how. Modeled as its own join table (not a
+/// second FK on User) so a vendor can have staff later without another
+/// migration — the MVP only ever creates one OWNER row per vendor at
+/// onboarding; the staff invite/accept lifecycle lands in Phase 3 alongside
+/// the vendor app itself, this table is ready for it from day one.
+model VendorMember {
+  id        String           @id @default(uuid()) @db.Uuid
+  vendorId  String           @db.Uuid
+  vendor    Vendor           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  userId    String           @db.Uuid
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      VendorMemberRole @default(STAFF)
+  createdAt DateTime         @default(now())
+
+  @@unique([vendorId, userId])
+  @@index([userId])
+}
+
+/// Where price and stock actually live. One row is one vendor's listing of
+/// one sellable thing — either a base product (`variantId = null`) or one
+/// specific variant of it, never both/ambiguous for the same row.
+///
+/// Uniqueness needs two indexes, not one: a normal composite unique
+/// constraint treats every NULL as distinct from every other NULL, so
+/// `@@unique([vendorId, productId, variantId])` alone would let the *same*
+/// vendor create unlimited duplicate base-product offers (variantId always
+/// NULL). The migration adds a partial unique index —
+/// `UNIQUE (vendorId, productId) WHERE variantId IS NULL` — as a
+/// hand-written statement (Prisma's schema DSL has no `WHERE` clause for
+/// `@@unique`); the declarative `@@unique` below still correctly covers
+/// every variant-specific row, since Postgres compares non-null tuples
+/// normally.
+model VendorOffer {
+  id                  String          @id @default(uuid()) @db.Uuid
+  vendorId            String          @db.Uuid
+  vendor              Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  productId           String          @db.Uuid
+  product             Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variantId           String?         @db.Uuid
+  variant             ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  vendorSku           String
+  condition           OfferCondition  @default(NEW)
+  priceCents          Int
+  compareAtPriceCents Int?
+  stockQuantity       Int             @default(0)
+  status              OfferStatus     @default(DRAFT)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  cartItems            CartItem[]
+  orderItems           OrderItem[]
+  inventoryAdjustments InventoryAdjustment[]
+
+  @@unique([vendorId, productId, variantId])
+  @@unique([vendorId, vendorSku])
+  @@index([productId, status])
+  @@index([vendorId, status])
+}
+
+/// Every VendorOffer.stockQuantity change is written alongside one of
+/// these, in the same transaction — a stock mutation with no matching
+/// adjustment row (or vice versa) is a bug, not an accepted variance. This
+/// is what makes stock changes auditable instead of a silent field update.
+model InventoryAdjustment {
+  id            String                    @id @default(uuid()) @db.Uuid
+  vendorOfferId String                    @db.Uuid
+  vendorOffer   VendorOffer               @relation(fields: [vendorOfferId], references: [id], onDelete: Cascade)
+  /// Positive = stock added (restock, cancellation/return reversal),
+  /// negative = stock removed (sale, correction downward).
+  delta         Int
+  reason        InventoryAdjustmentReason
+  /// Free-form pointer to whatever caused this (an order id, a return
+  /// request id, an import run id) — not a typed FK, since the referenced
+  /// table varies by reason and this row must survive that thing's own
+  /// lifecycle (e.g. an order being queried historically) unaffected.
+  reference     String?
+  actorUserId   String?                   @db.Uuid
+  createdAt     DateTime                  @default(now())
+
+  @@index([vendorOfferId, createdAt])
+}
+
+/// One per vendor represented in a checkout — splits a marketplace `Order`
+/// into the per-seller fulfilment units that actually get shipped/status-
+/// tracked independently. `Order.status` is a denormalized aggregate over
+/// its VendorOrders (all DELIVERED ⇒ Order DELIVERED, any CANCELLED effect
+/// documented where that transition is implemented) — see DECISIONS.md.
+model VendorOrder {
+  id            String      @id @default(uuid()) @db.Uuid
+  orderId       String      @db.Uuid
+  order         Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  vendorId      String      @db.Uuid
+  vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  status        OrderStatus @default(PENDING)
+  subtotalCents Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+
+  @@unique([orderId, vendorId])
+  @@index([vendorId, status])
 }
 
 model ProductSource {
@@ -223,17 +538,24 @@ model Cart {
   items CartItem[]
 }
 
+/// @deprecated productId — price/stock authority (and thus what a cart line
+/// actually locks against at checkout) is moving to vendorOfferId. Both are
+/// nullable during the additive phase; the destructive migration drops
+/// productId and makes vendorOfferId required. See Product's model doc.
 model CartItem {
-  id        String   @id @default(uuid()) @db.Uuid
-  cartId    String   @db.Uuid
-  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  productId String   @db.Uuid
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity  Int
-  addedAt   DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String       @id @default(uuid()) @db.Uuid
+  cartId        String       @db.Uuid
+  cart          Cart         @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId     String?      @db.Uuid
+  product       Product?     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  vendorOfferId String?      @db.Uuid
+  vendorOffer   VendorOffer? @relation(fields: [vendorOfferId], references: [id], onDelete: Restrict)
+  quantity      Int
+  addedAt       DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   @@unique([cartId, productId])
+  @@unique([cartId, vendorOfferId])
   @@index([cartId])
 }
 
@@ -241,6 +563,9 @@ model Order {
   id             String      @id @default(uuid()) @db.Uuid
   userId         String      @db.Uuid
   user           User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  /// Denormalized aggregate over this order's VendorOrders, not an
+  /// independently-set value once vendorOrders exist — see VendorOrder's
+  /// model doc and the aggregation invariant in DECISIONS.md.
   status         OrderStatus @default(PENDING)
   totalCents     Int
   currency       String      @default("USD")
@@ -250,35 +575,56 @@ model Order {
 
   items         OrderItem[]
   statusHistory OrderStatusHistory[]
+  vendorOrders  VendorOrder[]
 
   @@unique([userId, idempotencyKey], name: "Order_userId_idempotencyKey_key")
   @@index([userId, createdAt])
   @@index([status])
 }
 
+/// @deprecated productId/product — kept for the additive phase so existing
+/// rows remain queryable through the old relation; new rows populate
+/// vendorOfferId/vendorOrderId (and product is reachable via
+/// vendorOffer.product). vendorName is a point-in-time snapshot — same
+/// reasoning as productName/productSlug below: a vendor renaming later must
+/// never rewrite a historical order's display.
 model OrderItem {
-  id             String  @id @default(uuid()) @db.Uuid
-  orderId        String  @db.Uuid
-  order          Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  productId      String  @db.Uuid
-  product        Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  id             String       @id @default(uuid()) @db.Uuid
+  orderId        String       @db.Uuid
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  productId      String?      @db.Uuid
+  product        Product?     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  vendorOfferId  String?      @db.Uuid
+  vendorOffer    VendorOffer? @relation(fields: [vendorOfferId], references: [id], onDelete: Restrict)
+  vendorOrderId  String?      @db.Uuid
+  vendorOrder    VendorOrder? @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
   quantity       Int
   unitPriceCents Int
   productName    String
   productSlug    String
+  vendorName     String?
 
   @@index([orderId])
+  @@index([vendorOrderId])
 }
 
+/// @deprecated orderId as the primary reference — a status transition now
+/// happens on a specific VendorOrder (each seller fulfils independently);
+/// vendorOrderId is the row that actually changed, orderId stays populated
+/// too so "this order's full timeline" stays a single indexed query instead
+/// of a join through every child VendorOrder.
 model OrderStatusHistory {
-  id          String      @id @default(uuid()) @db.Uuid
-  orderId     String      @db.Uuid
-  order       Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  changedById String      @db.Uuid
-  changedBy   User        @relation("changedBy", fields: [changedById], references: [id], onDelete: Restrict)
-  fromStatus  OrderStatus
-  toStatus    OrderStatus
-  createdAt   DateTime    @default(now())
+  id            String       @id @default(uuid()) @db.Uuid
+  orderId       String       @db.Uuid
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  vendorOrderId String?      @db.Uuid
+  vendorOrder   VendorOrder? @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
+  changedById   String       @db.Uuid
+  changedBy     User         @relation("changedBy", fields: [changedById], references: [id], onDelete: Restrict)
+  fromStatus    OrderStatus
+  toStatus      OrderStatus
+  createdAt     DateTime     @default(now())
 
   @@index([orderId])
+  @@index([vendorOrderId])
 }

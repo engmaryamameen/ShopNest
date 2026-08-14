@@ -1,7 +1,8 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
-import { CatalogImportStatus, CatalogSource, Prisma } from '@prisma/client';
+import { CatalogImportStatus, CatalogSource, OfferStatus, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { SYSTEM_VENDOR_NAME, SYSTEM_VENDOR_SLUG } from '../catalog/system-vendor.constants';
 import {
   CATALOG_SOURCE_ADAPTER,
   CatalogSourceAdapter,
@@ -45,6 +46,8 @@ export class CatalogImportService {
         `;
         if (!lock?.acquired) throw new ConflictException('A catalog import is already running');
 
+        const systemVendorId = await this.ensureSystemVendor(tx);
+
         const result: ImportCounts = {
           discoveredCount: products.length,
           createdCount: 0,
@@ -52,7 +55,7 @@ export class CatalogImportService {
           unchangedCount: 0,
         };
 
-        for (const product of products) await this.upsertProduct(tx, source, product, result);
+        for (const product of products) await this.upsertProduct(tx, source, product, systemVendorId, result);
         return result;
     });
 
@@ -76,10 +79,41 @@ export class CatalogImportService {
     });
   }
 
+  /** Idempotent — safe to call on every run rather than relying on the
+   * backfill script having created this row first, so a genuinely fresh
+   * deployment (import runs before anyone thinks to seed/backfill) still
+   * has somewhere to attach imported listings. */
+  private async ensureSystemVendor(tx: Prisma.TransactionClient): Promise<string> {
+    const vendor = await tx.vendor.upsert({
+      where: { slug: SYSTEM_VENDOR_SLUG },
+      update: {},
+      create: {
+        name: SYSTEM_VENDOR_NAME,
+        slug: SYSTEM_VENDOR_SLUG,
+        status: 'APPROVED',
+        contactEmail: 'admin@shopnest.dev',
+        description: 'The platform-operated storefront — imported catalog and first-party listings.',
+        approvedAt: new Date(),
+      },
+    });
+    return vendor.id;
+  }
+
+  /** Writes only canonical fields (name/description/category/media) to
+   * `Product` — price and stock go to the system vendor's `VendorOffer`
+   * instead, never to `Product.priceCents`/`stockQuantity` directly. This
+   * is the mechanical half of "imports never overwrite vendor-owned
+   * commercial data": once the destructive migration drops those columns,
+   * there will be nothing on Product for an import to overwrite even by
+   * mistake — for now (columns not yet dropped), this method simply never
+   * writes to them, deliberately, unlike CatalogService's admin-facing
+   * create/update which still echoes them (see that file's doc comment).
+   */
   private async upsertProduct(
     tx: Prisma.TransactionClient,
     source: CatalogSource,
     incoming: SupplierProduct,
+    systemVendorId: string,
     counts: ImportCounts,
   ): Promise<void> {
     const now = new Date();
@@ -100,42 +134,103 @@ export class CatalogImportService {
       create: { name: incoming.categoryName, slug: categorySlug },
       update: {},
     });
-    const productData = {
+
+    const canonicalData = {
       name: incoming.name,
       description: incoming.description,
+      categoryId: category.id,
+      publishStatus: 'PUBLISHED' as const,
+      // Deprecated echo — see method doc. Dropped in the destructive
+      // migration once nothing (including this importer) needs them.
       priceCents: incoming.priceCents,
       stockQuantity: incoming.stockQuantity,
-      imageUrl: incoming.imageUrl,
-      categoryId: category.id,
       isActive: true,
     };
 
+    const productId = existing
+      ? existing.productId
+      : (
+          await tx.product.create({
+            data: {
+              ...canonicalData,
+              slug: `${this.slugify(incoming.name)}-${source.toLowerCase()}-${incoming.externalId}`,
+            },
+          })
+        ).id;
+
     if (existing) {
-      await tx.product.update({ where: { id: existing.productId }, data: productData });
-      await tx.productSource.update({
-        where: { id: existing.id },
-        data: { checksum, lastSeenAt: now },
-      });
+      await tx.product.update({ where: { id: productId }, data: canonicalData });
+      await tx.productSource.update({ where: { id: existing.id }, data: { checksum, lastSeenAt: now } });
       counts.updatedCount++;
+    } else {
+      await tx.productSource.create({
+        data: { productId, source, externalId: incoming.externalId, checksum, lastSeenAt: now },
+      });
+      counts.createdCount++;
+    }
+
+    if (incoming.imageUrl) {
+      await tx.productMedia.upsert({
+        where: { productId_position: { productId, position: 0 } },
+        create: { productId, url: incoming.imageUrl, position: 0 },
+        update: { url: incoming.imageUrl },
+      });
+    }
+
+    await this.syncOffer(tx, systemVendorId, productId, source, incoming);
+  }
+
+  private async syncOffer(
+    tx: Prisma.TransactionClient,
+    systemVendorId: string,
+    productId: string,
+    source: CatalogSource,
+    incoming: SupplierProduct,
+  ): Promise<void> {
+    const vendorSku = `${source.toLowerCase()}-${incoming.externalId}`;
+    const existingOffer = await tx.vendorOffer.findFirst({
+      where: { vendorId: systemVendorId, productId, variantId: null },
+    });
+
+    if (!existingOffer) {
+      const offer = await tx.vendorOffer.create({
+        data: {
+          vendorId: systemVendorId,
+          productId,
+          vendorSku,
+          priceCents: incoming.priceCents,
+          stockQuantity: incoming.stockQuantity,
+          status: OfferStatus.ACTIVE,
+        },
+      });
+      if (incoming.stockQuantity !== 0) {
+        await tx.inventoryAdjustment.create({
+          data: {
+            vendorOfferId: offer.id,
+            delta: incoming.stockQuantity,
+            reason: 'IMPORT_INITIAL',
+            reference: `import:${source}:${incoming.externalId}`,
+          },
+        });
+      }
       return;
     }
 
-    const product = await tx.product.create({
-      data: {
-        ...productData,
-        slug: `${this.slugify(incoming.name)}-${source.toLowerCase()}-${incoming.externalId}`,
-      },
+    const delta = incoming.stockQuantity - existingOffer.stockQuantity;
+    await tx.vendorOffer.update({
+      where: { id: existingOffer.id },
+      data: { priceCents: incoming.priceCents, stockQuantity: incoming.stockQuantity },
     });
-    await tx.productSource.create({
-      data: {
-        productId: product.id,
-        source,
-        externalId: incoming.externalId,
-        checksum,
-        lastSeenAt: now,
-      },
-    });
-    counts.createdCount++;
+    if (delta !== 0) {
+      await tx.inventoryAdjustment.create({
+        data: {
+          vendorOfferId: existingOffer.id,
+          delta,
+          reason: 'CORRECTION',
+          reference: `import:${source}:${incoming.externalId}`,
+        },
+      });
+    }
   }
 
   private checksum(product: SupplierProduct): string {

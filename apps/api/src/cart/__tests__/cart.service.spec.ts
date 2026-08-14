@@ -5,13 +5,13 @@ import { CartService } from '../cart.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const USER_ID = '00000000-0000-4000-a000-000000000001';
-const PRODUCT_ID = '00000000-0000-4000-b000-000000000001';
+const OFFER_ID = '00000000-0000-4000-b000-000000000001';
 const CART_ID = '00000000-0000-4000-c000-000000000001';
 
 function makeTxMock() {
   return {
     $queryRaw: jest.fn().mockResolvedValue([{ id: CART_ID }]),
-    product: { findUnique: jest.fn() },
+    vendorOffer: { findUnique: jest.fn() },
     cartItem: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn(), delete: jest.fn(), deleteMany: jest.fn() },
   };
 }
@@ -55,83 +55,115 @@ describe('CartService', () => {
       await expect(service.getCart(USER_ID)).rejects.toThrow(NotFoundException);
     });
 
-    it('returns the cart with its items when found', async () => {
-      const cart = { id: CART_ID, userId: USER_ID, items: [] };
+    it('flattens each item\'s vendorOffer/product into the response and drops items whose offer was deleted', async () => {
+      const cart = {
+        id: CART_ID,
+        userId: USER_ID,
+        updatedAt: new Date(),
+        items: [
+          {
+            id: 'item-1',
+            quantity: 2,
+            addedAt: new Date(),
+            updatedAt: new Date(),
+            vendorOffer: {
+              id: OFFER_ID,
+              priceCents: 999,
+              stockQuantity: 5,
+              status: 'ACTIVE',
+              vendor: { id: 'v1', name: 'ShopNest Direct', slug: 'shopnest-direct' },
+              product: { id: 'p1', name: 'Widget', slug: 'widget', media: [{ url: 'https://x/y.jpg' }] },
+            },
+          },
+          // Defensive case: FK is Restrict so this shouldn't happen, but a
+          // null vendorOffer must never crash the response, only be dropped.
+          { id: 'item-2', quantity: 1, addedAt: new Date(), updatedAt: new Date(), vendorOffer: null },
+        ],
+      };
       prisma.cart.findUnique.mockResolvedValue(cart);
-      await expect(service.getCart(USER_ID)).resolves.toBe(cart);
+
+      const result = await service.getCart(USER_ID);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({
+        vendorOfferId: OFFER_ID,
+        quantity: 2,
+        priceCents: 999,
+        stockQuantity: 5,
+        vendor: { name: 'ShopNest Direct' },
+        product: { name: 'Widget', imageUrl: 'https://x/y.jpg' },
+      });
     });
   });
 
   describe('upsertItem', () => {
-    it('rejects a quantity above the configured per-product maximum before touching the database', async () => {
+    it('rejects a quantity above the configured per-listing maximum before touching the database', async () => {
       config.get.mockReturnValue(5);
 
       await expect(
-        service.upsertItem(USER_ID, { productId: PRODUCT_ID, quantity: 6 } as never),
+        service.upsertItem(USER_ID, { vendorOfferId: OFFER_ID, quantity: 6 } as never),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('throws NotFoundException for a product that does not exist', async () => {
-      tx.product.findUnique.mockResolvedValue(null);
+    it('throws NotFoundException for an offer that does not exist', async () => {
+      tx.vendorOffer.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.upsertItem(USER_ID, { productId: PRODUCT_ID, quantity: 1 } as never),
+        service.upsertItem(USER_ID, { vendorOfferId: OFFER_ID, quantity: 1 } as never),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('throws NotFoundException for a product that has been archived (isActive=false)', async () => {
-      tx.product.findUnique.mockResolvedValue({ id: PRODUCT_ID, isActive: false, stockQuantity: 10 });
+    it('throws NotFoundException for an offer that is not ACTIVE', async () => {
+      tx.vendorOffer.findUnique.mockResolvedValue({ id: OFFER_ID, status: 'INACTIVE', stockQuantity: 10 });
 
       await expect(
-        service.upsertItem(USER_ID, { productId: PRODUCT_ID, quantity: 1 } as never),
+        service.upsertItem(USER_ID, { vendorOfferId: OFFER_ID, quantity: 1 } as never),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('throws ConflictException when requested quantity exceeds available stock', async () => {
-      tx.product.findUnique.mockResolvedValue({ id: PRODUCT_ID, isActive: true, stockQuantity: 2 });
+      tx.vendorOffer.findUnique.mockResolvedValue({ id: OFFER_ID, status: 'ACTIVE', stockQuantity: 2 });
 
       await expect(
-        service.upsertItem(USER_ID, { productId: PRODUCT_ID, quantity: 3 } as never),
+        service.upsertItem(USER_ID, { vendorOfferId: OFFER_ID, quantity: 3 } as never),
       ).rejects.toThrow(ConflictException);
     });
 
     it('updates the existing cart item (sets quantity, not delta) when one already exists', async () => {
-      tx.product.findUnique.mockResolvedValue({ id: PRODUCT_ID, isActive: true, stockQuantity: 10 });
+      tx.vendorOffer.findUnique.mockResolvedValue({ id: OFFER_ID, status: 'ACTIVE', stockQuantity: 10 });
       tx.cartItem.findUnique.mockResolvedValue({ id: 'existing-item', quantity: 1 });
       tx.cartItem.update.mockResolvedValue({ id: 'existing-item', quantity: 4 });
 
-      await service.upsertItem(USER_ID, { productId: PRODUCT_ID, quantity: 4 } as never);
+      await service.upsertItem(USER_ID, { vendorOfferId: OFFER_ID, quantity: 4 } as never);
 
-      expect(tx.cartItem.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'existing-item' }, data: { quantity: 4 } }),
-      );
+      expect(tx.cartItem.update).toHaveBeenCalledWith({ where: { id: 'existing-item' }, data: { quantity: 4 } });
       expect(tx.cartItem.create).not.toHaveBeenCalled();
     });
 
-    it('creates a new cart item when none exists yet for this product', async () => {
-      tx.product.findUnique.mockResolvedValue({ id: PRODUCT_ID, isActive: true, stockQuantity: 10 });
+    it('creates a new cart item when none exists yet for this offer', async () => {
+      tx.vendorOffer.findUnique.mockResolvedValue({ id: OFFER_ID, status: 'ACTIVE', stockQuantity: 10 });
       tx.cartItem.findUnique.mockResolvedValue(null);
       tx.cartItem.create.mockResolvedValue({ id: 'new-item', quantity: 2 });
 
-      await service.upsertItem(USER_ID, { productId: PRODUCT_ID, quantity: 2 } as never);
+      await service.upsertItem(USER_ID, { vendorOfferId: OFFER_ID, quantity: 2 } as never);
 
-      expect(tx.cartItem.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { cartId: CART_ID, productId: PRODUCT_ID, quantity: 2 } }),
-      );
+      expect(tx.cartItem.create).toHaveBeenCalledWith({
+        data: { cartId: CART_ID, vendorOfferId: OFFER_ID, quantity: 2 },
+      });
     });
   });
 
   describe('removeItem', () => {
     it('throws NotFoundException when the item is not in the cart', async () => {
       tx.cartItem.findUnique.mockResolvedValue(null);
-      await expect(service.removeItem(USER_ID, PRODUCT_ID)).rejects.toThrow(NotFoundException);
+      await expect(service.removeItem(USER_ID, OFFER_ID)).rejects.toThrow(NotFoundException);
       expect(tx.cartItem.delete).not.toHaveBeenCalled();
     });
 
     it('deletes the item when it exists', async () => {
       tx.cartItem.findUnique.mockResolvedValue({ id: 'item-1' });
-      await service.removeItem(USER_ID, PRODUCT_ID);
+      await service.removeItem(USER_ID, OFFER_ID);
       expect(tx.cartItem.delete).toHaveBeenCalledWith({ where: { id: 'item-1' } });
     });
   });

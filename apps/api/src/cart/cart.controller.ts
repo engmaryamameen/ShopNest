@@ -29,17 +29,17 @@ export class CartController {
   }
 
   @Put('items')
-  @ApiOperation({ summary: 'Upsert cart item (set quantity; max 10 per product)' })
+  @ApiOperation({ summary: 'Upsert cart item (set quantity; max 10 per listing)' })
   upsertItem(@CurrentUser() user: JwtPayload, @Body() dto: UpsertCartItemDto) {
     return this.cart.upsertItem(user.sub, dto);
   }
 
-  @Delete('items/:productId')
+  @Delete('items/:vendorOfferId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Remove a product from cart' })
-  @ApiParam({ name: 'productId', description: 'UUID of the product to remove' })
-  removeItem(@CurrentUser() user: JwtPayload, @Param('productId') productId: string) {
-    return this.cart.removeItem(user.sub, productId);
+  @ApiOperation({ summary: 'Remove a listing from cart' })
+  @ApiParam({ name: 'vendorOfferId', description: 'UUID of the vendor offer to remove' })
+  removeItem(@CurrentUser() user: JwtPayload, @Param('vendorOfferId') vendorOfferId: string) {
+    return this.cart.removeItem(user.sub, vendorOfferId);
   }
 
   @Delete()
