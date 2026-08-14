@@ -39,6 +39,14 @@ export class VendorStaffController {
     return this.staff.acceptInvite(user.sub, user.email, dto.token);
   }
 
+  @Delete('invites/:inviteId')
+  @Roles(Role.VENDOR)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: '[Owner] Revoke a pending (not-yet-accepted) invite' })
+  revokeInvite(@CurrentUser() user: JwtPayload, @Param('inviteId') inviteId: string) {
+    return this.staff.revokeInvite(user.sub, inviteId);
+  }
+
   @Patch(':memberId/role')
   @Roles(Role.VENDOR)
   @ApiOperation({ summary: "[Owner] Change a member's role" })

@@ -1,4 +1,5 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CatalogImportStatus, CatalogSource, OfferStatus, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,8 +10,7 @@ import {
   SupplierProduct,
 } from './catalog-source.adapter';
 
-type ImportCounts = {
-  discoveredCount: number;
+type BatchCounts = {
   createdCount: number;
   updatedCount: number;
   unchangedCount: number;
@@ -35,6 +35,7 @@ export interface ImportPreviewItem {
 export interface ImportPreview {
   discoveredCount: number;
   scopedCount: number;
+  skippedCount: number;
   wouldCreateCount: number;
   wouldUpdateCount: number;
   wouldBeUnchangedCount: number;
@@ -52,6 +53,7 @@ export class CatalogImportService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(CATALOG_SOURCE_ADAPTER) private readonly adapter: CatalogSourceAdapter,
+    private readonly config: ConfigService,
   ) {}
 
   async enqueueDummyJson(scope: ImportScope = {}) {
@@ -80,7 +82,7 @@ export class CatalogImportService {
    * while tuning scope filters before committing to `enqueueDummyJson`. */
   async preview(scope: ImportScope = {}): Promise<ImportPreview> {
     const source = CatalogSource.DUMMY_JSON;
-    const discovered = await this.adapter.fetchProducts();
+    const { products: discovered, skippedCount } = await this.adapter.fetchProducts();
     const scoped = this.applyScope(discovered, scope);
 
     const items: ImportPreviewItem[] = [];
@@ -110,6 +112,7 @@ export class CatalogImportService {
     return {
       discoveredCount: discovered.length,
       scopedCount: scoped.length,
+      skippedCount,
       wouldCreateCount,
       wouldUpdateCount,
       wouldBeUnchangedCount,
@@ -117,55 +120,57 @@ export class CatalogImportService {
     };
   }
 
+  /** Processes a run as a series of small, independently-committed batches
+   * rather than one long transaction spanning the whole catalog. This is
+   * deliberate, not an optimization: one monolithic transaction holds its
+   * locks, its connection, and its rollback cost for the entire run's
+   * duration — all of which scale with catalog size, not with what's
+   * actually safe to hold a lock for. Bounded batches keep each of those
+   * bounded too, and — just as importantly — make the run resumable:
+   * `processedCount` is checkpointed after every batch commits, so a crash,
+   * a lease-expiry reclaim by a different worker, or a plain retry all
+   * resume from the last committed batch instead of redoing (or losing)
+   * work. Every individual product upsert is also independently idempotent
+   * (checksum-compared, unique-constrained), so even reprocessing an
+   * already-committed batch — which shouldn't happen given the checkpoint,
+   * but isn't assumed impossible — is still safe.
+   */
   async executeRun(runId: string) {
     const source = CatalogSource.DUMMY_JSON;
     const run = await this.prisma.catalogImportRun.findUniqueOrThrow({ where: { id: runId } });
-    const discovered = await this.adapter.fetchProducts();
-    const products = this.applyScope(discovered, {
+    const { products: discovered, skippedCount } = await this.adapter.fetchProducts();
+    const scoped = this.applyScope(discovered, {
       categoryScope: run.categoryScope,
       maxRecords: run.maxRecords ?? undefined,
       minImageCount: run.minImageCount ?? undefined,
     });
 
-    const counts = await this.prisma.$transaction(async (tx) => {
-        const [lock] = await tx.$queryRaw<Array<{ acquired: boolean }>>`
-          SELECT pg_try_advisory_xact_lock(hashtext(${`shopnest:catalog-import:${source}`})) AS acquired
-        `;
-        if (!lock?.acquired) throw new ConflictException('A catalog import is already running');
-
-        const systemVendorId = await this.ensureSystemVendor(tx);
-
-        const result: ImportCounts = {
+    // Only the very first entry into a run records totals — a resumed run
+    // (processedCount > 0) must not overwrite them from a second live
+    // fetch, which could in principle disagree slightly with the first
+    // (the supplier's catalog is live, not a frozen snapshot).
+    if (run.processedCount === 0) {
+      await this.prisma.catalogImportRun.update({
+        where: { id: runId },
+        data: {
           discoveredCount: discovered.length,
-          createdCount: 0,
-          updatedCount: 0,
-          unchangedCount: 0,
-        };
+          scopedCount: scoped.length,
+          skippedCount,
+          status: CatalogImportStatus.RUNNING,
+        },
+      });
+    }
 
-        for (const product of products) await this.upsertProduct(tx, source, product, systemVendorId, result);
-        return result;
-    }, {
-      // Every product's upsert (canonical row + media + offer + inventory
-      // adjustment) runs sequentially inside this one transaction, so the
-      // advisory lock and all-or-nothing atomicity cover the entire run —
-      // deliberate, so a mid-run failure never leaves a partially-imported
-      // catalog. That means the timeout has to scale with catalog size:
-      // Prisma's 5s interactive-transaction default is comfortably enough
-      // for a handful of scoped products but was measured to run out
-      // partway through DummyJSON's full ~194-product catalog in this
-      // environment, aborting the whole run. 60s covers a full unscoped
-      // DummyJSON sync with headroom; a supplier catalog large enough to
-      // need more than that would need this run chunked into batches
-      // instead of one longer timeout — not a problem at this project's
-      // scale, flagged here rather than silently papered over.
-      timeout: 60_000,
-      maxWait: 10_000,
-    });
+    const batchSize = this.config.get<number>('app.catalogImportBatchSize', 25);
+    const remaining = scoped.slice(run.processedCount);
+
+    for (let offset = 0; offset < remaining.length; offset += batchSize) {
+      await this.processBatch(runId, source, remaining.slice(offset, offset + batchSize));
+    }
 
     return this.prisma.catalogImportRun.update({
       where: { id: runId },
       data: {
-        ...counts,
         status: CatalogImportStatus.SUCCEEDED,
         completedAt: new Date(),
         lockedAt: null,
@@ -173,6 +178,49 @@ export class CatalogImportService {
         errorMessage: null,
       },
     });
+  }
+
+  /** One batch, one short transaction. If this throws, everything already
+   * committed by prior batches (and the run row's counters/processedCount
+   * alongside them) stands — only this batch rolls back. The caller
+   * (executeRun, ultimately the worker) surfaces the failure for its
+   * existing retry/backoff handling; the next attempt resumes exactly
+   * here via processedCount, not from batch 1. */
+  private async processBatch(runId: string, source: CatalogSource, batch: SupplierProduct[]): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      // Re-acquired per batch, not held for the whole run — cheap, and the
+      // real cross-run guard is the partial unique index on
+      // CatalogImportRun(source) WHERE status IN (QUEUED, RUNNING), which
+      // already makes two concurrently-active runs for the same source
+      // impossible. This is defense-in-depth on top of that, scoped to
+      // "don't let two batches for the same source interleave their
+      // writes," not the sole mechanism preventing concurrent runs.
+      const [lock] = await tx.$queryRaw<Array<{ acquired: boolean }>>`
+        SELECT pg_try_advisory_xact_lock(hashtext(${`shopnest:catalog-import:${source}`})) AS acquired
+      `;
+      if (!lock?.acquired) throw new ConflictException('A catalog import is already running');
+
+      const systemVendorId = await this.ensureSystemVendor(tx);
+      const counts: BatchCounts = { createdCount: 0, updatedCount: 0, unchangedCount: 0 };
+
+      for (const product of batch) await this.upsertProduct(tx, source, product, systemVendorId, counts);
+
+      await tx.catalogImportRun.update({
+        where: { id: runId },
+        data: {
+          processedCount: { increment: batch.length },
+          createdCount: { increment: counts.createdCount },
+          updatedCount: { increment: counts.updatedCount },
+          unchangedCount: { increment: counts.unchangedCount },
+          lockedAt: new Date(),
+        },
+      });
+    });
+    // No explicit timeout override here, unlike the single-transaction
+    // version this replaced — a bounded batch comfortably fits Prisma's
+    // default interactive-transaction timeout regardless of total catalog
+    // size, which is the actual fix; a larger timeout was papering over
+    // the real problem (see DECISIONS.md).
   }
 
   /** Applied identically by `preview()` and `executeRun()` — the whole
@@ -239,7 +287,7 @@ export class CatalogImportService {
     source: CatalogSource,
     incoming: SupplierProduct,
     systemVendorId: string,
-    counts: ImportCounts,
+    counts: BatchCounts,
   ): Promise<void> {
     const now = new Date();
     const checksum = this.checksum(incoming);

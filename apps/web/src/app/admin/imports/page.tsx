@@ -30,10 +30,11 @@ export default async function AdminImportsPage() {
               <th className="text-left px-6 py-3 font-medium text-gray-500">Started</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Status</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Scope</th>
-              <th className="text-left px-6 py-3 font-medium text-gray-500">Discovered</th>
+              <th className="text-left px-6 py-3 font-medium text-gray-500">Progress</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Created</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Updated</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Unchanged</th>
+              <th className="text-left px-6 py-3 font-medium text-gray-500">Skipped</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Error</th>
             </tr>
           </thead>
@@ -51,10 +52,14 @@ export default async function AdminImportsPage() {
                   {run.maxRecords ? ` · max ${run.maxRecords}` : ''}
                   {run.minImageCount ? ` · ≥${run.minImageCount} images` : ''}
                 </td>
-                <td className="px-6 py-4">{run.discoveredCount}</td>
+                <td className="px-6 py-4">
+                  {run.processedCount}/{run.scopedCount}
+                  <span className="text-gray-400"> of {run.discoveredCount} discovered</span>
+                </td>
                 <td className="px-6 py-4 text-green-700">{run.createdCount}</td>
                 <td className="px-6 py-4 text-blue-700">{run.updatedCount}</td>
                 <td className="px-6 py-4 text-gray-500">{run.unchangedCount}</td>
+                <td className="px-6 py-4 text-amber-700">{run.skippedCount}</td>
                 <td className="px-6 py-4 text-red-600 text-xs max-w-xs truncate">{run.errorMessage ?? ''}</td>
               </tr>
             ))}

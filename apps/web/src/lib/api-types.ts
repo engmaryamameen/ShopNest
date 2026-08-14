@@ -330,6 +330,7 @@ export interface AdminAccountResponse {
 export interface ImportPreviewResponse {
   discoveredCount: number;
   scopedCount: number;
+  skippedCount: number;
   wouldCreateCount: number;
   wouldUpdateCount: number;
   wouldBeUnchangedCount: number;
@@ -341,6 +342,9 @@ export interface CatalogImportRunResponse {
   source: string;
   status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
   discoveredCount: number;
+  scopedCount: number;
+  processedCount: number;
+  skippedCount: number;
   createdCount: number;
   updatedCount: number;
   unchangedCount: number;

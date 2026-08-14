@@ -1,6 +1,6 @@
-import { BadGatewayException, Injectable } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CatalogSourceAdapter, SupplierProduct } from './catalog-source.adapter';
+import { CatalogSourceAdapter, FetchProductsResult, SupplierProduct } from './catalog-source.adapter';
 
 type DummyJsonProduct = {
   id?: unknown;
@@ -15,9 +15,11 @@ type DummyJsonProduct = {
 
 @Injectable()
 export class DummyJsonAdapter implements CatalogSourceAdapter {
+  private readonly logger = new Logger(DummyJsonAdapter.name);
+
   constructor(private readonly config: ConfigService) {}
 
-  async fetchProducts(): Promise<SupplierProduct[]> {
+  async fetchProducts(): Promise<FetchProductsResult> {
     const baseUrl = this.config.get<string>('app.catalogImportUrl') ?? 'https://dummyjson.com';
     const timeoutMs = this.config.get<number>('app.catalogImportTimeoutMs') ?? 5000;
     const pageSize = 100;
@@ -35,11 +37,28 @@ export class DummyJsonAdapter implements CatalogSourceAdapter {
       }
     }
 
-    const normalized = products.map((value, index) => this.normalize(value, index));
+    // A single malformed record is permanently invalid, not a transient
+    // fetch failure — skipped and counted rather than aborting every other,
+    // otherwise-valid record in the same fetch. A duplicate external id,
+    // by contrast, is a supplier-side data-integrity problem where silently
+    // picking one copy could hide real corruption — that still hard-fails
+    // the whole fetch rather than being "resolved" on the importer's behalf.
+    let skippedCount = 0;
+    const normalized: SupplierProduct[] = [];
+    for (let index = 0; index < products.length; index++) {
+      const result = this.normalize(products[index], index);
+      if (result === null) {
+        skippedCount++;
+        continue;
+      }
+      normalized.push(result);
+    }
+
     if (new Set(normalized.map((product) => product.externalId)).size !== normalized.length) {
       throw new BadGatewayException('Catalog supplier returned duplicate product identifiers');
     }
-    return normalized;
+
+    return { products: normalized, skippedCount };
   }
 
   private async fetchPage(baseUrl: string, timeoutMs: number, limit: number, skip: number) {
@@ -71,7 +90,10 @@ export class DummyJsonAdapter implements CatalogSourceAdapter {
     };
   }
 
-  private normalize(product: DummyJsonProduct, index: number): SupplierProduct {
+  /** Returns `null` (never throws) for a structurally invalid record — the
+   * caller counts and skips it rather than losing the whole fetch over one
+   * bad record. */
+  private normalize(product: DummyJsonProduct, index: number): SupplierProduct | null {
     const valid =
       Number.isInteger(product.id) &&
       Number(product.id) > 0 &&
@@ -87,8 +109,10 @@ export class DummyJsonAdapter implements CatalogSourceAdapter {
       Number.isInteger(product.stock) &&
       Number(product.stock) >= 0;
 
-    if (!valid)
-      throw new BadGatewayException(`Catalog supplier product at index ${index} is invalid`);
+    if (!valid) {
+      this.logger.warn(`Skipping invalid supplier product at index ${index} (id=${String(product.id)})`);
+      return null;
+    }
 
     const imageUrl = typeof product.thumbnail === 'string' ? product.thumbnail : undefined;
     const imageCount = Array.isArray(product.images) ? product.images.length : imageUrl ? 1 : 0;

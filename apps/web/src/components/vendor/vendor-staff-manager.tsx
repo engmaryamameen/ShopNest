@@ -57,6 +57,18 @@ export function VendorStaffManager({
     });
   }
 
+  function revokeInvite(inviteId: string) {
+    if (!confirm('Revoke this invite? The link will stop working immediately.')) return;
+    startTransition(async () => {
+      try {
+        await api.vendorRevokeInvite(inviteId);
+        router.refresh();
+      } catch (err) {
+        alert(err instanceof ApiError ? err.message : 'Could not revoke invite');
+      }
+    });
+  }
+
   return (
     <div className="space-y-8">
       <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -135,6 +147,15 @@ export function VendorStaffManager({
                     <td className="px-6 py-4 text-sm text-gray-600">{invite.email}</td>
                     <td className="px-6 py-4 text-xs text-gray-400">
                       Expires {new Date(invite.expiresAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => revokeInvite(invite.id)}
+                        disabled={isPending}
+                        className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-50"
+                      >
+                        Revoke invite
+                      </button>
                     </td>
                   </tr>
                 ))}

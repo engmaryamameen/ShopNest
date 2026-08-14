@@ -412,6 +412,11 @@ model VendorStaffInvite {
   invitedBy       User             @relation(fields: [invitedByUserId], references: [id], onDelete: Restrict)
   expiresAt       DateTime
   consumedAt      DateTime?
+  // Distinct from consumedAt on purpose — an owner-revoked invite was
+  // never accepted, and collapsing the two into one timestamp would make
+  // "was this invite used?" ambiguous in exactly the place (an owner's
+  // own member-management view) where that distinction matters most.
+  revokedAt       DateTime?
   createdAt       DateTime         @default(now())
 
   @@index([vendorId])
@@ -537,9 +542,21 @@ model CatalogImportRun {
   lockedBy        String?
   startedAt       DateTime            @default(now())
   completedAt     DateTime?
-  categoryScope  String[] @default([])
-  maxRecords     Int?
-  minImageCount  Int?
+  categoryScope   String[]            @default([])
+  maxRecords      Int?
+  minImageCount   Int?
+
+  // Batch checkpoint — how many of the (deterministically ordered) scoped
+  // products have already been committed. A retry or a lease-expiry
+  // reclaim by a different worker resumes from here instead of
+  // reprocessing the whole run; each batch's own short transaction
+  // advances this alongside its counts, so the two never drift apart.
+  scopedCount    Int @default(0)
+  processedCount Int @default(0)
+  // Permanently-invalid supplier records skipped during this run — never
+  // retried (they're not a transient failure), but explicitly counted
+  // rather than silently dropped.
+  skippedCount   Int @default(0)
 
   @@index([source, startedAt])
   @@index([status, startedAt])

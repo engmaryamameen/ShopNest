@@ -310,4 +310,52 @@ describe('CatalogService', () => {
       });
     });
   });
+
+  describe('searchForListing (vendor offer-picker search)', () => {
+    // "Offer-unfiltered" means unfiltered by *offer existence* — a vendor
+    // can find a product nobody (or every other vendor) is already selling.
+    // It must never mean unfiltered by publication/access rules: an
+    // unpublished, archived, or otherwise-ineligible product must not be
+    // listable by any vendor just because they searched for it.
+    it('only queries PUBLISHED products — DRAFT and ARCHIVED are structurally excluded from the WHERE clause', async () => {
+      prisma.product.findMany.mockResolvedValue([]);
+
+      await service.searchForListing('lamp');
+
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ publishStatus: 'PUBLISHED' }),
+        }),
+      );
+    });
+
+    it('does not filter by offer existence at all — the whole point is finding products nobody (or another vendor) is already selling', async () => {
+      prisma.product.findMany.mockResolvedValue([]);
+
+      await service.searchForListing('lamp');
+
+      const where = prisma.product.findMany.mock.calls[0][0].where;
+      expect(where).not.toHaveProperty('offers');
+      expect(where).not.toHaveProperty('vendorOffers');
+    });
+
+    it('caps the requested limit at 25 and floors it at 1, never trusting the caller\'s raw value', async () => {
+      prisma.product.findMany.mockResolvedValue([]);
+
+      await service.searchForListing('lamp', 1000);
+      expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 25 }));
+
+      await service.searchForListing('lamp', -5);
+      expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 1 }));
+    });
+
+    it('never selects Product fields that would leak commercial data — canonical fields only', async () => {
+      prisma.product.findMany.mockResolvedValue([]);
+
+      await service.searchForListing('lamp');
+
+      const select = prisma.product.findMany.mock.calls[0][0].select;
+      expect(Object.keys(select).sort()).toEqual(['category', 'id', 'name', 'slug', 'variants'].sort());
+    });
+  });
 });

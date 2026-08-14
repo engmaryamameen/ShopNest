@@ -14,6 +14,12 @@ function makePrisma(family: unknown) {
   } as unknown as PrismaService;
 }
 
+function makeFailingPrisma(error: Error) {
+  return {
+    refreshTokenFamily: { findUnique: jest.fn().mockRejectedValue(error) },
+  } as unknown as PrismaService;
+}
+
 const BASE_PAYLOAD: JwtPayload = {
   sub: 'user-1',
   email: 'vendor@example.com',
@@ -62,5 +68,27 @@ describe('JwtAccessStrategy', () => {
     );
     const result = await strategy.validate(BASE_PAYLOAD);
     expect(result).toEqual({ ...BASE_PAYLOAD, role: 'CUSTOMER' });
+  });
+
+  it('selects only status and role from the user — no email, password hash, or other PII on the hot authentication path', async () => {
+    const prisma = makePrisma({ isRevoked: false, user: { status: 'ACTIVE', role: 'CUSTOMER' } });
+    const strategy = new JwtAccessStrategy(makeConfig(), prisma);
+    await strategy.validate(BASE_PAYLOAD);
+
+    const call = (prisma.refreshTokenFamily.findUnique as jest.Mock).mock.calls[0][0];
+    expect(call.where).toEqual({ id: BASE_PAYLOAD.familyId }); // RefreshTokenFamily's primary key — always indexed
+    expect(call.select).toEqual({ isRevoked: true, user: { select: { status: true, role: true } } });
+  });
+
+  // Item 6: a database outage during this per-request live check must
+  // fail closed — never silently fall back to trusting the token's own
+  // (unverified-against-the-DB) embedded claims. validate() has exactly
+  // one job here: reject. Nothing upstream (JwtAuthGuard's default
+  // handleRequest, OptionalJwtAuthGuard's override — see that guard's own
+  // spec) turns this rejection into an authenticated request.
+  it('fails closed — propagates a database error rather than falling back to the token payload', async () => {
+    const dbError = new Error('connection to database failed');
+    const strategy = new JwtAccessStrategy(makeConfig(), makeFailingPrisma(dbError));
+    await expect(strategy.validate(BASE_PAYLOAD)).rejects.toThrow('connection to database failed');
   });
 });

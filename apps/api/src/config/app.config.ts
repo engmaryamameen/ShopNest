@@ -15,6 +15,7 @@ export default registerAs('app', () => ({
   catalogWorkerEnabled: process.env.CATALOG_WORKER_ENABLED !== 'false',
   catalogWorkerPollMs: parseInt(process.env.CATALOG_WORKER_POLL_MS ?? '2000', 10),
   catalogWorkerLeaseSeconds: parseInt(process.env.CATALOG_WORKER_LEASE_SECONDS ?? '300', 10),
+  catalogImportBatchSize: parseInt(process.env.CATALOG_IMPORT_BATCH_SIZE ?? '25', 10),
   catalogScheduleEnabled: process.env.CATALOG_SCHEDULE_ENABLED !== 'false',
   catalogScheduleIntervalMs: parseInt(process.env.CATALOG_SCHEDULE_INTERVAL_MS ?? '21600000', 10),
   geocodingUrl: process.env.GEOCODING_URL ?? 'https://nominatim.openstreetmap.org',

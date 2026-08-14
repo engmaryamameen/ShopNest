@@ -15,6 +15,16 @@ export type SupplierProduct = {
   imageCount: number;
 };
 
+export interface FetchProductsResult {
+  products: SupplierProduct[];
+  /** Records the supplier returned that failed structural validation
+   * (missing/malformed required fields) — permanently invalid, not a
+   * transient fetch failure, so they're skipped and counted rather than
+   * either silently dropped or aborting every other, valid record in the
+   * same fetch. */
+  skippedCount: number;
+}
+
 export interface CatalogSourceAdapter {
-  fetchProducts(): Promise<SupplierProduct[]>;
+  fetchProducts(): Promise<FetchProductsResult>;
 }

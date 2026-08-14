@@ -320,6 +320,9 @@ export const api = {
   vendorRevokeStaff: (memberId: string, cookies?: string) =>
     request<void>(`/vendor/staff/${memberId}`, { method: 'DELETE', cookies }),
 
+  vendorRevokeInvite: (inviteId: string, cookies?: string) =>
+    request<void>(`/vendor/staff/invites/${inviteId}`, { method: 'DELETE', cookies }),
+
   // ── Admin – Vendors ────────────────────────────────────────────────────────
 
   adminListVendors: (status?: string, cookies?: string) => {

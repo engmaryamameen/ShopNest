@@ -61,5 +61,33 @@ describe('RolesGuard', () => {
       reflector.getAllAndOverride.mockReturnValue([Role.ADMIN]);
       expect(guard.canActivate(makeContext({ role: Role.CUSTOMER }))).toBe(false);
     });
+
+    // The hierarchy is scoped to exactly one relationship: SUPER_ADMIN
+    // satisfies a plain ADMIN requirement. It must not become a general
+    // "SUPER_ADMIN passes everything" rule — a route gated on a
+    // *different* role (VENDOR-only vendor-app routes are the real
+    // example: @Roles(Role.VENDOR) on VendorOffersController etc.) has
+    // nothing to do with the admin hierarchy and must keep denying a
+    // SUPER_ADMIN exactly like it denies anyone else without that role.
+    // Vendor-scoped ownership itself (which vendor a caller may act for)
+    // is a separate mechanism entirely (VendorMembershipService, resolved
+    // from VendorMember rows) that RolesGuard never touches — this test
+    // guards the boundary between the two: role-gate vs. ownership-gate.
+    it('does NOT let SUPER_ADMIN through a route gated on an unrelated role (e.g. VENDOR) — the hierarchy only covers ADMIN', () => {
+      reflector.getAllAndOverride.mockReturnValue([Role.VENDOR]);
+      expect(guard.canActivate(makeContext({ role: Role.SUPER_ADMIN }))).toBe(false);
+    });
+
+    it('a plain ADMIN is likewise denied a VENDOR-only route — ADMIN carries no implicit vendor access either', () => {
+      reflector.getAllAndOverride.mockReturnValue([Role.VENDOR]);
+      expect(guard.canActivate(makeContext({ role: Role.ADMIN }))).toBe(false);
+    });
+
+    it('explicitly listing both ADMIN and SUPER_ADMIN on a route works identically to the implicit hierarchy — the hierarchy is additive, not a replacement for correct @Roles() usage', () => {
+      reflector.getAllAndOverride.mockReturnValue([Role.ADMIN, Role.SUPER_ADMIN]);
+      expect(guard.canActivate(makeContext({ role: Role.ADMIN }))).toBe(true);
+      expect(guard.canActivate(makeContext({ role: Role.SUPER_ADMIN }))).toBe(true);
+      expect(guard.canActivate(makeContext({ role: Role.CUSTOMER }))).toBe(false);
+    });
   });
 });

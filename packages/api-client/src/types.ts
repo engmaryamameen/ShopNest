@@ -862,6 +862,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vendor/staff/invites/{inviteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** [Owner] Revoke a pending (not-yet-accepted) invite */
+        delete: operations["VendorStaffController_revokeInvite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/vendor/staff/{memberId}/role": {
         parameters: {
             query?: never;
@@ -2534,6 +2551,25 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VendorStaffController_revokeInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                inviteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
