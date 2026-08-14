@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 
 import { ProductCard } from './product-card';
 import type { ProductCardData } from './product.types';
+import { HorizontalFadeScroll } from '@/components/shared/horizontal-fade-effect';
 
 type ProductSectionRows = 1 | 2;
 
@@ -53,6 +54,7 @@ export function ProductSection({
   showViewAllOnHover = true,
 }: ProductSectionProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const [scrollState, setScrollState] = useState({ canScrollLeft: false, canScrollRight: false });
 
   function scroll(direction: 'previous' | 'next') {
     const scroller = scrollerRef.current;
@@ -81,18 +83,36 @@ export function ProductSection({
         showNavigation={
           showNavigation && products.length > 0
         }
+        canScrollPrevious={scrollState.canScrollLeft}
+        canScrollNext={scrollState.canScrollRight}
         onPrevious={() => scroll('previous')}
         onNext={() => scroll('next')}
       />
 
       {products.length > 0 ? (
         <>
-          <ProductScroller
-            ref={scrollerRef}
-            products={products}
-            rows={rows}
-            showCategory={showCategory}
-          />
+          <HorizontalFadeScroll
+            scrollRef={scrollerRef}
+            onScrollStateChange={setScrollState}
+            className="mt-8"
+            viewportClassName={`
+              grid w-full auto-cols-max grid-flow-col gap-x-4 gap-y-8
+              overflow-x-auto overscroll-x-contain scroll-smooth pb-2
+              [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+              sm:gap-x-5
+              ${rows === 2 ? 'grid-rows-2' : 'grid-rows-1'}
+            `}
+          >
+            {products.map((product, index) => (
+              <div key={product.id} className="w-[300px] snap-start shrink-0">
+                <ProductCard
+                  product={product}
+                  priority={index < (rows === 2 ? 8 : 4)}
+                  showCategory={showCategory}
+                />
+              </div>
+            ))}
+          </HorizontalFadeScroll>
 
           {viewAllHref ? (
             <ViewAllAction
@@ -113,12 +133,16 @@ function SectionHeader({
   eyebrow,
   title,
   showNavigation,
+  canScrollPrevious,
+  canScrollNext,
   onPrevious,
   onNext,
 }: {
   eyebrow?: string;
   title: string;
   showNavigation: boolean;
+  canScrollPrevious: boolean;
+  canScrollNext: boolean;
   onPrevious: () => void;
   onNext: () => void;
 }) {
@@ -165,11 +189,13 @@ function SectionHeader({
             <ScrollButton
               direction="previous"
               onClick={onPrevious}
+              disabled={!canScrollPrevious}
             />
 
             <ScrollButton
               direction="next"
               onClick={onNext}
+              disabled={!canScrollNext}
             />
           </div>
         ) : null}
@@ -181,9 +207,11 @@ function SectionHeader({
 function ScrollButton({
   direction,
   onClick,
+  disabled,
 }: {
   direction: 'previous' | 'next';
   onClick: () => void;
+  disabled: boolean;
 }) {
   const isPrevious = direction === 'previous';
 
@@ -191,6 +219,7 @@ function ScrollButton({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={
         isPrevious
           ? 'Previous products'
@@ -215,6 +244,11 @@ function ScrollButton({
         focus-visible:ring-black/20
         focus-visible:ring-offset-2
 
+        disabled:cursor-not-allowed
+        disabled:text-black/25
+        disabled:hover:scale-100
+        disabled:hover:bg-[#F5F5F5]
+
         sm:h-11
         sm:w-11
       "
@@ -228,68 +262,6 @@ function ScrollButton({
     </button>
   );
 }
-
-const ProductScroller = React.forwardRef<
-  HTMLDivElement,
-  {
-    products: ProductCardData[];
-    rows: ProductSectionRows;
-    showCategory: boolean;
-  }
->(function ProductScroller(
-  {
-    products,
-    rows,
-    showCategory,
-  },
-  ref,
-) {
-  return (
-    <div
-      ref={ref}
-      className={`
-        mt-8
-        grid
-        w-full
-        auto-cols-max
-        grid-flow-col
-        gap-x-4
-        gap-y-8
-        overflow-x-auto
-        overscroll-x-contain
-        scroll-smooth
-        pb-2
-
-        [scrollbar-width:none]
-        [&::-webkit-scrollbar]:hidden
-
-        sm:gap-x-5
-
-        ${
-          rows === 2
-            ? 'grid-rows-2'
-            : 'grid-rows-1'
-        }
-      `}
-    >
-      {products.map((product, index) => (
-        <div
-          key={product.id}
-          className="
-            snap-start
-            shrink-0
-          "
-        >
-          <ProductCard
-            product={product}
-            priority={index < (rows === 2 ? 8 : 4)}
-            showCategory={showCategory}
-          />
-        </div>
-      ))}
-    </div>
-  );
-});
 
 function ViewAllAction({
   href,

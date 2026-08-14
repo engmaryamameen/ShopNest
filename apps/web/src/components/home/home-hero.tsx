@@ -10,7 +10,7 @@ export function HomeHero({ categories }: { categories: HeaderCategory[] }) {
         <div className="hidden lg:block">
           <CategoryRail categories={categories} />
         </div>
-        <div className="sm:hidden h-[374px] w-[0.5px] shrink-0 lg:bg-black/30 lg:block" />
+        <div className="hidden w-[0.5px] shrink-0 lg:block lg:bg-black/30" />
         <div className="min-w-0 w-full flex-1 py-4 sm:pt-7 lg:pl-[41px] lg:pt-[34px]">
           <HeroCarousel />
         </div>

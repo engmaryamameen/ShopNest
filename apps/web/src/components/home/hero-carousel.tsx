@@ -59,7 +59,7 @@ export function HeroCarousel() {
     <section
       aria-roledescription="carousel"
       aria-label="Featured ShopNest campaigns"
-      className="group relative isolate lg:max-h-[344px] lg:min-h-[344px] min-h-full  overflow-hidden rounded-[28px] bg-[#151311] text-white shadow-[0_24px_70px_rgba(20,16,12,0.18)] lg:rounded-[32px]"
+      className="group relative isolate min-h-[390px] sm:min-h-[430px] lg:min-h-[344px] lg:max-h-[344px] overflow-hidden rounded-[28px] bg-[#151311] text-white shadow-[0_24px_70px_rgba(20,16,12,0.18)] lg:rounded-[32px]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onFocusCapture={() => setIsPaused(true)}

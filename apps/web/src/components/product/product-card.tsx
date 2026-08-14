@@ -94,7 +94,7 @@ export function ProductCard({
   }
 
   return (
-    <article className="group min-w-0 w-[300px] h-auto border border-[#eee] p-3">
+    <article data-testid="product-card" className="group min-w-0 w-full h-auto border border-[#eee] p-3">
       <div className="relative overflow-hidden rounded bg-[#f5f5f5]">
         <Link
           href={productUrl}
