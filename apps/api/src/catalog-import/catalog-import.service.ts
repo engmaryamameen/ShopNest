@@ -140,11 +140,6 @@ export class CatalogImportService {
       description: incoming.description,
       categoryId: category.id,
       publishStatus: 'PUBLISHED' as const,
-      // Deprecated echo — see method doc. Dropped in the destructive
-      // migration once nothing (including this importer) needs them.
-      priceCents: incoming.priceCents,
-      stockQuantity: incoming.stockQuantity,
-      isActive: true,
     };
 
     const productId = existing

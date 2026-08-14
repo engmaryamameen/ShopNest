@@ -167,11 +167,7 @@ export class CatalogService {
   // ---------------------------------------------------------------------------
   // Products — canonical row (Product) + its commercial listing
   // (VendorOffer, under the system vendor for anything admin-authored or
-  // imported). See Product's schema doc for why priceCents/stockQuantity
-  // are still written here: they're NOT NULL columns that haven't been
-  // dropped yet (destructive migration, end of Phase 2) and nothing new
-  // reads them — this is a write-only echo to satisfy that constraint
-  // during the transition, not a second source of truth.
+  // imported). Price/stock live exclusively on VendorOffer.
   // ---------------------------------------------------------------------------
 
   async createProduct(dto: CreateProductDto) {
@@ -190,8 +186,6 @@ export class CatalogService {
             description: dto.description,
             categoryId: dto.categoryId,
             brandId: dto.brandId ?? null,
-            priceCents: dto.priceCents, // deprecated echo, see method doc
-            stockQuantity: dto.stockQuantity, // deprecated echo, see method doc
           },
         });
 
@@ -325,11 +319,8 @@ export class CatalogService {
     if (dto.categoryId !== undefined) productData.category = { connect: { id: dto.categoryId } };
     if (dto.brandId !== undefined) productData.brand = dto.brandId ? { connect: { id: dto.brandId } } : { disconnect: true };
     if (dto.isActive !== undefined) {
-      productData.isActive = dto.isActive; // deprecated echo
       productData.publishStatus = dto.isActive ? 'PUBLISHED' : 'ARCHIVED';
     }
-    if (dto.priceCents !== undefined) productData.priceCents = dto.priceCents; // deprecated echo
-    if (dto.stockQuantity !== undefined) productData.stockQuantity = dto.stockQuantity; // deprecated echo
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -360,7 +351,7 @@ export class CatalogService {
       const product = await tx.product.findUnique({ where: { id } });
       if (!product) throw new NotFoundException('Product not found');
 
-      await tx.product.update({ where: { id }, data: { isActive: false, publishStatus: 'ARCHIVED' } });
+      await tx.product.update({ where: { id }, data: { publishStatus: 'ARCHIVED' } });
       // Archiving a product must stop it being purchasable everywhere it's
       // listed, not just under the system vendor — matches "no dead/
       // decorative state": an archived product with a still-ACTIVE offer
@@ -459,11 +450,14 @@ export class CatalogService {
   }
 
   /** Flattens a Product + buy-box-offer + first-media row into the
-   * PLP/card shape (`ProductCardData` on the frontend) — a product with no
-   * ACTIVE offer never reaches here (filtered upstream), so `offers[0]`
-   * is always present for any row this is called on. */
+   * PLP/card shape (`ProductCardData` on the frontend). `listProducts`
+   * filters to only products with an ACTIVE offer before calling this, so
+   * `offers[0]` is always present there — `listAllProducts`/`getProductById`
+   * (admin) intentionally do *not* filter that way (admin needs to see an
+   * archived or offer-less product too), so `offer` can be undefined for
+   * those callers; every field below falls back accordingly. */
   private toProductCard(
-    product: Prisma.ProductGetPayload<{ include: typeof BUY_BOX_OFFER_INCLUDE & { category: { select: typeof CATEGORY_SELECT }; brand: { select: typeof BRAND_SELECT } } }>,
+    product: Prisma.ProductGetPayload<{ include: typeof BUY_BOX_OFFER_INCLUDE & { category: { select: typeof CATEGORY_SELECT }; brand: { select: typeof BRAND_SELECT } } }> & { publishStatus: string },
   ) {
     const offer = product.offers[0];
     return {
@@ -474,8 +468,14 @@ export class CatalogService {
       categoryId: product.categoryId,
       category: product.category,
       brand: product.brand,
+      publishStatus: product.publishStatus,
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
+      // The buy-box VendorOffer's own id — this, not the canonical
+      // product id, is what a cart line actually keys on. Null if a
+      // product has no active offer (admin-only views; the storefront
+      // listing filters these out before reaching this mapper).
+      offerId: offer?.id ?? null,
       priceCents: offer?.priceCents ?? 0,
       compareAtPriceCents: offer?.compareAtPriceCents ?? null,
       stockQuantity: offer?.stockQuantity ?? 0,
@@ -511,6 +511,10 @@ export class CatalogService {
       images: product.media.map((m) => ({ url: m.url, altText: m.altText })),
       imageUrl: product.media[0]?.url ?? null,
       attributes: (product.attributeValues ?? []).map((v) => ({ name: v.attributeDefinition.name, slug: v.attributeDefinition.slug, value: v.value })),
+      // The offer the primary "Add to cart" button targets — cheapest
+      // ACTIVE offer wins the buy box, same rule as the PLP. A shopper who
+      // wants a different seller picks from `offers` instead.
+      offerId: cheapest?.id ?? null,
       priceCents: cheapest?.priceCents ?? 0,
       compareAtPriceCents: cheapest?.compareAtPriceCents ?? null,
       stockQuantity: product.offers.reduce((sum, o) => sum + o.stockQuantity, 0),

@@ -259,6 +259,23 @@ export interface paths {
         patch: operations["UsersController_updateStatus"];
         trace?: never;
     };
+    "/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all brands */
+        get: operations["CatalogController_listBrands"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/categories": {
         parameters: {
             query?: never;
@@ -391,7 +408,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Upsert cart item (set quantity; max 10 per product) */
+        /** Upsert cart item (set quantity; max 10 per listing) */
         put: operations["CartController_upsertItem"];
         post?: never;
         delete?: never;
@@ -400,7 +417,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/cart/items/{productId}": {
+    "/cart/items/{vendorOfferId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -410,7 +427,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a product from cart */
+        /** Remove a listing from cart */
         delete: operations["CartController_removeItem"];
         options?: never;
         head?: never;
@@ -689,6 +706,16 @@ export interface components {
              * @example electronics
              */
             slug?: string;
+            /**
+             * Format: uuid
+             * @description Parent category UUID — omit for a root category
+             */
+            parentId?: string;
+            /** @description Sort order among siblings */
+            position?: number;
+            isActive?: boolean;
+            /** Format: uri */
+            imageUrl?: string;
         };
         UpdateCategoryDto: {
             /** @example Electronics */
@@ -698,6 +725,16 @@ export interface components {
              * @example electronics
              */
             slug?: string;
+            /** @description Sort order among siblings */
+            position?: number;
+            isActive?: boolean;
+            /** Format: uri */
+            imageUrl?: string;
+            /**
+             * Format: uuid
+             * @description Parent category UUID, or null to move to root
+             */
+            parentId?: string | null;
         };
         CreateProductDto: {
             /** @example Wireless Headphones */
@@ -723,6 +760,11 @@ export interface components {
             imageUrl?: string;
             /** @example uuid-of-category */
             categoryId: string;
+            /**
+             * Format: uuid
+             * @example uuid-of-brand
+             */
+            brandId?: string;
         };
         UpdateProductDto: {
             /** @example Wireless Headphones */
@@ -748,14 +790,20 @@ export interface components {
             imageUrl?: string;
             /** @example uuid-of-category */
             categoryId?: string;
+            /**
+             * Format: uuid
+             * @example uuid-of-brand
+             */
+            brandId?: string;
             isActive?: boolean;
         };
         UpsertCartItemDto: {
             /**
              * Format: uuid
-             * @example uuid-of-product
+             * @description The specific seller's listing to add — not the canonical product id
+             * @example uuid-of-vendor-offer
              */
-            productId: string;
+            vendorOfferId: string;
             /**
              * @description Quantity to set (not delta)
              * @example 2
@@ -1083,6 +1131,23 @@ export interface operations {
             };
         };
     };
+    CatalogController_listBrands: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     CatalogController_listCategories: {
         parameters: {
             query?: never;
@@ -1170,8 +1235,10 @@ export interface operations {
             query?: {
                 /** @description Full-text search query */
                 q?: string;
-                /** @description Filter by category slug */
+                /** @description Filter by category slug — also matches every descendant category */
                 category?: string;
+                /** @description Filter by brand slug */
+                brand?: string;
                 sortBy?: "createdAt" | "priceCents" | "name";
                 sortOrder?: "asc" | "desc";
                 page?: number;
@@ -1208,9 +1275,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": Record<string, never>;
-                };
+                content?: never;
             };
         };
     };
@@ -1227,9 +1292,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": Record<string, never>[];
-                };
+                content?: never;
             };
         };
     };
@@ -1248,9 +1311,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": Record<string, never>;
-                };
+                content?: never;
             };
         };
     };
@@ -1292,9 +1353,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": Record<string, never>;
-                };
+                content?: never;
             };
         };
     };
@@ -1311,9 +1370,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": Record<string, never>;
-                };
+                content?: never;
             };
         };
     };
@@ -1351,9 +1408,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": Record<string, never>;
-                };
+                content?: never;
             };
         };
     };
@@ -1362,8 +1417,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the product to remove */
-                productId: string;
+                /** @description UUID of the vendor offer to remove */
+                vendorOfferId: string;
             };
             cookie?: never;
         };

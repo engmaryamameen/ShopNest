@@ -166,6 +166,38 @@ All three produced the same expected schema. Nothing about migration `0005` depe
 
 All 24 tests pass, run twice in a row for stability (desktop project × the full journey, `mobile-chromium` project × a focused responsive-layout pass — full duplication of business logic across viewports isn't proportionate to what actually changes between them).
 
+## Catalog Remodel (Phase 2)
+
+### Product/VendorOffer split — additive migration, then a separately-confirmed destructive one
+
+`Product` (canonical — name/description/category/brand/media) and `VendorOffer` (commercial — price/stock/condition, owned by a `Vendor`) used to be one row. Splitting them landed in two migrations, not one:
+
+- **`0006_phase2_catalog_vendor_remodel`** (additive): every new table (`Brand`, `Vendor`, `VendorMember`, `VendorOffer`, `VendorOrder`, `ProductMedia`, `AttributeDefinition`/`ProductAttributeValue`, `ProductVariant`/`VariantAttributeValue`, `InventoryAdjustment`), plus nullable `vendorOfferId`/`vendorOrderId`/`vendorName` columns alongside the still-live `Product.priceCents`/`stockQuantity`/`imageUrl`/`isActive` and `CartItem`/`OrderItem.productId`. Nothing existing was dropped in this step.
+- **`prisma/backfill-vendor-offers.ts`** (idempotent, safe to re-run — checked before every write): seeded the system vendor (`"ShopNest Direct"`), then for every existing `Product` created one `VendorOffer` (+ a matching `IMPORT_INITIAL` `InventoryAdjustment`), moved every `Product.imageUrl` into `ProductMedia`, re-pointed every `CartItem`/`OrderItem`/`OrderStatusHistory` at the new tables. Run against dev: 226 `VendorOffer`s, 194 `ProductMedia`, 18 `CartItem`s, 36 `Order`s backfilled; re-run confirmed idempotent (0 duplicates).
+- Every service (`CatalogService`, `CartService`, `OrdersService`, `CatalogImportService`) was rewritten to read/write the new tables exclusively — `Product.priceCents` etc. were kept live only as a **write-only echo** during this window (satisfying the NOT-NULL constraint; nothing new ever read them) — see the git history for `catalog.service.ts`/`catalog-import.service.ts` if the exact echo code is ever needed for reference.
+- **`0007_phase2_destructive_drop_deprecated`** (destructive, explicitly confirmed before running — see below): drops `Product.priceCents`/`stockQuantity`/`imageUrl`/`isActive` and `CartItem`/`OrderItem.productId`; makes `CartItem.vendorOfferId` and `OrderItem.vendorOfferId`/`vendorOrderId`/`vendorName` `NOT NULL`. The backfill script was deleted in the same commit — its job was complete and proven, and it can no longer compile against the post-destructive schema (by design: it read/wrote exactly the columns this migration removes).
+- `prisma migrate diff` was tried first for `0007` and produced an **incorrect** script — it re-added the `productId` foreign key with a different `onDelete` behavior instead of emitting `DROP COLUMN`. `0007` was hand-written instead, matching every other migration in this project's history.
+
+### A real bug the clone-database verification caught: `prisma format`'s silent relation auto-completion
+
+Before applying `0007` anywhere, it was tested end-to-end against a full `CREATE DATABASE ... WITH TEMPLATE shopnest_dev` clone of the real dev database — not just a schema/type check. That caught a genuine bug: after removing `CartItem.product`/`OrderItem.product` from the schema, `Product.cartItems`/`Product.orderItems` were left behind as now-dangling back-relations. `prisma format` — run routinely after every schema edit — silently "fixed" this by **re-inserting** a new `productId` field and relation on `CartItem`/`OrderItem` to keep the relation pair complete, rather than erroring. `prisma validate` passed (the schema was internally consistent), `prisma generate` succeeded, and `tsc` was clean — the phantom field only surfaced as a runtime `P2022` ("column does not exist") the moment the app tried to query a `CartItem` against the destructively-migrated clone, because the live database correctly had no such column while the regenerated client still expected one.
+
+Fix: removed the `cartItems`/`orderItems` back-relations from `Product` entirely (the relationship now only exists through `VendorOffer`), which stopped `prisma format` from having anything to auto-complete. Re-verified: 149 unit + 15 integration tests green against the clone, then the same migration applied to the real dev database with the same suite green again.
+
+**Takeaway codified as practice, not just a one-off fix**: `prisma format`/`validate`/`generate` all succeeding is necessary but not sufficient proof a schema change is safe — a schema-level tool can silently paper over a relational mismatch that only a real database + a real query surfaces. Every migration in this project (0005, 0006, 0007) has now been proven this way — against a real, disposable clone carrying real data, not just structurally.
+
+### Currency: no per-offer field, by construction
+
+`VendorOffer` deliberately has no `currency` column. The platform stays single-currency (`Order.currency`, already `"USD"`-default, unchanged) — adding a per-offer `currency` field would invite exactly the bug the Phase 2 corrections asked to avoid (a checkout silently mixing currencies because the schema made it representable). If multi-currency is ever needed, it needs an explicit conversion/settlement design, not a field that happens to exist.
+
+### VendorOffer uniqueness for a nullable `variantId`
+
+A normal composite `@@unique([vendorId, productId, variantId])` does not stop the same vendor from creating unlimited duplicate base-product offers, because Postgres treats every `NULL` in a unique constraint as distinct from every other `NULL` (so `variantId IS NULL` rows never collide with each other under a plain composite key). `0006` adds a hand-written partial unique index — `UNIQUE (vendorId, productId) WHERE "variantId" IS NULL` — specifically to close that gap; the declarative `@@unique` still correctly covers every variant-specific row on its own, since non-null tuples compare normally.
+
+### Every stock mutation gets a matching `InventoryAdjustment`, same transaction, no exceptions
+
+Checkout decrement, cancellation/return restoration, admin manual edit, and import initialization/re-sync each write one `InventoryAdjustment` row (`SALE`/`RETURN`/`CORRECTION`/`IMPORT_INITIAL`) inside the exact same Prisma transaction as the `VendorOffer.stockQuantity` change it explains — verified by a unit test at each call site (`orders.service.spec.ts`'s cancellation-restore test asserts both the offer update *and* the adjustment's `delta` sign; `catalog.service.spec.ts`'s create-product test asserts the same for initial stock; `catalog-import.service.spec.ts`'s re-sync test asserts a `CORRECTION` delta, not a duplicate `IMPORT_INITIAL`).
+
 ## Data Model
 
 ### Integer cents

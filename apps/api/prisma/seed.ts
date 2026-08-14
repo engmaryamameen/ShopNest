@@ -1,11 +1,14 @@
 /**
- * Database seed script — creates an admin user and sample categories/products.
+ * Database seed script — creates an admin user, the platform system vendor,
+ * and sample categories/products (each with a VendorOffer, so they're
+ * actually purchasable — Product itself carries no price/stock).
  * Run: pnpm --filter @shopnest/api db:seed
  *
  * Only creates records if they don't already exist (idempotent).
  */
 import { PrismaClient, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { SYSTEM_VENDOR_NAME, SYSTEM_VENDOR_SLUG } from '../src/catalog/system-vendor.constants';
 
 const prisma = new PrismaClient();
 
@@ -24,6 +27,20 @@ async function main() {
   } else {
     console.log(`Admin already exists: ${adminEmail}`);
   }
+
+  const systemVendor = await prisma.vendor.upsert({
+    where: { slug: SYSTEM_VENDOR_SLUG },
+    update: {},
+    create: {
+      name: SYSTEM_VENDOR_NAME,
+      slug: SYSTEM_VENDOR_SLUG,
+      status: 'APPROVED',
+      contactEmail: adminEmail,
+      description: 'The platform-operated storefront — imported catalog and first-party listings.',
+      approvedAt: new Date(),
+    },
+  });
+  console.log(`System vendor ready: ${systemVendor.name}`);
 
   const categories = [
     { name: 'Electronics', slug: 'electronics' },
@@ -64,14 +81,43 @@ async function main() {
     },
   ];
 
-  for (const product of products) {
-    await prisma.product.upsert({
-      where: { slug: product.slug },
+  for (const { priceCents, stockQuantity, ...productData } of products) {
+    const product = await prisma.product.upsert({
+      where: { slug: productData.slug },
       update: {},
-      create: product,
+      create: productData,
     });
+
+    const offer = await prisma.vendorOffer.upsert({
+      where: { vendorId_vendorSku: { vendorId: systemVendor.id, vendorSku: product.slug } },
+      update: {},
+      create: {
+        vendorId: systemVendor.id,
+        productId: product.id,
+        vendorSku: product.slug,
+        priceCents,
+        stockQuantity,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (stockQuantity > 0) {
+      const alreadyRecorded = await prisma.inventoryAdjustment.findFirst({
+        where: { vendorOfferId: offer.id, reason: 'IMPORT_INITIAL' },
+      });
+      if (!alreadyRecorded) {
+        await prisma.inventoryAdjustment.create({
+          data: {
+            vendorOfferId: offer.id,
+            delta: stockQuantity,
+            reason: 'IMPORT_INITIAL',
+            reference: `seed:${product.id}`,
+          },
+        });
+      }
+    }
   }
-  console.log(`Products seeded: ${products.map((p) => p.name).join(', ')}`);
+  console.log(`Products + offers seeded: ${products.map((p) => p.name).join(', ')}`);
 }
 
 main()

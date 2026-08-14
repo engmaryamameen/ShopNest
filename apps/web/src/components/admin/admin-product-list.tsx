@@ -3,24 +3,10 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
+import type { ProductCardResponse, CategoryResponse } from '@/lib/api-types';
 
-interface Product {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  priceCents: number;
-  stockQuantity: number;
-  imageUrl?: string | null;
-  isActive: boolean;
-  category?: { name: string; slug: string };
-}
-
-interface Category {
-  id: string;
-  name: string;
-  slug: string;
-}
+type Product = ProductCardResponse;
+type Category = CategoryResponse;
 
 interface AdminProductListProps {
   products: Product[];
@@ -66,7 +52,7 @@ export function AdminProductList({ products, categories }: AdminProductListProps
       stockQuantity: product.stockQuantity,
       categoryId: product.category ? categories.find((c) => c.slug === product.category?.slug)?.id ?? '' : '',
       imageUrl: product.imageUrl ?? '',
-      isActive: product.isActive,
+      isActive: product.publishStatus !== 'ARCHIVED',
     });
     setShowCreateForm(false);
   }
@@ -204,8 +190,8 @@ export function AdminProductList({ products, categories }: AdminProductListProps
                 <td className="px-6 py-4 text-sm font-medium">{formatPrice(product.priceCents)}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{product.stockQuantity}</td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${product.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                    {product.isActive ? 'Active' : 'Inactive'}
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${product.publishStatus !== 'ARCHIVED' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                    {product.publishStatus !== 'ARCHIVED' ? 'Active' : 'Inactive'}
                   </span>
                 </td>
                 <td className="px-6 py-4">

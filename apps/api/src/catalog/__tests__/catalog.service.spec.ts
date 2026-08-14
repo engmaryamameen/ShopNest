@@ -225,8 +225,10 @@ describe('CatalogService', () => {
         stockQuantity: 5,
       } as never);
 
+      // Product itself never receives commercial fields — those go only to
+      // the VendorOffer created alongside it (assertion below).
       expect(tx.product.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ priceCents: 999, stockQuantity: 5 }) }),
+        expect.objectContaining({ data: expect.not.objectContaining({ priceCents: expect.anything() }) }),
       );
       expect(tx.vendorOffer.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -300,7 +302,7 @@ describe('CatalogService', () => {
 
       expect(tx.product.update).toHaveBeenCalledWith({
         where: { id: 'p1' },
-        data: { isActive: false, publishStatus: 'ARCHIVED' },
+        data: { publishStatus: 'ARCHIVED' },
       });
       expect(tx.vendorOffer.updateMany).toHaveBeenCalledWith({
         where: { productId: 'p1' },

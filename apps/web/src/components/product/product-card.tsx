@@ -42,7 +42,7 @@ export function ProductCard({
   );
 
   function handleAddToCart() {
-    if (isOutOfStock || isPending) {
+    if (isOutOfStock || isPending || !product.offerId) {
       return;
     }
 
@@ -51,7 +51,7 @@ export function ProductCard({
     startTransition(async () => {
       try {
         await api.upsertCartItem({
-          productId: product.id,
+          vendorOfferId: product.offerId!,
           quantity: 1,
         });
 

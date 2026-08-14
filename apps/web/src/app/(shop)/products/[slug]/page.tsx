@@ -1,18 +1,8 @@
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import { api, ApiError } from '@/lib/api';
+import type { ProductDetailResponse } from '@/lib/api-types';
 import { AddToCartButton } from '@/components/shop/add-to-cart-button';
-
-interface Product {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  priceCents: number;
-  imageUrl?: string | null;
-  stockQuantity: number;
-  category?: { name: string; slug: string };
-}
 
 function formatPrice(cents: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
@@ -20,10 +10,10 @@ function formatPrice(cents: number): string {
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  let product: Product;
+  let product: ProductDetailResponse;
 
   try {
-    product = (await api.getProduct(slug)) as Product;
+    product = await api.getProduct(slug);
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       notFound();
@@ -71,12 +61,17 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             ) : (
               <span className="text-red-500 text-sm font-medium">Out of stock</span>
             )}
+            {product.offers.length > 1 && (
+              <span className="ml-3 text-sm text-gray-500">
+                {product.offers.length} sellers — sold by {product.offers[0].vendor.name}
+              </span>
+            )}
           </div>
 
           <p className="mt-6 text-gray-600 leading-relaxed">{product.description}</p>
 
           <div className="mt-8">
-            <AddToCartButton productId={product.id} stockQuantity={product.stockQuantity} />
+            <AddToCartButton offerId={product.offerId} stockQuantity={product.stockQuantity} />
           </div>
         </div>
       </div>

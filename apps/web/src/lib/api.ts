@@ -1,11 +1,13 @@
 import type { components } from '@shopnest/api-client';
 
 import type {
+  BrandResponse,
   CartResponse,
   CategoryResponse,
   OrderResponse,
+  ProductCardResponse,
+  ProductDetailResponse,
   ProductListResponse,
-  ProductResponse,
   UserSummary,
 } from './api-types';
 
@@ -127,6 +129,8 @@ export const api = {
 
   listCategories: (cookies?: string) => request<CategoryResponse[]>('/categories', { cookies }),
 
+  listBrands: (cookies?: string) => request<BrandResponse[]>('/brands', { cookies }),
+
   listProducts: (params: Record<string, string | number>, cookies?: string) => {
     const qs = new URLSearchParams(
       Object.entries(params).map(([k, v]) => [k, String(v)]),
@@ -135,7 +139,7 @@ export const api = {
   },
 
   getProduct: (slug: string, cookies?: string) =>
-    request<ProductResponse>(`/products/${slug}`, { cookies }),
+    request<ProductDetailResponse>(`/products/${slug}`, { cookies }),
 
   reverseGeocode: (latitude: number, longitude: number) => {
     const params = new URLSearchParams({
@@ -157,8 +161,8 @@ export const api = {
   upsertCartItem: (body: Schemas['UpsertCartItemDto'], cookies?: string) =>
     request<CartItemFromUpsert>('/cart/items', { method: 'PUT', body, cookies }),
 
-  removeCartItem: (productId: string, cookies?: string) =>
-    request<void>(`/cart/items/${productId}`, { method: 'DELETE', cookies }),
+  removeCartItem: (vendorOfferId: string, cookies?: string) =>
+    request<void>(`/cart/items/${vendorOfferId}`, { method: 'DELETE', cookies }),
 
   clearCart: (cookies?: string) => request<void>('/cart', { method: 'DELETE', cookies }),
 
@@ -189,13 +193,13 @@ export const api = {
 
   // ── Admin – Products ───────────────────────────────────────────────────────
 
-  adminListProducts: (cookies?: string) => request<ProductResponse[]>('/admin/products', { cookies }),
+  adminListProducts: (cookies?: string) => request<ProductCardResponse[]>('/admin/products', { cookies }),
 
   adminCreateProduct: (body: Schemas['CreateProductDto'], cookies?: string) =>
-    request<ProductResponse>('/products', { method: 'POST', body, cookies }),
+    request<ProductDetailResponse>('/products', { method: 'POST', body, cookies }),
 
   adminUpdateProduct: (id: string, body: Schemas['UpdateProductDto'], cookies?: string) =>
-    request<ProductResponse>(`/products/${id}`, { method: 'PATCH', body, cookies }),
+    request<ProductDetailResponse>(`/products/${id}`, { method: 'PATCH', body, cookies }),
 
   adminArchiveProduct: (id: string, cookies?: string) =>
     request<void>(`/products/${id}`, { method: 'DELETE', cookies }),
@@ -205,8 +209,11 @@ export const api = {
   adminCreateCategory: (body: Schemas['CreateCategoryDto'], cookies?: string) =>
     request<CategoryResponse>('/categories', { method: 'POST', body, cookies }),
 
-  adminUpdateCategory: (id: string, body: { name?: string; slug?: string }, cookies?: string) =>
-    request<CategoryResponse>(`/categories/${id}`, { method: 'PATCH', body, cookies }),
+  adminUpdateCategory: (
+    id: string,
+    body: { name?: string; slug?: string; parentId?: string | null; position?: number; isActive?: boolean; imageUrl?: string },
+    cookies?: string,
+  ) => request<CategoryResponse>(`/categories/${id}`, { method: 'PATCH', body, cookies }),
 
   adminDeleteCategory: (id: string, cookies?: string) =>
     request<void>(`/categories/${id}`, { method: 'DELETE', cookies }),
@@ -227,18 +234,17 @@ export const api = {
     }),
 };
 
-// `PUT /cart/items` returns the created/updated cart item with only a partial
-// product projection (`id, name, slug, priceCents`) — narrower than the full
-// `CartItemResponse.product` shape returned by `GET /cart`, per
-// `cart.service.ts`'s `upsertItem()`. Typed separately so callers aren't led
-// to expect fields (`imageUrl`, `stockQuantity`, `isActive`) that this
-// specific response doesn't actually carry.
+// `PUT /cart/items` returns the raw upserted CartItem row (no nested
+// product/vendor — that flattening is `CartService.toCartResponse()`,
+// applied only to `GET /cart`'s full list). Typed separately so callers
+// aren't led to expect fields this specific response doesn't carry; every
+// call site invalidates and refetches the full cart anyway rather than
+// relying on this return value for display.
 interface CartItemFromUpsert {
   id: string;
   cartId: string;
-  productId: string;
+  vendorOfferId: string;
   quantity: number;
   addedAt: string;
   updatedAt: string;
-  product: { id: string; name: string; slug: string; priceCents: number };
 }

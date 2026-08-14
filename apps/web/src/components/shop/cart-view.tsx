@@ -29,13 +29,10 @@ export function CartView({ initialCart }: CartViewProps) {
   const cart: Cart = data ?? initialCart;
   const removeItem = useRemoveCartItem();
 
-  const total = cart.items.reduce(
-    (sum, item) => sum + item.product.priceCents * item.quantity,
-    0,
-  );
+  const total = cart.items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
 
-  function handleRemove(productId: string) {
-    removeItem.mutate(productId);
+  function handleRemove(vendorOfferId: string) {
+    removeItem.mutate(vendorOfferId);
   }
 
   function handleCheckout() {
@@ -95,19 +92,16 @@ export function CartView({ initialCart }: CartViewProps) {
                 >
                   {item.product.name}
                 </Link>
-                <p className="text-gray-500 text-sm mt-0.5">
-                  {formatPrice(item.product.priceCents)} each
-                </p>
+                <p className="text-gray-400 text-xs mt-0.5">Sold by {item.vendor.name}</p>
+                <p className="text-gray-500 text-sm mt-0.5">{formatPrice(item.priceCents)} each</p>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
-                  <span className="font-semibold">
-                    {formatPrice(item.product.priceCents * item.quantity)}
-                  </span>
+                  <span className="font-semibold">{formatPrice(item.priceCents * item.quantity)}</span>
                 </div>
               </div>
 
               <button
-                onClick={() => handleRemove(item.productId)}
+                onClick={() => handleRemove(item.vendorOfferId)}
                 disabled={removeItem.isPending}
                 className="text-red-400 hover:text-red-600 text-sm transition-colors disabled:opacity-50"
                 aria-label={`Remove ${item.product.name} from cart`}
@@ -128,7 +122,7 @@ export function CartView({ initialCart }: CartViewProps) {
                 <span>
                   {item.product.name} × {item.quantity}
                 </span>
-                <span>{formatPrice(item.product.priceCents * item.quantity)}</span>
+                <span>{formatPrice(item.priceCents * item.quantity)}</span>
               </div>
             ))}
           </div>

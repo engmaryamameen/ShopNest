@@ -233,12 +233,8 @@ model Brand {
 }
 
 /// Canonical product — "what the item is," never "who sells it, at what
-/// price, with how much stock." `priceCents`/`stockQuantity`/`imageUrl`
-/// below are the pre-Phase-2 commercial fields, kept temporarily so the
-/// additive migration + backfill + application cutover can land before
-/// they're dropped in the follow-up destructive migration (DECISIONS.md
-/// "Phase 2 migration sequence") — do not read them in any new code; use
-/// `VendorOffer` for price/stock and `ProductMedia` for images instead.
+/// price, with how much stock." Price/stock live on `VendorOffer`, images
+/// on `ProductMedia` — Product itself carries no commercial fields.
 model Product {
   id            String               @id @default(uuid()) @db.Uuid
   name          String
@@ -250,20 +246,9 @@ model Product {
   category      Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   publishStatus ProductPublishStatus @default(PUBLISHED)
 
-  /// @deprecated commercial data — moving to VendorOffer, see model doc above.
-  priceCents    Int
-  /// @deprecated commercial data — moving to VendorOffer, see model doc above.
-  stockQuantity Int     @default(0)
-  /// @deprecated superseded by ProductMedia (ordered, multi-image).
-  imageUrl      String?
-  /// @deprecated superseded by publishStatus.
-  isActive      Boolean @default(true)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  cartItems       CartItem[]
-  orderItems      OrderItem[]
   sources         ProductSource[]
   media           ProductMedia[]
   attributeValues ProductAttributeValue[]
@@ -272,7 +257,6 @@ model Product {
 
   @@index([categoryId])
   @@index([brandId])
-  @@index([isActive, createdAt])
   @@index([publishStatus, createdAt])
 }
 
@@ -538,23 +522,19 @@ model Cart {
   items CartItem[]
 }
 
-/// @deprecated productId — price/stock authority (and thus what a cart line
-/// actually locks against at checkout) is moving to vendorOfferId. Both are
-/// nullable during the additive phase; the destructive migration drops
-/// productId and makes vendorOfferId required. See Product's model doc.
+/// A cart line always references one concrete purchasable VendorOffer —
+/// never the canonical product directly, since price/stock authority (what
+/// checkout actually locks against) lives there.
 model CartItem {
-  id            String       @id @default(uuid()) @db.Uuid
-  cartId        String       @db.Uuid
-  cart          Cart         @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  productId     String?      @db.Uuid
-  product       Product?     @relation(fields: [productId], references: [id], onDelete: Restrict)
-  vendorOfferId String?      @db.Uuid
-  vendorOffer   VendorOffer? @relation(fields: [vendorOfferId], references: [id], onDelete: Restrict)
+  id            String      @id @default(uuid()) @db.Uuid
+  cartId        String      @db.Uuid
+  cart          Cart        @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  vendorOfferId String      @db.Uuid
+  vendorOffer   VendorOffer @relation(fields: [vendorOfferId], references: [id], onDelete: Restrict)
   quantity      Int
-  addedAt       DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  addedAt       DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  @@unique([cartId, productId])
   @@unique([cartId, vendorOfferId])
   @@index([cartId])
 }
@@ -582,27 +562,25 @@ model Order {
   @@index([status])
 }
 
-/// @deprecated productId/product — kept for the additive phase so existing
-/// rows remain queryable through the old relation; new rows populate
-/// vendorOfferId/vendorOrderId (and product is reachable via
-/// vendorOffer.product). vendorName is a point-in-time snapshot — same
-/// reasoning as productName/productSlug below: a vendor renaming later must
-/// never rewrite a historical order's display.
+/// productName/productSlug/vendorName are point-in-time snapshots, not live
+/// joins — a product being renamed or a vendor being renamed/suspended
+/// later must never rewrite how a historical order displays. `product` is
+/// still reachable live via `vendorOffer.product` when needed (e.g. to
+/// link to the current PDP), but nothing here depends on that relation for
+/// its own correctness.
 model OrderItem {
-  id             String       @id @default(uuid()) @db.Uuid
-  orderId        String       @db.Uuid
-  order          Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  productId      String?      @db.Uuid
-  product        Product?     @relation(fields: [productId], references: [id], onDelete: Restrict)
-  vendorOfferId  String?      @db.Uuid
-  vendorOffer    VendorOffer? @relation(fields: [vendorOfferId], references: [id], onDelete: Restrict)
-  vendorOrderId  String?      @db.Uuid
-  vendorOrder    VendorOrder? @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
+  id             String      @id @default(uuid()) @db.Uuid
+  orderId        String      @db.Uuid
+  order          Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  vendorOfferId  String      @db.Uuid
+  vendorOffer    VendorOffer @relation(fields: [vendorOfferId], references: [id], onDelete: Restrict)
+  vendorOrderId  String      @db.Uuid
+  vendorOrder    VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
   quantity       Int
   unitPriceCents Int
   productName    String
   productSlug    String
-  vendorName     String?
+  vendorName     String
 
   @@index([orderId])
   @@index([vendorOrderId])
@@ -614,16 +592,16 @@ model OrderItem {
 /// too so "this order's full timeline" stays a single indexed query instead
 /// of a join through every child VendorOrder.
 model OrderStatusHistory {
-  id            String       @id @default(uuid()) @db.Uuid
-  orderId       String       @db.Uuid
-  order         Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  vendorOrderId String?      @db.Uuid
-  vendorOrder   VendorOrder? @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
-  changedById   String       @db.Uuid
-  changedBy     User         @relation("changedBy", fields: [changedById], references: [id], onDelete: Restrict)
+  id            String      @id @default(uuid()) @db.Uuid
+  orderId       String      @db.Uuid
+  order         Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  vendorOrderId String      @db.Uuid
+  vendorOrder   VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
+  changedById   String      @db.Uuid
+  changedBy     User        @relation("changedBy", fields: [changedById], references: [id], onDelete: Restrict)
   fromStatus    OrderStatus
   toStatus      OrderStatus
-  createdAt     DateTime     @default(now())
+  createdAt     DateTime    @default(now())
 
   @@index([orderId])
   @@index([vendorOrderId])
