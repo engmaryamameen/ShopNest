@@ -11,6 +11,12 @@ const STATUS_STYLES: Record<string, string> = {
   FAILED: 'bg-red-100 text-red-800',
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  DUMMY_JSON: 'DummyJSON',
+  OPEN_FOOD_FACTS: 'Open Food Facts',
+  AMAZON: 'Amazon',
+};
+
 export default async function AdminImportsPage() {
   const cookieHeader = (await cookies()).toString();
   const runs = await api.adminListImportRuns(20, cookieHeader);
@@ -18,7 +24,11 @@ export default async function AdminImportsPage() {
   return (
     <div>
       <h1 className="text-3xl font-bold text-gray-900 mb-2">Catalog imports</h1>
-      <p className="text-gray-500 mb-8">Synchronize ShopNest&rsquo;s canonical catalog from the DummyJSON supplier.</p>
+      <p className="text-gray-500 mb-8">
+        Bring in canonical catalog data from a real supplier — DummyJSON (general merchandise) or Open Food Facts
+        (groceries). The catalog itself stays admin-curated: nothing runs automatically, and every product you add or
+        edit by hand here is never touched by an import.
+      </p>
 
       <CatalogImportPanel />
 
@@ -28,6 +38,7 @@ export default async function AdminImportsPage() {
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Started</th>
+              <th className="text-left px-6 py-3 font-medium text-gray-500">Source</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Status</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Scope</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500">Progress</th>
@@ -42,6 +53,7 @@ export default async function AdminImportsPage() {
             {runs.map((run) => (
               <tr key={run.id}>
                 <td className="px-6 py-4 text-gray-500">{new Date(run.startedAt).toLocaleString()}</td>
+                <td className="px-6 py-4 text-gray-700">{SOURCE_LABELS[run.source] ?? run.source}</td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[run.status]}`}>
                     {run.status}

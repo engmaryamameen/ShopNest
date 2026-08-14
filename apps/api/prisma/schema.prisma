@@ -94,6 +94,8 @@ enum AttributeInputType {
 
 enum CatalogSource {
   DUMMY_JSON
+  OPEN_FOOD_FACTS
+  AMAZON
 }
 
 enum CatalogImportStatus {

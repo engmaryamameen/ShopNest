@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 import { CatalogImportWorker } from '../src/catalog-import/catalog-import.worker';
 import { CatalogImportService } from '../src/catalog-import/catalog-import.service';
 import type { CatalogSourceAdapter, FetchProductsResult } from '../src/catalog-import/catalog-source.adapter';
+import type { CatalogSourceRegistry } from '../src/catalog-import/catalog-source-registry';
 
 const prisma = new PrismaClient();
 
@@ -31,6 +32,10 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
 
 function makeStubAdapter(products: FetchProductsResult['products']): CatalogSourceAdapter {
   return { fetchProducts: async () => ({ products, skippedCount: 0 }) };
+}
+
+function makeRegistry(adapter: CatalogSourceAdapter): CatalogSourceRegistry {
+  return { resolve: () => adapter } as unknown as CatalogSourceRegistry;
 }
 
 const createdRunIds: string[] = [];
@@ -134,7 +139,11 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
       imageCount: 0,
     }));
 
-    const service = new CatalogImportService(prisma as never, makeStubAdapter(products), makeConfig({ 'app.catalogImportBatchSize': 2 }));
+    const service = new CatalogImportService(
+      prisma as never,
+      makeRegistry(makeStubAdapter(products)),
+      makeConfig({ 'app.catalogImportBatchSize': 2 }),
+    );
 
     // Force the second batch (products 2 and 3) to fail with a *real*
     // Postgres error rather than a mocked one: pre-insert a product whose

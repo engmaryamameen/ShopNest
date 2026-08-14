@@ -114,8 +114,11 @@ export class DummyJsonAdapter implements CatalogSourceAdapter {
       return null;
     }
 
-    const imageUrl = typeof product.thumbnail === 'string' ? product.thumbnail : undefined;
-    const imageCount = Array.isArray(product.images) ? product.images.length : imageUrl ? 1 : 0;
+    const galleryImages = Array.isArray(product.images)
+      ? product.images.filter((img): img is string => typeof img === 'string')
+      : [];
+    const imageUrl = typeof product.thumbnail === 'string' ? product.thumbnail : galleryImages[0];
+    const imageUrls = galleryImages.length > 0 ? galleryImages : imageUrl ? [imageUrl] : [];
 
     return {
       externalId: String(product.id),
@@ -125,7 +128,8 @@ export class DummyJsonAdapter implements CatalogSourceAdapter {
       priceCents: Math.round((product.price as number) * 100),
       stockQuantity: product.stock as number,
       imageUrl,
-      imageCount,
+      imageUrls,
+      imageCount: imageUrls.length,
     };
   }
 }

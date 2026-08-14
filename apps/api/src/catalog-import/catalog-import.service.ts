@@ -1,14 +1,11 @@
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CatalogImportStatus, CatalogSource, OfferStatus, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_VENDOR_NAME, SYSTEM_VENDOR_SLUG } from '../catalog/system-vendor.constants';
-import {
-  CATALOG_SOURCE_ADAPTER,
-  CatalogSourceAdapter,
-  SupplierProduct,
-} from './catalog-source.adapter';
+import { SupplierProduct } from './catalog-source.adapter';
+import { CatalogSourceRegistry } from './catalog-source-registry';
 
 type BatchCounts = {
   createdCount: number;
@@ -49,12 +46,11 @@ const PREVIEW_SAMPLE_SIZE = 25;
 export class CatalogImportService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(CATALOG_SOURCE_ADAPTER) private readonly adapter: CatalogSourceAdapter,
+    private readonly registry: CatalogSourceRegistry,
     private readonly config: ConfigService,
   ) {}
 
-  async enqueueDummyJson(scope: ImportScope = {}) {
-    const source = CatalogSource.DUMMY_JSON;
+  async enqueue(source: CatalogSource, scope: ImportScope = {}) {
     try {
       return await this.prisma.catalogImportRun.create({
         data: {
@@ -76,10 +72,9 @@ export class CatalogImportService {
   /** Dry run: fetches from the real supplier and computes what a real run
    * would do, without writing anything — no transaction, no advisory lock,
    * because nothing is mutated. Safe to call as often as an admin wants
-   * while tuning scope filters before committing to `enqueueDummyJson`. */
-  async preview(scope: ImportScope = {}): Promise<ImportPreview> {
-    const source = CatalogSource.DUMMY_JSON;
-    const { products: discovered, skippedCount } = await this.adapter.fetchProducts();
+   * while tuning scope filters before committing to `enqueue`. */
+  async preview(source: CatalogSource, scope: ImportScope = {}): Promise<ImportPreview> {
+    const { products: discovered, skippedCount } = await this.registry.resolve(source).fetchProducts();
     const scoped = this.applyScope(discovered, scope);
 
     const items: ImportPreviewItem[] = [];
@@ -121,9 +116,9 @@ export class CatalogImportService {
    * for the whole catalog — bounds lock/connection time per batch, and
    * makes a crash/reclaim/retry resumable via processedCount. */
   async executeRun(runId: string) {
-    const source = CatalogSource.DUMMY_JSON;
     const run = await this.prisma.catalogImportRun.findUniqueOrThrow({ where: { id: runId } });
-    const { products: discovered, skippedCount } = await this.adapter.fetchProducts();
+    const source = run.source;
+    const { products: discovered, skippedCount } = await this.registry.resolve(source).fetchProducts();
     const scoped = this.applyScope(discovered, {
       categoryScope: run.categoryScope,
       maxRecords: run.maxRecords ?? undefined,
@@ -270,44 +265,63 @@ export class CatalogImportService {
       update: {},
     });
 
-    const canonicalData = {
-      name: incoming.name,
-      description: incoming.description,
-      categoryId: category.id,
-      publishStatus: 'PUBLISHED' as const,
-    };
+    const hasCommercialData = incoming.priceCents !== undefined && incoming.stockQuantity !== undefined;
+    const updatableFields = { name: incoming.name, description: incoming.description, categoryId: category.id };
 
-    const productId = existing
-      ? existing.productId
-      : (
-          await tx.product.create({
-            data: {
-              ...canonicalData,
-              slug: `${this.slugify(incoming.name)}-${source.toLowerCase()}-${incoming.externalId}`,
-            },
-          })
-        ).id;
-
+    let productId: string;
     if (existing) {
-      await tx.product.update({ where: { id: productId }, data: canonicalData });
+      productId = existing.productId;
+      // publishStatus is deliberately NOT rewritten here — once a product
+      // exists, its publish state is admin-owned (set at creation, or
+      // changed later through the product-edit form). A re-sync of a
+      // supplier with no pricing data must not silently demote a product
+      // an admin has since priced and published.
+      await tx.product.update({ where: { id: productId }, data: updatableFields });
       await tx.productSource.update({ where: { id: existing.id }, data: { checksum, lastSeenAt: now } });
       counts.updatedCount++;
     } else {
+      const created = await tx.product.create({
+        data: {
+          ...updatableFields,
+          slug: `${this.slugify(incoming.name)}-${source.toLowerCase()}-${incoming.externalId}`,
+          // A brand-new product with no commercial data from its supplier
+          // (Open Food Facts) has nothing to sell yet — DRAFT until an
+          // admin prices it. One with a real offer publishes immediately,
+          // same as before.
+          publishStatus: hasCommercialData ? 'PUBLISHED' : 'DRAFT',
+        },
+      });
+      productId = created.id;
       await tx.productSource.create({
         data: { productId, source, externalId: incoming.externalId, checksum, lastSeenAt: now },
       });
       counts.createdCount++;
     }
 
-    if (incoming.imageUrl) {
+    const images = incoming.imageUrls && incoming.imageUrls.length > 0 ? incoming.imageUrls : incoming.imageUrl ? [incoming.imageUrl] : [];
+    for (let position = 0; position < images.length; position++) {
       await tx.productMedia.upsert({
-        where: { productId_position: { productId, position: 0 } },
-        create: { productId, url: incoming.imageUrl, position: 0 },
-        update: { url: incoming.imageUrl },
+        where: { productId_position: { productId, position } },
+        create: { productId, url: images[position], position },
+        update: { url: images[position] },
       });
     }
+    // A re-sync with fewer images than last time must not leave stale
+    // rows behind at the old, now-unused positions. A no-op for a
+    // brand-new product, which has nothing to clean up yet.
+    await tx.productMedia.deleteMany({ where: { productId, position: { gte: images.length } } });
 
-    await this.syncOffer(tx, systemVendorId, productId, source, incoming);
+    if (hasCommercialData) {
+      await this.syncOffer(
+        tx,
+        systemVendorId,
+        productId,
+        source,
+        incoming.externalId,
+        incoming.priceCents!,
+        incoming.stockQuantity!,
+      );
+    }
   }
 
   private async syncOffer(
@@ -315,49 +329,41 @@ export class CatalogImportService {
     systemVendorId: string,
     productId: string,
     source: CatalogSource,
-    incoming: SupplierProduct,
+    externalId: string,
+    priceCents: number,
+    stockQuantity: number,
   ): Promise<void> {
-    const vendorSku = `${source.toLowerCase()}-${incoming.externalId}`;
+    const vendorSku = `${source.toLowerCase()}-${externalId}`;
     const existingOffer = await tx.vendorOffer.findFirst({
       where: { vendorId: systemVendorId, productId, variantId: null },
     });
 
     if (!existingOffer) {
       const offer = await tx.vendorOffer.create({
-        data: {
-          vendorId: systemVendorId,
-          productId,
-          vendorSku,
-          priceCents: incoming.priceCents,
-          stockQuantity: incoming.stockQuantity,
-          status: OfferStatus.ACTIVE,
-        },
+        data: { vendorId: systemVendorId, productId, vendorSku, priceCents, stockQuantity, status: OfferStatus.ACTIVE },
       });
-      if (incoming.stockQuantity !== 0) {
+      if (stockQuantity !== 0) {
         await tx.inventoryAdjustment.create({
           data: {
             vendorOfferId: offer.id,
-            delta: incoming.stockQuantity,
+            delta: stockQuantity,
             reason: 'IMPORT_INITIAL',
-            reference: `import:${source}:${incoming.externalId}`,
+            reference: `import:${source}:${externalId}`,
           },
         });
       }
       return;
     }
 
-    const delta = incoming.stockQuantity - existingOffer.stockQuantity;
-    await tx.vendorOffer.update({
-      where: { id: existingOffer.id },
-      data: { priceCents: incoming.priceCents, stockQuantity: incoming.stockQuantity },
-    });
+    const delta = stockQuantity - existingOffer.stockQuantity;
+    await tx.vendorOffer.update({ where: { id: existingOffer.id }, data: { priceCents, stockQuantity } });
     if (delta !== 0) {
       await tx.inventoryAdjustment.create({
         data: {
           vendorOfferId: existingOffer.id,
           delta,
           reason: 'CORRECTION',
-          reference: `import:${source}:${incoming.externalId}`,
+          reference: `import:${source}:${externalId}`,
         },
       });
     }

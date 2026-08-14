@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
-import type { ImportPreviewResponse } from '@/lib/api-types';
+import type { CatalogSource, ImportPreviewResponse } from '@/lib/api-types';
 
 const ACTION_STYLES: Record<string, string> = {
   create: 'bg-green-100 text-green-800',
@@ -11,8 +11,23 @@ const ACTION_STYLES: Record<string, string> = {
   unchanged: 'bg-gray-100 text-gray-600',
 };
 
+const SOURCE_OPTIONS: Array<{ value: CatalogSource; label: string; hint: string }> = [
+  { value: 'DUMMY_JSON', label: 'DummyJSON', hint: 'General merchandise, with price and stock — offers publish immediately.' },
+  {
+    value: 'OPEN_FOOD_FACTS',
+    label: 'Open Food Facts',
+    hint: 'Groceries only — no pricing data, so imports land as drafts for you to price and publish.',
+  },
+  {
+    value: 'AMAZON',
+    label: 'Amazon',
+    hint: 'Real catalog data with several images per product. Rarely has a usable price, so most imports land as drafts too.',
+  },
+];
+
 export function CatalogImportPanel() {
   const router = useRouter();
+  const [source, setSource] = useState<CatalogSource>('DUMMY_JSON');
   const [categoryScope, setCategoryScope] = useState('');
   const [maxRecords, setMaxRecords] = useState('');
   const [minImageCount, setMinImageCount] = useState('');
@@ -27,6 +42,7 @@ export function CatalogImportPanel() {
       .map((c) => c.trim())
       .filter(Boolean);
     return {
+      source,
       categoryScope: categories.length > 0 ? categories : undefined,
       maxRecords: maxRecords ? Number(maxRecords) : undefined,
       minImageCount: minImageCount ? Number(minImageCount) : undefined,
@@ -62,9 +78,10 @@ export function CatalogImportPanel() {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
-      <h2 className="font-semibold text-gray-900 mb-1">Run a DummyJSON synchronization</h2>
+      <h2 className="font-semibold text-gray-900 mb-1">Run a catalog synchronization</h2>
       <p className="text-sm text-gray-500 mb-4">
-        Optionally scope the run, then preview what it would do before committing to it.
+        Pick a supplier, optionally scope the run, then preview what it would do before committing to it. Imports never
+        run on their own — this is manual, on demand, additive/idempotent, and never deletes anything.
       </p>
 
       {error && (
@@ -76,6 +93,36 @@ export function CatalogImportPanel() {
         </div>
       )}
 
+      <fieldset className="mb-4">
+        <legend className="block text-sm font-medium text-gray-700 mb-1">Source</legend>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {SOURCE_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className={`flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                source === option.value ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <input
+                type="radio"
+                name="catalog-import-source"
+                value={option.value}
+                checked={source === option.value}
+                onChange={() => {
+                  setSource(option.value);
+                  setPreview(null);
+                }}
+                className="mt-1"
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-900">{option.label}</span>
+                <span className="block text-xs text-gray-500">{option.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <div>
           <label htmlFor="import-category-scope" className="block text-sm font-medium text-gray-700 mb-1">
@@ -85,7 +132,7 @@ export function CatalogImportPanel() {
             id="import-category-scope"
             value={categoryScope}
             onChange={(e) => setCategoryScope(e.target.value)}
-            placeholder="e.g. smartphones, laptops"
+            placeholder={source === 'DUMMY_JSON' ? 'e.g. smartphones, laptops' : 'run Preview first — filter by the exact names it shows'}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
           />
         </div>

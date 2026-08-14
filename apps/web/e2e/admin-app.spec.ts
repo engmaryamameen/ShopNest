@@ -103,7 +103,7 @@ test.describe('Admin app', () => {
     expect(Number(scopedCountText)).toBeLessThanOrEqual(2);
 
     await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/dummy-json')),
+      page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/run')),
       page.getByRole('button', { name: 'Run synchronization' }).click(),
     ]);
     await expect(page.getByText(/Synchronization queued/i)).toBeVisible();

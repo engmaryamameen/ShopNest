@@ -1,6 +1,15 @@
 import { CatalogImportStatus, CatalogSource } from '@prisma/client';
 import { CatalogImportService } from '../catalog-import.service';
 import { CatalogSourceAdapter } from '../catalog-source.adapter';
+import { CatalogSourceRegistry } from '../catalog-source-registry';
+
+/** A registry that always resolves to the one adapter under test — the
+ * service is source-parameterized, but these tests exercise its generic
+ * import behavior, not source selection itself (see catalog-source-
+ * registry.spec.ts for that). */
+function makeRegistry(adapter: CatalogSourceAdapter): CatalogSourceRegistry {
+  return { resolve: () => adapter } as unknown as CatalogSourceRegistry;
+}
 
 const SYSTEM_VENDOR_ID = 'system-vendor-id';
 
@@ -40,6 +49,7 @@ function makeRunStore(overrides: Record<string, unknown> = {}) {
     lockedAt: null,
     lockedBy: null,
     completedAt: null,
+    source: CatalogSource.DUMMY_JSON,
     ...overrides,
   };
 
@@ -78,7 +88,7 @@ function makePrismaMock(runOverrides: Record<string, unknown> = {}) {
       create: jest.fn().mockResolvedValue({ id: 'product-id' }),
       update: jest.fn().mockResolvedValue({}),
     },
-    productMedia: { upsert: jest.fn().mockResolvedValue({}) },
+    productMedia: { upsert: jest.fn().mockResolvedValue({}), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     vendorOffer: {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: 'offer-id' }),
@@ -119,9 +129,9 @@ describe('CatalogImportService', () => {
     const adapter: CatalogSourceAdapter = {
       fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct], skippedCount: 0 }),
     };
-    const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
 
-    const queued = await service.enqueueDummyJson();
+    const queued = await service.enqueue(CatalogSource.DUMMY_JSON);
     const result = await service.executeRun(queued.id);
 
     expect(prisma.tx.vendor.upsert).toHaveBeenCalledWith(
@@ -158,12 +168,76 @@ describe('CatalogImportService', () => {
     );
   });
 
+  it('a supplier record with no commercial data creates a DRAFT product and no VendorOffer', async () => {
+    const prisma = makePrismaMock();
+    const priceless = { ...supplierProduct, priceCents: undefined, stockQuantity: undefined };
+    const adapter: CatalogSourceAdapter = {
+      fetchProducts: jest.fn().mockResolvedValue({ products: [priceless], skippedCount: 0 }),
+    };
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+    await service.executeRun('run-id');
+
+    expect(prisma.tx.product.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ publishStatus: 'DRAFT' }) }),
+    );
+    expect(prisma.tx.vendorOffer.create).not.toHaveBeenCalled();
+    expect(prisma.tx.inventoryAdjustment.create).not.toHaveBeenCalled();
+  });
+
+  it('updating an existing product does not rewrite publishStatus — admin-owned once created', async () => {
+    const prisma = makePrismaMock();
+    prisma.tx.productSource.findUnique.mockResolvedValue({
+      id: 'source-id',
+      productId: 'product-id',
+      checksum: 'stale-checksum-so-it-looks-changed',
+    });
+    const adapter: CatalogSourceAdapter = {
+      fetchProducts: jest.fn().mockResolvedValue({ products: [{ ...supplierProduct, name: 'Renamed Keyboard' }], skippedCount: 0 }),
+    };
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+    await service.executeRun('run-id');
+
+    expect(prisma.tx.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.not.objectContaining({ publishStatus: expect.anything() }) }),
+    );
+  });
+
+  it('writes one ProductMedia row per image in imageUrls, position-ordered, and prunes stale trailing positions', async () => {
+    const prisma = makePrismaMock();
+    const multiImage = {
+      ...supplierProduct,
+      imageUrl: 'https://cdn.example.com/a.jpg',
+      imageUrls: ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg', 'https://cdn.example.com/c.jpg'],
+    };
+    const adapter: CatalogSourceAdapter = {
+      fetchProducts: jest.fn().mockResolvedValue({ products: [multiImage], skippedCount: 0 }),
+    };
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+    await service.executeRun('run-id');
+
+    expect(prisma.tx.productMedia.upsert).toHaveBeenCalledTimes(3);
+    [0, 1, 2].forEach((position) => {
+      expect(prisma.tx.productMedia.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { productId_position: { productId: 'product-id', position } },
+          create: expect.objectContaining({ url: multiImage.imageUrls[position], position }),
+        }),
+      );
+    });
+    expect(prisma.tx.productMedia.deleteMany).toHaveBeenCalledWith({
+      where: { productId: 'product-id', position: { gte: 3 } },
+    });
+  });
+
   it('does not rewrite an unchanged canonical product or its offer', async () => {
     const prisma = makePrismaMock();
     const adapter: CatalogSourceAdapter = {
       fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct], skippedCount: 0 }),
     };
-    const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
 
     await service.executeRun('run-id');
     const checksum = prisma.tx.productSource.create.mock.calls[0][0].data.checksum;
@@ -177,7 +251,7 @@ describe('CatalogImportService', () => {
     // separately below).
     const prisma2 = makePrismaMock();
     prisma2.tx.productSource.findUnique.mockResolvedValue({ id: 'source-id', productId: 'product-id', checksum });
-    const service2 = new CatalogImportService(prisma2 as never, adapter, makeConfigMock());
+    const service2 = new CatalogImportService(prisma2 as never, makeRegistry(adapter), makeConfigMock());
     const result = await service2.executeRun('run-id-2');
 
     expect(prisma2.tx.product.create).not.toHaveBeenCalled();
@@ -197,7 +271,7 @@ describe('CatalogImportService', () => {
     const adapter: CatalogSourceAdapter = {
       fetchProducts: jest.fn().mockResolvedValue({ products: [{ ...supplierProduct, stockQuantity: 20 }], skippedCount: 0 }),
     };
-    const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
     await service.executeRun('run-id');
 
     expect(prisma.tx.vendorOffer.create).not.toHaveBeenCalled();
@@ -214,7 +288,7 @@ describe('CatalogImportService', () => {
     const adapter: CatalogSourceAdapter = {
       fetchProducts: jest.fn().mockRejectedValue(new Error('offline')),
     };
-    const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
 
     await expect(service.executeRun('run-id')).rejects.toThrow('offline');
     expect(prisma.catalogImportRun.update).not.toHaveBeenCalled();
@@ -225,7 +299,7 @@ describe('CatalogImportService', () => {
     const adapter: CatalogSourceAdapter = {
       fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct], skippedCount: 2 }),
     };
-    const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
 
     const result = await service.executeRun('run-id');
 
@@ -242,7 +316,7 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
 
       const result = await service.executeRun('run-id');
 
@@ -255,7 +329,7 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
 
       await service.executeRun('run-id');
 
@@ -267,7 +341,7 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, lowImageProduct], skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
 
       await service.executeRun('run-id');
 
@@ -283,9 +357,9 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
 
-      const preview = await service.preview({});
+      const preview = await service.preview(CatalogSource.DUMMY_JSON, {});
 
       expect(preview).toEqual(
         expect.objectContaining({
@@ -312,9 +386,9 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock());
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
 
-      const preview = await service.preview({});
+      const preview = await service.preview(CatalogSource.DUMMY_JSON, {});
 
       expect(preview.wouldCreateCount).toBe(1); // otherCategoryProduct
       expect(preview.wouldUpdateCount).toBe(1); // supplierProduct — exists with a different checksum
@@ -337,7 +411,7 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock(2)); // batch size 2 -> 3 batches (2,2,1)
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2)); // batch size 2 -> 3 batches (2,2,1)
 
       const result = await service.executeRun('run-id');
 
@@ -360,7 +434,7 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock(2)); // 2 batches of 2
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2)); // 2 batches of 2
 
       // Batch 1's advisory-lock acquisition succeeds; batch 2's fails outright
       // (simulating e.g. a dropped connection) — before any product-level
@@ -385,7 +459,7 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock(2));
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2));
 
       prisma.tx.$queryRaw
         .mockResolvedValueOnce([{ acquired: true }])
@@ -417,7 +491,7 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock(2));
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2));
 
       await service.executeRun('run-id');
       expect(prisma.runStore.snapshot().processedCount).toBe(3);
@@ -440,7 +514,7 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock(3)); // 2 batches of 3
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(3)); // 2 batches of 3
 
       prisma.tx.$queryRaw
         .mockResolvedValueOnce([{ acquired: true }])
@@ -463,7 +537,7 @@ describe('CatalogImportService', () => {
       const adapter: CatalogSourceAdapter = {
         fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
       };
-      const service = new CatalogImportService(prisma as never, adapter, makeConfigMock(2));
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2));
 
       await service.executeRun('run-id');
 

@@ -16,17 +16,17 @@ export class CatalogImportController {
   constructor(private readonly imports: CatalogImportService) {}
 
   @Post('preview')
-  @ApiOperation({ summary: '[Admin] Dry run — see what a DummyJSON sync with this scope would do, without writing anything' })
+  @ApiOperation({ summary: '[Admin] Dry run — see what a sync with this source/scope would do, without writing anything' })
   preview(@Body() scope: ImportScopeDto) {
-    return this.imports.preview(scope);
+    return this.imports.preview(scope.source, scope);
   }
 
-  @Post('dummy-json')
+  @Post('run')
   @HttpCode(HttpStatus.ACCEPTED)
   @Audit({ action: 'ADMIN_CATALOG_IMPORT_TRIGGER', targetType: 'CatalogImportRun', idSource: 'body:id' })
-  @ApiOperation({ summary: '[Admin] Queue a DummyJSON catalog synchronization, optionally scoped' })
-  importDummyJson(@Body() scope: ImportScopeDto) {
-    return this.imports.enqueueDummyJson(scope);
+  @ApiOperation({ summary: '[Admin] Queue a catalog synchronization from the given source, optionally scoped' })
+  triggerImport(@Body() scope: ImportScopeDto) {
+    return this.imports.enqueue(scope.source, scope);
   }
 
   @Get()

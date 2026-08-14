@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { CatalogImportController } from './catalog-import.controller';
 import { CatalogImportService } from './catalog-import.service';
-import { CATALOG_SOURCE_ADAPTER } from './catalog-source.adapter';
+import { CatalogSourceRegistry } from './catalog-source-registry';
 import { DummyJsonAdapter } from './dummy-json.adapter';
+import { OpenFoodFactsAdapter } from './open-food-facts.adapter';
+import { AmazonAdapter } from './amazon.adapter';
 import { CatalogImportWorker } from './catalog-import.worker';
 import { CatalogImportScheduler } from './catalog-import.scheduler';
 
@@ -13,7 +15,9 @@ import { CatalogImportScheduler } from './catalog-import.scheduler';
     CatalogImportWorker,
     CatalogImportScheduler,
     DummyJsonAdapter,
-    { provide: CATALOG_SOURCE_ADAPTER, useExisting: DummyJsonAdapter },
+    OpenFoodFactsAdapter,
+    AmazonAdapter,
+    CatalogSourceRegistry,
   ],
 })
 export class CatalogImportModule {}

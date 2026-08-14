@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CatalogSource } from '@prisma/client';
 import { CatalogImportService } from './catalog-import.service';
 
 @Injectable()
@@ -29,7 +30,11 @@ export class CatalogImportScheduler implements OnApplicationBootstrap, OnApplica
 
   private async enqueue(): Promise<void> {
     try {
-      const run = await this.imports.enqueueDummyJson();
+      // Off by default (CATALOG_SCHEDULE_ENABLED=false — see .env.example);
+      // scheduled to DummyJSON specifically if ever re-enabled. Open Food
+      // Facts has no commercial data to keep in sync unattended and stays
+      // manual-only, triggered from the admin imports panel.
+      const run = await this.imports.enqueue(CatalogSource.DUMMY_JSON);
       this.logger.log(`Queued scheduled catalog synchronization ${run.id}`);
     } catch (error) {
       if (error instanceof ConflictException) return;

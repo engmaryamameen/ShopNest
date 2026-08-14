@@ -18,6 +18,22 @@ export default registerAs('app', () => ({
   catalogImportBatchSize: parseInt(process.env.CATALOG_IMPORT_BATCH_SIZE ?? '25', 10),
   catalogScheduleEnabled: process.env.CATALOG_SCHEDULE_ENABLED !== 'false',
   catalogScheduleIntervalMs: parseInt(process.env.CATALOG_SCHEDULE_INTERVAL_MS ?? '21600000', 10),
+  // Open Food Facts — open, keyless, real (see OpenFoodFactsAdapter). No
+  // pricing data; imports from this source land as DRAFT/offer-less
+  // products for an admin to price and publish.
+  openFoodFactsUrl: process.env.OPEN_FOOD_FACTS_URL ?? 'https://world.openfoodfacts.org',
+  openFoodFactsTimeoutMs: parseInt(process.env.OPEN_FOOD_FACTS_TIMEOUT_MS ?? '8000', 10),
+  openFoodFactsPageSize: parseInt(process.env.OPEN_FOOD_FACTS_PAGE_SIZE ?? '100', 10),
+  // Amazon Reviews 2023 (McAuley Lab) per-category metadata files, hosted
+  // on Hugging Face — open, keyless. No search API and no price/stock for
+  // most records; AmazonAdapter streams each category file and stops
+  // early once amazonPerCategoryLimit real records are collected, rather
+  // than downloading a full file (each can run 100MB+).
+  amazonBaseUrl:
+    process.env.AMAZON_CATALOG_URL ??
+    'https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023/resolve/main/raw/meta_categories',
+  amazonTimeoutMs: parseInt(process.env.AMAZON_CATALOG_TIMEOUT_MS ?? '20000', 10),
+  amazonPerCategoryLimit: parseInt(process.env.AMAZON_CATALOG_PER_CATEGORY_LIMIT ?? '150', 10),
   geocodingUrl: process.env.GEOCODING_URL ?? 'https://nominatim.openstreetmap.org',
   geocodingTimeoutMs: parseInt(process.env.GEOCODING_TIMEOUT_MS ?? '5000', 10),
   googlePlacesApiKey: process.env.GOOGLE_PLACES_API_KEY ?? '',

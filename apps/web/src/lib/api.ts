@@ -404,7 +404,7 @@ export const api = {
     request<ImportPreviewResponse>('/admin/catalog-imports/preview', { method: 'POST', body: scope, cookies }),
 
   adminTriggerImport: (scope: ImportScopeInput, cookies?: string) =>
-    request<CatalogImportRunResponse>('/admin/catalog-imports/dummy-json', { method: 'POST', body: scope, cookies }),
+    request<CatalogImportRunResponse>('/admin/catalog-imports/run', { method: 'POST', body: scope, cookies }),
 
   adminListImportRuns: (limit = 20, cookies?: string) =>
     request<CatalogImportRunResponse[]>(`/admin/catalog-imports?limit=${limit}`, { cookies }),

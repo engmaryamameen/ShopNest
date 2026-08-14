@@ -370,9 +370,11 @@ export interface ImportPreviewResponse {
   sample: Array<{ externalId: string; name: string; categoryName: string; action: 'create' | 'update' | 'unchanged' }>;
 }
 
+export type CatalogSource = 'DUMMY_JSON' | 'OPEN_FOOD_FACTS' | 'AMAZON';
+
 export interface CatalogImportRunResponse {
   id: string;
-  source: string;
+  source: CatalogSource;
   status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
   discoveredCount: number;
   scopedCount: number;
@@ -390,6 +392,7 @@ export interface CatalogImportRunResponse {
 }
 
 export interface ImportScopeInput {
+  source: CatalogSource;
   categoryScope?: string[];
   maxRecords?: number;
   minImageCount?: number;

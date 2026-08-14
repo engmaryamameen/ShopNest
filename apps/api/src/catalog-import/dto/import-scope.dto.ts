@@ -1,8 +1,13 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { CatalogSource } from '@prisma/client';
 
 export class ImportScopeDto {
+  @ApiProperty({ enum: CatalogSource, description: 'Which supplier to import from.' })
+  @IsEnum(CatalogSource)
+  source!: CatalogSource;
+
   @ApiPropertyOptional({
     type: [String],
     description: 'Only import products in these supplier category names. Omit/empty = no restriction.',
