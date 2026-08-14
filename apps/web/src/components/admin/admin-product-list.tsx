@@ -20,6 +20,7 @@ export function AdminProductList({ products, categories }: AdminProductListProps
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isUploading, setIsUploading] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -71,6 +72,20 @@ export function AdminProductList({ products, categories }: AdminProductListProps
         setFormError(err instanceof ApiError ? err.message : 'Operation failed');
       }
     });
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+
+    setIsUploading(true);
+    setFormError(null);
+    api
+      .uploadMedia(file)
+      .then(({ url }) => setForm((f) => ({ ...f, imageUrl: url })))
+      .catch((err) => setFormError(err instanceof ApiError ? err.message : 'Upload failed'))
+      .finally(() => setIsUploading(false));
   }
 
   function handleArchive(productId: string, name: string) {
@@ -140,9 +155,19 @@ export function AdminProductList({ products, categories }: AdminProductListProps
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Image URL (optional)</label>
-              <input type="url" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Image (optional)</label>
+              <div className="flex items-center gap-3">
+                <input type="url" placeholder="https://…" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+                <label className="shrink-0 px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 cursor-pointer">
+                  {isUploading ? 'Uploading…' : 'Upload'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleFileSelect} disabled={isUploading} className="hidden" />
+                </label>
+              </div>
+              {form.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- tiny admin-form preview of an arbitrary URL, not worth next/image's remote-pattern config for this one thumbnail
+                <img src={form.imageUrl} alt="Preview" className="mt-2 h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+              )}
             </div>
             {editingProduct && (
               <div className="col-span-2 flex items-center gap-2">

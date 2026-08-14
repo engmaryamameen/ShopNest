@@ -483,6 +483,28 @@ export const api = {
 
   adminRejectReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
     request<ReturnRequestResponse>(`/admin/returns/${id}/reject`, { method: 'PATCH', body, cookies }),
+
+  // ── Media ────────────────────────────────────────────────────────────────
+  // Browser-only — a file input has no server-side equivalent. Bypasses
+  // request() deliberately: a multipart body must not be JSON-stringified,
+  // and the browser sets its own Content-Type (with the boundary) when the
+  // body is a FormData instance, so no header is set here at all.
+
+  uploadMedia: async (file: File): Promise<{ url: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${CLIENT_API_BASE}/admin/media/upload`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorBody = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new ApiError(response.status, errorBody.message ?? response.statusText);
+    }
+    const json = (await response.json()) as { data: { url: string } };
+    return json.data;
+  },
 };
 
 // `PUT /cart/items` returns the raw upserted CartItem row (no nested

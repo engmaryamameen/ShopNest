@@ -27,6 +27,7 @@ import { AddressesModule } from './addresses/addresses.module';
 import { PaymentModule } from './payment/payment.module';
 import { PromotionsModule } from './promotions/promotions.module';
 import { ReturnsModule } from './returns/returns.module';
+import { MediaModule } from './media/media.module';
 
 @Module({
   imports: [
@@ -93,6 +94,7 @@ import { ReturnsModule } from './returns/returns.module';
     PaymentModule,
     PromotionsModule,
     ReturnsModule,
+    MediaModule,
   ],
   providers: [
     // Guard execution order: 1 → 2 → 3 → 4 (then controller/route guards)

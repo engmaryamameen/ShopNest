@@ -47,4 +47,14 @@ export default registerAs('app', () => ({
   // available — see DECISIONS.md). An amount that exactly matches this
   // deliberately declines, so the decline path is directly testable.
   paymentMockDeclineCents: parseInt(process.env.PAYMENT_MOCK_DECLINE_CENTS ?? '66600', 10),
+  // Media storage — same provider-selected-by-env shape as mail/payment;
+  // only a local-filesystem adapter exists in this scope (no bucket
+  // credentials available). publicBaseUrl is this API's own externally
+  // reachable origin — uploaded files are served back from here, and the
+  // URL returned to a caller must be absolute (the frontend is a
+  // different origin), not a path relative to this process.
+  mediaProvider: process.env.MEDIA_PROVIDER ?? 'local',
+  mediaUploadDir: process.env.MEDIA_UPLOAD_DIR ?? 'uploads',
+  mediaPublicBaseUrl: process.env.MEDIA_PUBLIC_BASE_URL ?? `http://localhost:${process.env.PORT ?? '3001'}`,
+  mediaMaxFileSizeBytes: parseInt(process.env.MEDIA_MAX_FILE_SIZE_BYTES ?? `${5 * 1024 * 1024}`, 10),
 }));

@@ -1,4 +1,10 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  // Pinned explicitly — excluding prisma/seed.ts below would otherwise
+  // change tsc's inferred rootDir (the common ancestor of whatever's left
+  // included) from "." to "./src", flattening dist/src/main.js to
+  // dist/main.js and silently breaking the Docker CMD / start script,
+  // which both expect the former.
+  "compilerOptions": { "rootDir": "." },
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "prisma/seed.ts"]
 }

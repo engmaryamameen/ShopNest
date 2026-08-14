@@ -360,6 +360,87 @@ Phase 5 deliberately stopped at the type/helper level (`ProductCardResponse`, sh
 
 Reading `CategoryBrowser` and `ServiceBenefits` before touching anything (rather than assuming the plan's "remaining items" list was still fully outstanding) showed both already had real hover treatments — category cards lift, tint red, and gain a shadow on hover with a focus-visible ring for keyboard users; service-benefit icons lift on hover — matching the quality bar the rest of this pass aims for. No changes made to either; re-implementing already-correct work would have been pure churn. This is worth recording explicitly so it doesn't read as a skipped item later: it was checked, not skipped.
 
+## Ops Readiness (Phase 8)
+
+### Media storage closes the plan's last named external-credential gap
+
+The plan named exactly two capabilities as blocked on external credentials this environment doesn't
+have: a payment gateway (closed in Phase 6) and object storage for product media. `MediaStorageProvider`
+(`src/media/`) is the same shape as every other provider-selected-by-env interface in this app —
+`LocalMediaStorageAdapter` is the only implementation, writing to local disk and serving files back
+at `/uploads/*`. Wired into one real, complete flow (not left as an unused interface): a file-upload
+control on the admin product form calls `POST /admin/media/upload`, gets back an absolute URL, and
+uses it as the product's image — verified end to end through a real browser (file picked → uploaded →
+preview rendered from the returned URL) and via direct byte-for-byte round-trip comparison of the
+uploaded and served-back file. `next.config.ts`'s `images.remotePatterns` needed an explicit `http://
+localhost` entry alongside the existing `https://**` one — a locally-served upload URL is plain `http`
+in dev, and `next/image` enforces its remote-pattern allowlist strictly regardless of same-machine
+convenience.
+
+### A real Node/tsc toolchain conflict, and what it revealed about the build's output layout
+
+`prisma/seed.ts` is run directly by Node's native `--experimental-strip-types` (`db:seed`), which —
+on this Node version — requires an explicit `.ts` extension on relative imports; this project's `tsc`
+(`type-check`, `nest build`) rejects that same extension unless `allowImportingTsExtensions` is set.
+Excluding `prisma/seed.ts` from both `tsconfig.json` and `tsconfig.build.json` resolves the conflict
+without touching either toolchain's own required behavior — but doing so had a side effect worth
+recording: `tsc` infers `rootDir` as the common ancestor of whatever's still included, so removing
+`prisma/` from that set silently changed the build output from `dist/src/main.js` to `dist/main.js`,
+which would have quietly broken `apps/api/Dockerfile`'s `CMD` and reintroduced the exact `start`-script
+bug already fixed and documented in the Phase 1 section of this file. Caught by actually running the
+rebuilt server, not by trusting a clean `tsc` exit code — `rootDir` is now pinned explicitly in
+`tsconfig.build.json` rather than left to inference, so a future exclude change can't silently move
+the output layout again.
+
+### The realistic demo seed required hand-constructing valid historical orders
+
+`Review.orderItemId` is `NOT NULL` — there is no way to seed a review without a real order item
+attached to a `DELIVERED` `VendorOrder`, by design (see the Phase 5 section on structural
+verified-purchase enforcement). The seed script's `seedDeliveredOrder()` helper hand-constructs an
+`Order`/`VendorOrder`/`OrderItem` chain in the exact shape `OrdersService.checkout()` produces — same
+fields, same relationships — skipping only the row-locking that a live concurrent request needs and a
+one-time seed script run alone against a controlled database does not. This means every other part of
+the app (review eligibility checks, order-history display, return-request eligibility) treats a
+seeded order identically to a real checkout, rather than needing a special case for "seed data."
+
+### Dev database reset — a genuine pause point, not a routine step
+
+Resetting the shared local dev database (to replace test-run junk data — category/product names like
+`CartCat-...`/`MvCat-...` left over from this session's own live-testing against it — with the new
+realistic seed) was blocked by the environment's own permission classifier before it ran, and correctly
+so: a full database wipe is exactly the class of action this project's execution model reserves for
+explicit confirmation rather than autonomous continuation, even though every row in that database was
+either the original seed or this session's own test output. Asked; user chose a full reset + reseed
+over a surgical row-level cleanup. `prisma migrate reset --force --skip-seed` also served as one more
+fresh-database migration-history verification (all 14 migrations reapplied cleanly from empty) before
+the new seed script ran.
+
+### Monitoring/alerting scoped to what's real, not fabricated to look complete
+
+The plan named "monitoring/alerting + import/job metrics" as Phase 8 scope. Standing up fake
+Prometheus/PagerDuty integration nobody in this environment can receive an alert from would be worse
+than being direct about the gap — it would read as a working capability that silently isn't. What
+shipped instead, documented in `docs/operations.md`: confirmation that structured, redacted Pino
+logging and `CatalogImportRun`'s durable, queryable job-status rows already provide what a real
+alerting pipeline would consume, plus the concrete next step (ship the existing JSON logs to whatever
+platform is actually available) rather than new instrumentation this environment has nothing to feed.
+
+### A stale dev server, not application code, caused a mass E2E failure — found by not trusting the number
+
+The full Playwright suite (run as this phase's final verification) came back 34 failed / 3 passed —
+every failure the identical `page.fill('#email', ...)` timeout, on both the desktop and mobile
+projects. That shape — one failure mode repeated everywhere rather than scattered across unrelated
+features — doesn't match "several things broke," it matches "the thing under test never came up."
+`curl localhost:3000` confirmed it: the whole Next.js app was returning 500, including the homepage.
+The `next dev` process had been running continuously for hours across this session (since well before
+this phase started) and Next.js does not hot-reload `next.config.ts` edits — the `images.remotePatterns`
+change earlier in this phase needed a restart it never got, and the process was left in a broken state
+rather than serving stale-but-working pages. Restarting it (not touching any application code) took
+the homepage from 500 to 200, and the identical Playwright run that had just failed 34 tests passed
+all 37 immediately after, in a quarter of the wall-clock time. Recorded here as the reason, rather than
+just noting "re-ran and it passed": a suite failing in one uniform shape across every unrelated test is
+itself a diagnostic signal, worth reading before touching any of the tests or the code they exercise.
+
 ## Data Model
 
 ### Integer cents

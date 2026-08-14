@@ -47,4 +47,8 @@ apps/api/prisma/migrations/dev.db-journal
 # TypeScript incremental build info
 *.tsbuildinfo
 
+# Locally-uploaded media (LocalMediaStorageAdapter) — not committed, same
+# as any other adapter's runtime output
+apps/api/uploads/
+
 # Generated types are committed and CI-verified — do NOT add types.ts here

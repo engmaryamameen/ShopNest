@@ -1,9 +1,11 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import { join } from 'path';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
@@ -19,14 +21,25 @@ import { ResponseTransformInterceptor } from './common/interceptors/response-tra
  * server — one source of truth for "what does a real ShopNest app instance
  * look like" instead of a second, drifting copy in test code.
  */
-export async function createApp(): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+export async function createApp(): Promise<NestExpressApplication> {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
 
   const config = app.get(ConfigService);
   const webUrl = config.get<string>('WEB_URL', 'http://localhost:3000');
 
   app.useLogger(app.get(Logger));
 
+  // Serves whatever LocalMediaStorageAdapter writes — same directory,
+  // same config key, so the two never drift apart.
+  app.useStaticAssets(join(process.cwd(), config.get<string>('app.mediaUploadDir', 'uploads')), {
+    prefix: '/uploads',
+  });
+
+  // CSP off — this app serves JSON, not HTML, except the Swagger docs
+  // page (an internal dev tool), whose inline scripts a default CSP would
+  // block. Every other helmet header (HSTS, X-Content-Type-Options,
+  // X-Frame-Options, etc.) stays on.
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cookieParser());
 
   app.enableCors({
