@@ -1,9 +1,15 @@
 import type { components } from '@shopnest/api-client';
 
 import type {
+  AdminAccountResponse,
+  AdminDashboardResponse,
+  AuditLogListResponse,
   BrandResponse,
   CartResponse,
+  CatalogImportRunResponse,
   CategoryResponse,
+  ImportPreviewResponse,
+  ImportScopeInput,
   InventoryAdjustmentResponse,
   OrderResponse,
   ProductCardResponse,
@@ -331,6 +337,39 @@ export const api = {
 
   adminSuspendVendor: (id: string, cookies?: string) =>
     request<VendorResponse>(`/admin/vendors/${id}/suspend`, { method: 'PATCH', cookies }),
+
+  // ── Admin – Dashboard / audit log / admin accounts ──────────────────────────
+
+  adminDashboard: (cookies?: string) => request<AdminDashboardResponse>('/admin/dashboard', { cookies }),
+
+  adminAuditLogs: (
+    params: { page?: number; limit?: number; action?: string; targetType?: string } = {},
+    cookies?: string,
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.page) qs.set('page', String(params.page));
+    if (params.limit) qs.set('limit', String(params.limit));
+    if (params.action) qs.set('action', params.action);
+    if (params.targetType) qs.set('targetType', params.targetType);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<AuditLogListResponse>(`/admin/audit-logs${suffix}`, { cookies });
+  },
+
+  adminListAdmins: (cookies?: string) => request<AdminAccountResponse[]>('/admin/admins', { cookies }),
+
+  adminCreateAdmin: (email: string, cookies?: string) =>
+    request<{ id: string; email: string; role: string }>('/admin/admins', { method: 'POST', body: { email }, cookies }),
+
+  // ── Admin – Catalog imports ──────────────────────────────────────────────
+
+  adminPreviewImport: (scope: ImportScopeInput, cookies?: string) =>
+    request<ImportPreviewResponse>('/admin/catalog-imports/preview', { method: 'POST', body: scope, cookies }),
+
+  adminTriggerImport: (scope: ImportScopeInput, cookies?: string) =>
+    request<CatalogImportRunResponse>('/admin/catalog-imports/dummy-json', { method: 'POST', body: scope, cookies }),
+
+  adminListImportRuns: (limit = 20, cookies?: string) =>
+    request<CatalogImportRunResponse[]>(`/admin/catalog-imports?limit=${limit}`, { cookies }),
 };
 
 // `PUT /cart/items` returns the raw upserted CartItem row (no nested

@@ -7,11 +7,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
+  let isSuperAdmin = false;
   try {
     const result = (await api.me(cookieHeader)) as { user: { role: string } };
-    if (result.user.role !== 'ADMIN') {
+    if (result.user.role !== 'ADMIN' && result.user.role !== 'SUPER_ADMIN') {
       redirect('/shop');
     }
+    isSuperAdmin = result.user.role === 'SUPER_ADMIN';
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
       redirect('/login?returnTo=/admin');
@@ -32,6 +34,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               <Link href="/admin/categories" className="text-indigo-200 hover:text-white transition-colors">Categories</Link>
               <Link href="/admin/vendors" className="text-indigo-200 hover:text-white transition-colors">Vendors</Link>
               <Link href="/admin/users" className="text-indigo-200 hover:text-white transition-colors">Users</Link>
+              <Link href="/admin/imports" className="text-indigo-200 hover:text-white transition-colors">Imports</Link>
+              <Link href="/admin/audit-log" className="text-indigo-200 hover:text-white transition-colors">Audit Log</Link>
+              {isSuperAdmin && (
+                <Link href="/admin/admins" className="text-indigo-200 hover:text-white transition-colors">Admins</Link>
+              )}
             </nav>
           </div>
           <Link href="/shop" className="text-sm text-indigo-300 hover:text-white">

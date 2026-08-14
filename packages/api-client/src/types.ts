@@ -690,6 +690,23 @@ export interface paths {
         patch: operations["AdminVendorController_suspend"];
         trace?: never;
     };
+    "/vendor/offers/search-products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search the canonical catalog for a product to list — unfiltered by existing offers */
+        get: operations["VendorOffersController_searchProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/vendor/offers": {
         parameters: {
             query?: never;
@@ -879,6 +896,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/catalog-imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** [Admin] Dry run — see what a DummyJSON sync with this scope would do, without writing anything */
+        post: operations["CatalogImportController_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/catalog-imports/dummy-json": {
         parameters: {
             query?: never;
@@ -888,7 +922,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** [Admin] Queue a DummyJSON catalog synchronization */
+        /** [Admin] Queue a DummyJSON catalog synchronization, optionally scoped */
         post: operations["CatalogImportController_importDummyJson"];
         delete?: never;
         options?: never;
@@ -947,6 +981,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** [Admin] Platform-wide aggregate counts and recent activity */
+        get: operations["AdminController_getDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** [Admin] Paginated audit log, optionally filtered by action or target type */
+        get: operations["AdminController_listAuditLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** [Super Admin] List every admin/super-admin account */
+        get: operations["AdminController_listAdmins"];
+        put?: never;
+        /** [Super Admin] Create a new admin account — a password-reset email is sent, never a known password */
+        post: operations["AdminController_createAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -964,7 +1050,7 @@ export interface components {
             id: string;
             email: string;
             /** @enum {string} */
-            role: "CUSTOMER" | "VENDOR" | "ADMIN";
+            role: "CUSTOMER" | "VENDOR" | "ADMIN" | "SUPER_ADMIN";
             /**
              * Format: date-time
              * @description null if the email has not been verified yet
@@ -1253,6 +1339,21 @@ export interface components {
         UpdateVendorStaffRoleDto: {
             /** @enum {string} */
             role: "OWNER" | "STAFF";
+        };
+        ImportScopeDto: {
+            /** @description Only import products in these supplier category names. Omit/empty = no restriction. */
+            categoryScope?: string[];
+            /** @description Import at most this many scoped products. */
+            maxRecords?: number;
+            /** @description Only import products with at least this many supplier images. */
+            minImageCount?: number;
+        };
+        CreateAdminDto: {
+            /**
+             * Format: email
+             * @example new-admin@shopnest.dev
+             */
+            email: string;
         };
     };
     responses: never;
@@ -2190,6 +2291,25 @@ export interface operations {
             };
         };
     };
+    VendorOffersController_searchProducts: {
+        parameters: {
+            query?: {
+                q?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     VendorOffersController_list: {
         parameters: {
             query?: never;
@@ -2463,6 +2583,29 @@ export interface operations {
             };
         };
     };
+    CatalogImportController_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportScopeDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
     CatalogImportController_importDummyJson: {
         parameters: {
             query?: never;
@@ -2470,7 +2613,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportScopeDto"];
+            };
+        };
         responses: {
             202: {
                 headers: {
@@ -2541,6 +2688,85 @@ export interface operations {
                 content: {
                     "application/json": Record<string, never>[];
                 };
+            };
+        };
+    };
+    AdminController_getDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    AdminController_listAuditLogs: {
+        parameters: {
+            query?: {
+                action?: string;
+                targetType?: string;
+                limit?: number;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminController_listAdmins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminController_createAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAdminDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

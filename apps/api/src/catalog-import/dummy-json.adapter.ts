@@ -10,6 +10,7 @@ type DummyJsonProduct = {
   price?: unknown;
   stock?: unknown;
   thumbnail?: unknown;
+  images?: unknown;
 };
 
 @Injectable()
@@ -89,6 +90,9 @@ export class DummyJsonAdapter implements CatalogSourceAdapter {
     if (!valid)
       throw new BadGatewayException(`Catalog supplier product at index ${index} is invalid`);
 
+    const imageUrl = typeof product.thumbnail === 'string' ? product.thumbnail : undefined;
+    const imageCount = Array.isArray(product.images) ? product.images.length : imageUrl ? 1 : 0;
+
     return {
       externalId: String(product.id),
       name: (product.title as string).trim(),
@@ -96,7 +100,8 @@ export class DummyJsonAdapter implements CatalogSourceAdapter {
       categoryName: (product.category as string).trim(),
       priceCents: Math.round((product.price as number) * 100),
       stockQuantity: product.stock as number,
-      imageUrl: typeof product.thumbnail === 'string' ? product.thumbnail : undefined,
+      imageUrl,
+      imageCount,
     };
   }
 }

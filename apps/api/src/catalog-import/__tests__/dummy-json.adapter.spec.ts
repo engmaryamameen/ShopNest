@@ -41,6 +41,64 @@ describe('DummyJsonAdapter', () => {
     ]);
   });
 
+  it('counts images from the full images[] array, not just the thumbnail', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          products: [
+            {
+              id: 7,
+              title: 'Mechanical Keyboard',
+              description: 'A durable mechanical keyboard.',
+              category: 'computer-accessories',
+              price: 49.95,
+              stock: 12,
+              thumbnail: 'https://cdn.test/keyboard.jpg',
+              images: ['a.jpg', 'b.jpg', 'c.jpg'],
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(adapter.fetchProducts()).resolves.toEqual([expect.objectContaining({ imageCount: 3 })]);
+  });
+
+  it('falls back to imageCount 1 (thumbnail only) or 0 (no image) when images[] is absent', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          products: [
+            {
+              id: 7,
+              title: 'Mechanical Keyboard',
+              description: 'A durable mechanical keyboard.',
+              category: 'computer-accessories',
+              price: 49.95,
+              stock: 12,
+              thumbnail: 'https://cdn.test/keyboard.jpg',
+            },
+            {
+              id: 8,
+              title: 'Blank Notebook',
+              description: 'A notebook with no cover image.',
+              category: 'stationery',
+              price: 4.5,
+              stock: 40,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(adapter.fetchProducts()).resolves.toEqual([
+      expect.objectContaining({ externalId: '7', imageCount: 1 }),
+      expect.objectContaining({ externalId: '8', imageCount: 0 }),
+    ]);
+  });
+
   it('rejects a malformed product instead of partially importing it', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(

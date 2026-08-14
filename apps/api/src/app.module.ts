@@ -20,6 +20,7 @@ import { MailModule } from './mail/mail.module';
 import { AuditModule } from './audit/audit.module';
 import { UsersModule } from './users/users.module';
 import { VendorModule } from './vendor/vendor.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { VendorModule } from './vendor/vendor.module';
     VendorModule,
     CatalogImportModule,
     LocationModule,
+    AdminModule,
   ],
   providers: [
     // Guard execution order: 1 → 2 → 3 → 4 (then controller/route guards)

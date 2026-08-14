@@ -45,4 +45,21 @@ describe('RolesGuard', () => {
     reflector.getAllAndOverride.mockReturnValue([Role.ADMIN]);
     expect(guard.canActivate(makeContext(undefined))).toBe(false);
   });
+
+  describe('SUPER_ADMIN hierarchy', () => {
+    it('lets a SUPER_ADMIN through a plain @Roles(ADMIN) route', () => {
+      reflector.getAllAndOverride.mockReturnValue([Role.ADMIN]);
+      expect(guard.canActivate(makeContext({ role: Role.SUPER_ADMIN }))).toBe(true);
+    });
+
+    it('does NOT let a plain ADMIN through a @Roles(SUPER_ADMIN)-only route — the hierarchy is one-way', () => {
+      reflector.getAllAndOverride.mockReturnValue([Role.SUPER_ADMIN]);
+      expect(guard.canActivate(makeContext({ role: Role.ADMIN }))).toBe(false);
+    });
+
+    it('still denies a CUSTOMER on an ADMIN route — the hierarchy only elevates SUPER_ADMIN, not everyone', () => {
+      reflector.getAllAndOverride.mockReturnValue([Role.ADMIN]);
+      expect(guard.canActivate(makeContext({ role: Role.CUSTOMER }))).toBe(false);
+    });
+  });
 });

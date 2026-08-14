@@ -12,6 +12,7 @@ const supplierProduct = {
   priceCents: 4995,
   stockQuantity: 12,
   imageUrl: 'https://cdn.example.com/keyboard.jpg',
+  imageCount: 3,
 };
 
 function makePrismaMock() {
@@ -38,10 +39,18 @@ function makePrismaMock() {
   };
   return {
     tx,
+    // Read directly by preview() — no transaction, since nothing is written.
+    productSource: { findUnique: jest.fn().mockResolvedValue(null) },
     catalogImportRun: {
       create: jest.fn().mockResolvedValue({ id: 'run-id', status: CatalogImportStatus.QUEUED }),
       update: jest.fn().mockImplementation(({ data }) => ({ id: 'run-id', ...data })),
       findMany: jest.fn(),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({
+        id: 'run-id',
+        categoryScope: [],
+        maxRecords: null,
+        minImageCount: null,
+      }),
     },
     $transaction: jest.fn((callback) => callback(tx)),
   };
@@ -145,5 +154,112 @@ describe('CatalogImportService', () => {
 
     await expect(service.executeRun('run-id')).rejects.toThrow('offline');
     expect(prisma.catalogImportRun.update).not.toHaveBeenCalled();
+  });
+
+  describe('import scope', () => {
+    const otherCategoryProduct = { ...supplierProduct, externalId: '9', name: 'Desk Lamp', categoryName: 'Home Office' };
+    const lowImageProduct = { ...supplierProduct, externalId: '11', name: 'Cable Tie Pack', imageCount: 0 };
+
+    it('executeRun only processes products in categoryScope, matched case-insensitively by slug', async () => {
+      const prisma = makePrismaMock();
+      prisma.catalogImportRun.findUniqueOrThrow.mockResolvedValue({
+        id: 'run-id',
+        categoryScope: ['computer ACCESSORIES'], // deliberately mismatched case/spacing from 'Computer Accessories'
+        maxRecords: null,
+        minImageCount: null,
+      });
+      const adapter: CatalogSourceAdapter = {
+        fetchProducts: jest.fn().mockResolvedValue([supplierProduct, otherCategoryProduct]),
+      };
+      const service = new CatalogImportService(prisma as never, adapter);
+
+      const result = await service.executeRun('run-id');
+
+      expect(prisma.tx.product.create).toHaveBeenCalledTimes(1); // only the in-scope one
+      expect(result).toEqual(expect.objectContaining({ discoveredCount: 2, createdCount: 1 }));
+    });
+
+    it('executeRun respects maxRecords as a hard cap on the scoped set', async () => {
+      const prisma = makePrismaMock();
+      prisma.catalogImportRun.findUniqueOrThrow.mockResolvedValue({
+        id: 'run-id',
+        categoryScope: [],
+        maxRecords: 1,
+        minImageCount: null,
+      });
+      const adapter: CatalogSourceAdapter = {
+        fetchProducts: jest.fn().mockResolvedValue([supplierProduct, otherCategoryProduct]),
+      };
+      const service = new CatalogImportService(prisma as never, adapter);
+
+      await service.executeRun('run-id');
+
+      expect(prisma.tx.product.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('executeRun excludes products below minImageCount', async () => {
+      const prisma = makePrismaMock();
+      prisma.catalogImportRun.findUniqueOrThrow.mockResolvedValue({
+        id: 'run-id',
+        categoryScope: [],
+        maxRecords: null,
+        minImageCount: 1,
+      });
+      const adapter: CatalogSourceAdapter = {
+        fetchProducts: jest.fn().mockResolvedValue([supplierProduct, lowImageProduct]),
+      };
+      const service = new CatalogImportService(prisma as never, adapter);
+
+      await service.executeRun('run-id');
+
+      expect(prisma.tx.productSource.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ externalId: '7' }) }),
+      );
+      expect(prisma.tx.product.create).toHaveBeenCalledTimes(1); // lowImageProduct (externalId 11) excluded
+    });
+
+    it('preview reports counts without writing anything', async () => {
+      const prisma = makePrismaMock();
+      prisma.productSource.findUnique.mockResolvedValue(null); // every product would be a fresh create
+      const adapter: CatalogSourceAdapter = {
+        fetchProducts: jest.fn().mockResolvedValue([supplierProduct, otherCategoryProduct]),
+      };
+      const service = new CatalogImportService(prisma as never, adapter);
+
+      const preview = await service.preview({});
+
+      expect(preview).toEqual(
+        expect.objectContaining({
+          discoveredCount: 2,
+          scopedCount: 2,
+          wouldCreateCount: 2,
+          wouldUpdateCount: 0,
+          wouldBeUnchangedCount: 0,
+        }),
+      );
+      expect(preview.sample).toHaveLength(2);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.tx.product.create).not.toHaveBeenCalled();
+      expect(prisma.catalogImportRun.create).not.toHaveBeenCalled();
+    });
+
+    it('preview distinguishes create/update/unchanged using the same checksum logic as a real run', async () => {
+      const prisma = makePrismaMock();
+      const changedChecksum = 'a-checksum-that-will-never-match';
+      prisma.productSource.findUnique.mockImplementation(({ where }: { where: { source_externalId: { externalId: string } } }) => {
+        if (where.source_externalId.externalId === '7') return Promise.resolve({ checksum: changedChecksum });
+        return Promise.resolve(null);
+      });
+      const adapter: CatalogSourceAdapter = {
+        fetchProducts: jest.fn().mockResolvedValue([supplierProduct, otherCategoryProduct]),
+      };
+      const service = new CatalogImportService(prisma as never, adapter);
+
+      const preview = await service.preview({});
+
+      expect(preview.wouldCreateCount).toBe(1); // otherCategoryProduct
+      expect(preview.wouldUpdateCount).toBe(1); // supplierProduct — exists with a different checksum
+      expect(preview.sample.find((i) => i.externalId === '7')?.action).toBe('update');
+    });
   });
 });

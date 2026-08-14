@@ -224,6 +224,30 @@ The first pass at the vendor apply/offer-creation forms used plain sibling `<lab
 
 `apps/api/src/auth/__tests__/jwt-access.strategy.spec.ts` (new, 5 tests) locks in the live-role behavior above plus the two pre-existing live checks (revocation, suspension) that had no direct coverage before. `apps/web/e2e/vendor-lifecycle.spec.ts` (new) drives apply → admin approval (in a second, independent browser context/session) → offer creation via the real product picker → activation → empty orders/staff pages rendering → a real staff invite, entirely through the rendered UI against a real API and database, with no manual token refresh — the exact path that regresses if the role-claim fix above is ever reverted. Combined with the Phase 1 suite, the full E2E run is 25/25 passing (desktop `chromium` + `mobile-chromium`'s responsive pass), plus the full API suite at 204 tests (199 Phase 0–2 + 5 new) and the 50 Phase 3 vendor-module unit tests reported when that module was first built.
 
+## Admin App (Phase 4)
+
+### SUPER_ADMIN is a one-way hierarchy over ADMIN, not a separate role tree
+
+The plan called for `CRUD /admin/admins` (creating further admin accounts) to be gated behind a role distinct from the day-to-day catalog/order/vendor `ADMIN` role — so that being able to run the store doesn't imply being able to grant others the same. Adding `SUPER_ADMIN` as a fourth `Role` enum value raised an immediate design fork: either every existing `@Roles(Role.ADMIN)` call site across `catalog`, `catalog-import`, `orders`, `users`, and `vendor` gets rewritten to `@Roles(Role.ADMIN, Role.SUPER_ADMIN)`, or `RolesGuard` itself expresses the hierarchy once. Chose the latter: `RolesGuard.canActivate` treats a `SUPER_ADMIN` caller as satisfying any `@Roles(Role.ADMIN)` requirement, one-way only (an `ADMIN` does **not** satisfy a `@Roles(Role.SUPER_ADMIN)` route). This is a single, centrally-tested rule (`roles.guard.spec.ts`'s "SUPER_ADMIN hierarchy" suite) instead of a scattered, easy-to-forget convention that a new admin route would need to remember to apply. The seeded bootstrap admin (`admin@shopnest.dev`) is promoted to `SUPER_ADMIN` in `seed.ts` — there has to be at least one account able to create further admins before any `POST /admin/admins` call has ever run.
+
+### Creating an admin account never gives the creator (or anyone) a known password
+
+`AdminService.createAdmin(email)` hashes a random, immediately-discarded 32-byte value to satisfy the `passwordHash` `NOT NULL` column, then calls the existing `AuthService.requestPasswordReset(email)` — the same token table and email template "forgot password" already uses — so the new admin sets their own credential via a real, already-hardened reset link. No new mail template, no new token table, no parallel "admin invite" mechanism: this is the same pattern already established for vendor-staff invites (§ Vendor App), applied a third time to the same problem shape ("grant access without the granter ever knowing the credential").
+
+### `preview()` and `executeRun()` share one `applyScope()` — a preview that could diverge from the real run is worse than no preview
+
+`CatalogImportRun` gained `categoryScope String[]`, `maxRecords Int?`, `minImageCount Int?` — set at enqueue time (`POST /admin/catalog-imports/dummy-json`), persisted on the row so the background worker (which claims runs asynchronously, independent of the original HTTP request) can read the same scope back when it later calls `executeRun(runId)`. `POST /admin/catalog-imports/preview` runs the identical `applyScope()` filter read-only (no transaction, no advisory lock, nothing written) against a live fetch from the real supplier, comparing each scoped product's checksum against `ProductSource` to report create/update/unchanged counts. Both call sites route through the same private method specifically so an admin previewing a scope and then running it can trust the preview — a preview computed by separate, potentially-drifting logic would be worse than not having one.
+
+`SupplierProduct` gained `imageCount` (from DummyJSON's `images[]` array length, independent of the single `imageUrl` already stored) to back the `minImageCount` filter — a real adapter extension, not a stub; both possible states (an `images` array present, or only a `thumbnail`) are covered in `dummy-json.adapter.spec.ts`.
+
+### A real bug real-usage caught: the whole-catalog import transaction could outrun Prisma's default interactive-transaction timeout
+
+`executeRun` intentionally processes every scoped product's upsert inside one `$transaction` — the advisory lock and all-or-nothing atomicity need to cover the entire run, so a mid-run failure never leaves a partially-imported catalog. Triggering a real, unscoped synchronization against DummyJSON's ~194-product catalog through the new admin UI hit Prisma's default 5-second interactive-transaction timeout partway through and rolled back the whole run (correctly — no partial writes — but the run still failed where it should have succeeded). Fixed by passing an explicit `{ timeout: 60_000, maxWait: 10_000 }` to the transaction — comfortable headroom for this project's supplier catalog size. Documented as a scale boundary, not silently over-provisioned forever: a supplier catalog large enough to need materially more than 60s would need the run chunked into multiple smaller transactions rather than a longer single timeout.
+
+### Review moderation queue deferred to Phase 5, not built against a model that doesn't exist yet
+
+The original phase plan listed "review moderation queue" under Phase 4. The `Review` model itself is Phase 5 scope (§3.3 of the plan) — Phase 4 cannot build a moderation UI for rows that can't be written yet. Resolved by building the moderation queue immediately after `Review` lands in Phase 5, not by inventing a placeholder screen now. Every other Phase 4 item (real `AdminModule` with live dashboard aggregates, `AuditLog` viewer, `SUPER_ADMIN`-gated admin-account management, catalog-import preview/scope/history) shipped as originally scoped.
+
 ## Data Model
 
 ### Integer cents

@@ -16,16 +16,24 @@ async function main() {
   const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@shopnest.dev';
   const adminPassword = process.env.ADMIN_PASSWORD ?? 'Admin@ShopNest2025!';
 
+  // SUPER_ADMIN, not ADMIN — the seeded account is the one and only admin
+  // that exists before any `POST /admin/admins` call has ever run, so it
+  // must be able to create further admin accounts itself (CRUD /admin/admins
+  // is SUPER_ADMIN-only; see roles.guard.ts for the one-way ADMIN<-SUPER_ADMIN
+  // hierarchy that still lets it do everything a plain ADMIN can too).
   let admin = await prisma.user.findUnique({ where: { email: adminEmail } });
   if (!admin) {
     const passwordHash = await argon2.hash(adminPassword, { type: argon2.argon2id });
     admin = await prisma.user.create({
-      data: { email: adminEmail, passwordHash, role: Role.ADMIN },
+      data: { email: adminEmail, passwordHash, role: Role.SUPER_ADMIN, emailVerifiedAt: new Date() },
     });
     await prisma.cart.create({ data: { userId: admin.id } });
-    console.log(`Admin created: ${adminEmail}`);
+    console.log(`Super admin created: ${adminEmail}`);
+  } else if (admin.role !== Role.SUPER_ADMIN) {
+    admin = await prisma.user.update({ where: { id: admin.id }, data: { role: Role.SUPER_ADMIN } });
+    console.log(`Promoted existing admin to SUPER_ADMIN: ${adminEmail}`);
   } else {
-    console.log(`Admin already exists: ${adminEmail}`);
+    console.log(`Super admin already exists: ${adminEmail}`);
   }
 
   const systemVendor = await prisma.vendor.upsert({

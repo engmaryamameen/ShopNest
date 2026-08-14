@@ -175,7 +175,7 @@ export interface VendorOrderResponse {
   vendor: { id: string; name: string; slug: string };
 }
 
-export type UserRole = 'CUSTOMER' | 'VENDOR' | 'ADMIN';
+export type UserRole = 'CUSTOMER' | 'VENDOR' | 'ADMIN' | 'SUPER_ADMIN';
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
 
 export interface UserSummary {
@@ -289,4 +289,71 @@ export interface VendorStaffInviteResponse {
 export interface VendorStaffListResponse {
   members: VendorMemberResponse[];
   pendingInvites: VendorStaffInviteResponse[];
+}
+
+// ── Admin ────────────────────────────────────────────────────────────────
+
+export interface AdminDashboardResponse {
+  users: { total: number; customers: number; vendorsRole: number; admins: number };
+  vendors: { pending: number; approved: number; suspended: number; rejected: number };
+  products: { draft: number; published: number; archived: number };
+  orders: { byStatus: Partial<Record<OrderStatus, number>>; totalRevenueCents: number };
+  pendingVendorApplications: number;
+  recentAuditLogs: AuditLogResponse[];
+}
+
+export interface AuditLogResponse {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  createdAt: string;
+  actor: { id: string; email: string } | null;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLogResponse[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AdminAccountResponse {
+  id: string;
+  email: string;
+  role: UserRole;
+  status: AccountStatus;
+  emailVerifiedAt: string | null;
+  createdAt: string;
+}
+
+export interface ImportPreviewResponse {
+  discoveredCount: number;
+  scopedCount: number;
+  wouldCreateCount: number;
+  wouldUpdateCount: number;
+  wouldBeUnchangedCount: number;
+  sample: Array<{ externalId: string; name: string; categoryName: string; action: 'create' | 'update' | 'unchanged' }>;
+}
+
+export interface CatalogImportRunResponse {
+  id: string;
+  source: string;
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+  discoveredCount: number;
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  errorMessage: string | null;
+  categoryScope: string[];
+  maxRecords: number | null;
+  minImageCount: number | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface ImportScopeInput {
+  categoryScope?: string[];
+  maxRecords?: number;
+  minImageCount?: number;
 }

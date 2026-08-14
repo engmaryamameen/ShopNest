@@ -11,6 +11,7 @@ enum Role {
   CUSTOMER
   VENDOR
   ADMIN
+  SUPER_ADMIN
 }
 
 enum UserStatus {
@@ -33,6 +34,7 @@ enum AuditAction {
   ADMIN_VENDOR_APPROVE
   ADMIN_VENDOR_REJECT
   ADMIN_VENDOR_SUSPEND
+  ADMIN_ADMIN_CREATE
 }
 
 enum OrderStatus {
@@ -535,6 +537,9 @@ model CatalogImportRun {
   lockedBy        String?
   startedAt       DateTime            @default(now())
   completedAt     DateTime?
+  categoryScope  String[] @default([])
+  maxRecords     Int?
+  minImageCount  Int?
 
   @@index([source, startedAt])
   @@index([status, startedAt])

@@ -16,6 +16,37 @@ type ImportCounts = {
   unchangedCount: number;
 };
 
+export interface ImportScope {
+  /** Category names to include (case-insensitive, compared by slug — same
+   * normalization already used for canonical category matching). Empty or
+   * omitted means no restriction, never "match nothing". */
+  categoryScope?: string[];
+  maxRecords?: number;
+  minImageCount?: number;
+}
+
+export interface ImportPreviewItem {
+  externalId: string;
+  name: string;
+  categoryName: string;
+  action: 'create' | 'update' | 'unchanged';
+}
+
+export interface ImportPreview {
+  discoveredCount: number;
+  scopedCount: number;
+  wouldCreateCount: number;
+  wouldUpdateCount: number;
+  wouldBeUnchangedCount: number;
+  /** First N scoped items, for a human to sanity-check the scope before
+   * committing to a real run — not the full scoped set (see `scopedCount`
+   * for the true total; this is a bounded sample, not a silent truncation
+   * of what the real run would process). */
+  sample: ImportPreviewItem[];
+}
+
+const PREVIEW_SAMPLE_SIZE = 25;
+
 @Injectable()
 export class CatalogImportService {
   constructor(
@@ -23,11 +54,17 @@ export class CatalogImportService {
     @Inject(CATALOG_SOURCE_ADAPTER) private readonly adapter: CatalogSourceAdapter,
   ) {}
 
-  async enqueueDummyJson() {
+  async enqueueDummyJson(scope: ImportScope = {}) {
     const source = CatalogSource.DUMMY_JSON;
     try {
       return await this.prisma.catalogImportRun.create({
-        data: { source, status: CatalogImportStatus.QUEUED },
+        data: {
+          source,
+          status: CatalogImportStatus.QUEUED,
+          categoryScope: scope.categoryScope ?? [],
+          maxRecords: scope.maxRecords ?? null,
+          minImageCount: scope.minImageCount ?? null,
+        },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -37,9 +74,59 @@ export class CatalogImportService {
     }
   }
 
+  /** Dry run: fetches from the real supplier and computes what a real run
+   * would do, without writing anything — no transaction, no advisory lock,
+   * because nothing is mutated. Safe to call as often as an admin wants
+   * while tuning scope filters before committing to `enqueueDummyJson`. */
+  async preview(scope: ImportScope = {}): Promise<ImportPreview> {
+    const source = CatalogSource.DUMMY_JSON;
+    const discovered = await this.adapter.fetchProducts();
+    const scoped = this.applyScope(discovered, scope);
+
+    const items: ImportPreviewItem[] = [];
+    let wouldCreateCount = 0;
+    let wouldUpdateCount = 0;
+    let wouldBeUnchangedCount = 0;
+
+    for (const product of scoped) {
+      const existing = await this.prisma.productSource.findUnique({
+        where: { source_externalId: { source, externalId: product.externalId } },
+      });
+      const action: ImportPreviewItem['action'] = !existing
+        ? 'create'
+        : existing.checksum === this.checksum(product)
+          ? 'unchanged'
+          : 'update';
+
+      if (action === 'create') wouldCreateCount++;
+      else if (action === 'update') wouldUpdateCount++;
+      else wouldBeUnchangedCount++;
+
+      if (items.length < PREVIEW_SAMPLE_SIZE) {
+        items.push({ externalId: product.externalId, name: product.name, categoryName: product.categoryName, action });
+      }
+    }
+
+    return {
+      discoveredCount: discovered.length,
+      scopedCount: scoped.length,
+      wouldCreateCount,
+      wouldUpdateCount,
+      wouldBeUnchangedCount,
+      sample: items,
+    };
+  }
+
   async executeRun(runId: string) {
     const source = CatalogSource.DUMMY_JSON;
-    const products = await this.adapter.fetchProducts();
+    const run = await this.prisma.catalogImportRun.findUniqueOrThrow({ where: { id: runId } });
+    const discovered = await this.adapter.fetchProducts();
+    const products = this.applyScope(discovered, {
+      categoryScope: run.categoryScope,
+      maxRecords: run.maxRecords ?? undefined,
+      minImageCount: run.minImageCount ?? undefined,
+    });
+
     const counts = await this.prisma.$transaction(async (tx) => {
         const [lock] = await tx.$queryRaw<Array<{ acquired: boolean }>>`
           SELECT pg_try_advisory_xact_lock(hashtext(${`shopnest:catalog-import:${source}`})) AS acquired
@@ -49,7 +136,7 @@ export class CatalogImportService {
         const systemVendorId = await this.ensureSystemVendor(tx);
 
         const result: ImportCounts = {
-          discoveredCount: products.length,
+          discoveredCount: discovered.length,
           createdCount: 0,
           updatedCount: 0,
           unchangedCount: 0,
@@ -57,6 +144,22 @@ export class CatalogImportService {
 
         for (const product of products) await this.upsertProduct(tx, source, product, systemVendorId, result);
         return result;
+    }, {
+      // Every product's upsert (canonical row + media + offer + inventory
+      // adjustment) runs sequentially inside this one transaction, so the
+      // advisory lock and all-or-nothing atomicity cover the entire run —
+      // deliberate, so a mid-run failure never leaves a partially-imported
+      // catalog. That means the timeout has to scale with catalog size:
+      // Prisma's 5s interactive-transaction default is comfortably enough
+      // for a handful of scoped products but was measured to run out
+      // partway through DummyJSON's full ~194-product catalog in this
+      // environment, aborting the whole run. 60s covers a full unscoped
+      // DummyJSON sync with headroom; a supplier catalog large enough to
+      // need more than that would need this run chunked into batches
+      // instead of one longer timeout — not a problem at this project's
+      // scale, flagged here rather than silently papered over.
+      timeout: 60_000,
+      maxWait: 10_000,
     });
 
     return this.prisma.catalogImportRun.update({
@@ -70,6 +173,28 @@ export class CatalogImportService {
         errorMessage: null,
       },
     });
+  }
+
+  /** Applied identically by `preview()` and `executeRun()` — the whole
+   * point of a preview is that it shows exactly what the real run will do,
+   * so the filter logic must not diverge between the two call sites. */
+  private applyScope(products: SupplierProduct[], scope: ImportScope): SupplierProduct[] {
+    let result = products;
+
+    if (scope.categoryScope && scope.categoryScope.length > 0) {
+      const allowed = new Set(scope.categoryScope.map((c) => this.slugify(c)));
+      result = result.filter((p) => allowed.has(this.slugify(p.categoryName)));
+    }
+
+    if (scope.minImageCount !== undefined) {
+      result = result.filter((p) => p.imageCount >= scope.minImageCount!);
+    }
+
+    if (scope.maxRecords !== undefined) {
+      result = result.slice(0, scope.maxRecords);
+    }
+
+    return result;
   }
 
   listRuns(limit = 20) {

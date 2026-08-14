@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 
-export type UserRole = 'CUSTOMER' | 'VENDOR' | 'ADMIN';
+export type UserRole = 'CUSTOMER' | 'VENDOR' | 'ADMIN' | 'SUPER_ADMIN';
 
 export interface UserIdentity {
   id: string;
