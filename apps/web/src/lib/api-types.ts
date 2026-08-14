@@ -175,7 +175,7 @@ export interface VendorOrderResponse {
   vendor: { id: string; name: string; slug: string };
 }
 
-export type UserRole = 'CUSTOMER' | 'ADMIN';
+export type UserRole = 'CUSTOMER' | 'VENDOR' | 'ADMIN';
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
 
 export interface UserSummary {
@@ -200,4 +200,93 @@ export interface OrderResponse {
   statusHistory: OrderStatusHistoryResponse[];
   vendorOrders: VendorOrderResponse[];
   user?: { id: string; email: string };
+}
+
+// ── Vendor ───────────────────────────────────────────────────────────────
+
+export type VendorApplicationStatus = 'PENDING' | 'APPROVED' | 'SUSPENDED' | 'REJECTED';
+
+export interface VendorResponse {
+  id: string;
+  name: string;
+  slug: string;
+  status: VendorApplicationStatus;
+  description: string | null;
+  logoUrl: string | null;
+  contactEmail: string;
+  commissionRateBps: number | null;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+  approvedByUserId: string | null;
+  members?: Array<{ id: string; role: 'OWNER' | 'STAFF'; user: { id: string; email: string } }>;
+}
+
+export interface VendorOfferResponse {
+  id: string;
+  vendorId: string;
+  productId: string;
+  variantId: string | null;
+  vendorSku: string;
+  condition: 'NEW' | 'USED' | 'REFURBISHED';
+  priceCents: number;
+  compareAtPriceCents: number | null;
+  stockQuantity: number;
+  status: 'DRAFT' | 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  updatedAt: string;
+  product?: { id: string; name: string; slug: string };
+  variant?: { id: string; sku: string | null } | null;
+}
+
+export interface InventoryAdjustmentResponse {
+  id: string;
+  vendorOfferId: string;
+  delta: number;
+  reason: 'RESTOCK' | 'SALE' | 'RETURN' | 'CORRECTION' | 'IMPORT_INITIAL';
+  reference: string | null;
+  actorUserId: string | null;
+  createdAt: string;
+}
+
+export interface VendorFulfilmentResponse {
+  id: string;
+  orderId: string;
+  vendorId: string;
+  status: OrderStatus;
+  subtotalCents: number;
+  createdAt: string;
+  updatedAt: string;
+  items: OrderItemResponse[];
+  order: { id: string; createdAt: string; currency: string; user: { id: string; email: string } };
+  statusHistory?: OrderStatusHistoryResponse[];
+}
+
+export interface VendorAnalyticsResponse {
+  totalRevenueCents: number;
+  totalOrders: number;
+  ordersAwaitingFulfilment: number;
+  ordersByStatus: Partial<Record<OrderStatus, number>>;
+  offersByStatus: Record<string, number>;
+}
+
+export interface VendorMemberResponse {
+  id: string;
+  vendorId: string;
+  role: 'OWNER' | 'STAFF';
+  createdAt: string;
+  user: { id: string; email: string };
+}
+
+export interface VendorStaffInviteResponse {
+  id: string;
+  email: string;
+  role: 'OWNER' | 'STAFF';
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface VendorStaffListResponse {
+  members: VendorMemberResponse[];
+  pendingInvites: VendorStaffInviteResponse[];
 }

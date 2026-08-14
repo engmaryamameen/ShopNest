@@ -34,7 +34,7 @@ export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt-access') 
     // admin suspends the account) — no token blacklist needed for either.
     const family = await this.prisma.refreshTokenFamily.findUnique({
       where: { id: payload.familyId },
-      select: { isRevoked: true, user: { select: { status: true } } },
+      select: { isRevoked: true, user: { select: { status: true, role: true } } },
     });
 
     if (!family || family.isRevoked) {
@@ -45,6 +45,15 @@ export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt-access') 
       throw new UnauthorizedException('Account is no longer active');
     }
 
-    return payload;
+    // Return the LIVE role, not the possibly-stale role embedded in the
+    // token at issue time — same principle as the live status check above.
+    // Without this, a customer approved as a vendor (or any other
+    // role change) would be locked out of every @Roles()-gated endpoint
+    // for up to the access token's full TTL (15m) despite the DB, and
+    // every other part of the app reading live data, already reflecting
+    // their new role. RolesGuard reads request.user.role, which is exactly
+    // this return value — this is the one and only place that needs to
+    // change to make every role transition take effect immediately.
+    return { ...payload, role: family.user.role };
   }
 }

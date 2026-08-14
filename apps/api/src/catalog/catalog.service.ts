@@ -280,6 +280,26 @@ export class CatalogService {
     return rows.map((r) => this.toProductCard(r));
   }
 
+  /** For "which product am I listing" pickers (vendor offer creation,
+   * admin tooling) — deliberately *not* filtered by `offers: { some }`
+   * like the storefront listing is, since the whole point is finding a
+   * product that doesn't have the caller's offer yet (possibly no offer
+   * at all). Lightweight projection, no buy-box computation needed here. */
+  async searchForListing(q: string, limit = 10) {
+    return this.prisma.product.findMany({
+      where: { publishStatus: 'PUBLISHED', name: { contains: q, mode: 'insensitive' } },
+      take: Math.min(Math.max(limit, 1), 25),
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        category: { select: CATEGORY_SELECT },
+        variants: { select: { id: true, sku: true } },
+      },
+    });
+  }
+
   async getProductBySlug(slug: string) {
     const product = await this.prisma.product.findUnique({
       where: { slug },

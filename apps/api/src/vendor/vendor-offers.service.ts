@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { OfferStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CatalogService } from '../catalog/catalog.service';
 import { VendorMembershipService } from './vendor-membership.service';
 import { CreateVendorOfferDto } from './dto/create-vendor-offer.dto';
 import { UpdateVendorOfferDto } from './dto/update-vendor-offer.dto';
@@ -11,7 +12,18 @@ export class VendorOffersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly membership: VendorMembershipService,
+    private readonly catalog: CatalogService,
   ) {}
+
+  /** Backs the "which product am I listing" picker on offer creation —
+   * unfiltered by existing offers (see CatalogService.searchForListing's
+   * doc for why), just requires the caller to be an authenticated vendor
+   * member so this isn't a second, unauthenticated catalog-search surface. */
+  async searchProducts(userId: string, q: string) {
+    await this.membership.requireMembership(userId);
+    if (q.trim().length < 2) return [];
+    return this.catalog.searchForListing(q);
+  }
 
   async list(userId: string) {
     const { vendorId } = await this.membership.requireMembership(userId);

@@ -45,6 +45,7 @@ describe('VendorOffersService', () => {
     service = new VendorOffersService(
       prisma as unknown as PrismaService,
       membership as unknown as VendorMembershipService,
+      {} as never, // CatalogService — only searchProducts() uses it, not exercised by these tests
     );
   });
 

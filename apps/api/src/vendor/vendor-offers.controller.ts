@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -16,6 +16,12 @@ import { AdjustInventoryDto } from './dto/adjust-inventory.dto';
 @Roles(Role.VENDOR)
 export class VendorOffersController {
   constructor(private readonly offers: VendorOffersService) {}
+
+  @Get('search-products')
+  @ApiOperation({ summary: 'Search the canonical catalog for a product to list — unfiltered by existing offers' })
+  searchProducts(@CurrentUser() user: JwtPayload, @Query('q') q = '') {
+    return this.offers.searchProducts(user.sub, q);
+  }
 
   @Get()
   @ApiOperation({ summary: "List the caller's vendor's offers" })

@@ -198,6 +198,32 @@ A normal composite `@@unique([vendorId, productId, variantId])` does not stop th
 
 Checkout decrement, cancellation/return restoration, admin manual edit, and import initialization/re-sync each write one `InventoryAdjustment` row (`SALE`/`RETURN`/`CORRECTION`/`IMPORT_INITIAL`) inside the exact same Prisma transaction as the `VendorOffer.stockQuantity` change it explains — verified by a unit test at each call site (`orders.service.spec.ts`'s cancellation-restore test asserts both the offer update *and* the adjustment's `delta` sign; `catalog.service.spec.ts`'s create-product test asserts the same for initial stock; `catalog-import.service.spec.ts`'s re-sync test asserts a `CORRECTION` delta, not a duplicate `IMPORT_INITIAL`).
 
+## Vendor App (Phase 3)
+
+### A real bug real-browser verification caught: JWT role claims went stale on approval
+
+`VendorOnboardingService.approve()` promotes `User.role` from `CUSTOMER` to `VENDOR` (and any co-owner/staff on the same vendor) the moment an admin approves the application — deliberately, so a `PENDING` applicant has no vendor capabilities yet (see the inline comment at the call site). That part was correct and covered by unit tests from the start. What unit tests couldn't catch: the *already-issued* access token sitting in the applicant's browser still embeds the old `role: CUSTOMER` claim, and `JwtAccessStrategy.validate()` returned that embedded payload unchanged — so `RolesGuard` (which reads `request.user.role`) kept rejecting every `@Roles(Role.VENDOR)` endpoint with 403 until the token's 15-minute TTL naturally expired and a refresh happened to mint a fresh one. A newly-approved vendor could log in, see their own "Approved" dashboard (`vendor.status` is read live, unaffected), and then get silently 403'd on every real action for up to 15 minutes with no visible recovery path short of logging out and back in.
+
+This was found by a real Playwright walkthrough of the full apply → admin-approves → create-offer journey with no manual token-refresh step — the same shape of gap the Phase 1 verification pass was specifically asked to guard against ("a live server/database smoke test" isn't the same evidence as driving the actual UI). A curl-based manual check had masked it because an explicit `POST /auth/refresh` was part of that script.
+
+Fix, at the root rather than papering over it client-side: `JwtAccessStrategy.validate()` already re-queries the token family every request to enforce live revocation and live account-suspension status (`family.user.status`, not a token claim) — the exact same "database is authoritative, not the token" principle already established for those two checks. `role` was the one field still trusted from the token. `validate()` now also selects `family.user.role` and returns it in place of the payload's embedded value, so `RolesGuard` always sees the live role on every request, with no dependency on a refresh happening to have occurred. This fixes every role transition uniformly (vendor approval today; any future admin-promotion or demotion path later), not just this one call site, and costs nothing extra — the query was already being made. Covered by `jwt-access.strategy.spec.ts` (new — no prior spec existed for this strategy at all, despite it enforcing two other security-relevant checks already).
+
+### Vendor's own product search is deliberately unfiltered by existing offers
+
+The public catalog search (`GET /products`, `CatalogService.listProducts`) only returns products with at least one `ACTIVE` `VendorOffer` — correct for shoppers, who shouldn't see unsellable products. A vendor picking a product to list for the *first* time is searching for exactly the opposite: products nobody is selling yet. Reusing the public endpoint would make it structurally impossible to be the first seller of anything. `CatalogService.searchForListing()` / `GET /vendor/offers/search-products` is a separate, `@Roles(Role.VENDOR)`-gated search with no offer-existence filter, only `publishStatus: PUBLISHED`.
+
+### Vendor order fulfilment reuses the customer-facing order state machine, not a parallel copy
+
+`VENDOR_TRANSITIONS` (`order-state-machine.ts`) restricts a vendor's own `PATCH /vendor/orders/:id/status` to `PENDING → CONFIRMED → SHIPPED` — `DELIVERED` and `CANCELLED` stay outside single-seller authority (delivery confirmation and platform-level cancellation are not a vendor's call to make unilaterally). `OrdersService.recomputeOrderStatus` (made `public`, not duplicated) re-aggregates the parent `Order.status` from all of its `VendorOrder`s after every vendor-level transition, the same aggregation used by the customer/admin paths — there is exactly one status-aggregation implementation in the codebase.
+
+### Form labels use `htmlFor`/`id`, not just visual adjacency
+
+The first pass at the vendor apply/offer-creation forms used plain sibling `<label>text</label>` + `<input>` pairs with no `htmlFor`/`id` association — visually correct, but invisible to a screen reader (and to Playwright's `getByLabel`, which caught it immediately). Every new form field in `vendor-apply-form.tsx` and the offer-creation form in `vendor-offer-list.tsx` now pairs an explicit `id` with a `htmlFor`, matching the pattern already used by the account/security forms (`#email`/`#password`-style ids) elsewhere in the app.
+
+### End-to-end verification for this phase
+
+`apps/api/src/auth/__tests__/jwt-access.strategy.spec.ts` (new, 5 tests) locks in the live-role behavior above plus the two pre-existing live checks (revocation, suspension) that had no direct coverage before. `apps/web/e2e/vendor-lifecycle.spec.ts` (new) drives apply → admin approval (in a second, independent browser context/session) → offer creation via the real product picker → activation → empty orders/staff pages rendering → a real staff invite, entirely through the rendered UI against a real API and database, with no manual token refresh — the exact path that regresses if the role-claim fix above is ever reverted. Combined with the Phase 1 suite, the full E2E run is 25/25 passing (desktop `chromium` + `mobile-chromium`'s responsive pass), plus the full API suite at 204 tests (199 Phase 0–2 + 5 new) and the 50 Phase 3 vendor-module unit tests reported when that module was first built.
+
 ## Data Model
 
 ### Integer cents

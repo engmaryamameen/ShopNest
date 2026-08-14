@@ -4,11 +4,17 @@ import type {
   BrandResponse,
   CartResponse,
   CategoryResponse,
+  InventoryAdjustmentResponse,
   OrderResponse,
   ProductCardResponse,
   ProductDetailResponse,
   ProductListResponse,
   UserSummary,
+  VendorAnalyticsResponse,
+  VendorFulfilmentResponse,
+  VendorOfferResponse,
+  VendorResponse,
+  VendorStaffListResponse,
 } from './api-types';
 
 type Schemas = components['schemas'];
@@ -232,6 +238,99 @@ export const api = {
       body,
       cookies,
     }),
+
+  // ── Vendor ─────────────────────────────────────────────────────────────────
+
+  vendorApply: (body: { name: string; description?: string; logoUrl?: string; contactEmail: string }, cookies?: string) =>
+    request<VendorResponse>('/vendor/apply', { method: 'POST', body, cookies }),
+
+  vendorMe: (cookies?: string) => request<VendorResponse>('/vendor/me', { cookies }),
+
+  vendorUpdateProfile: (
+    body: { name?: string; description?: string; logoUrl?: string; contactEmail?: string },
+    cookies?: string,
+  ) => request<VendorResponse>('/vendor/me', { method: 'PATCH', body, cookies }),
+
+  vendorAnalytics: (cookies?: string) => request<VendorAnalyticsResponse>('/vendor/analytics', { cookies }),
+
+  vendorSearchProducts: (q: string, cookies?: string) =>
+    request<Array<{ id: string; name: string; slug: string; category: { name: string; slug: string } | null }>>(
+      `/vendor/offers/search-products?q=${encodeURIComponent(q)}`,
+      { cookies },
+    ),
+
+  vendorListOffers: (cookies?: string) => request<VendorOfferResponse[]>('/vendor/offers', { cookies }),
+
+  vendorCreateOffer: (
+    body: {
+      productId: string;
+      variantId?: string;
+      vendorSku: string;
+      condition?: string;
+      priceCents: number;
+      compareAtPriceCents?: number;
+      stockQuantity: number;
+    },
+    cookies?: string,
+  ) => request<VendorOfferResponse>('/vendor/offers', { method: 'POST', body, cookies }),
+
+  vendorUpdateOffer: (
+    id: string,
+    body: { vendorSku?: string; condition?: string; priceCents?: number; compareAtPriceCents?: number; status?: string },
+    cookies?: string,
+  ) => request<VendorOfferResponse>(`/vendor/offers/${id}`, { method: 'PATCH', body, cookies }),
+
+  vendorAdjustInventory: (
+    id: string,
+    body: { delta: number; reason: 'RESTOCK' | 'CORRECTION'; reference?: string },
+    cookies?: string,
+  ) => request<VendorOfferResponse>(`/vendor/offers/${id}/inventory`, { method: 'PATCH', body, cookies }),
+
+  vendorInventoryHistory: (id: string, cookies?: string) =>
+    request<InventoryAdjustmentResponse[]>(`/vendor/offers/${id}/inventory`, { cookies }),
+
+  vendorListOrders: (status?: string, cookies?: string) => {
+    const qs = status ? `?status=${status}` : '';
+    return request<VendorFulfilmentResponse[]>(`/vendor/orders${qs}`, { cookies });
+  },
+
+  vendorGetOrder: (id: string, cookies?: string) =>
+    request<VendorFulfilmentResponse>(`/vendor/orders/${id}`, { cookies }),
+
+  vendorUpdateOrderStatus: (id: string, status: 'CONFIRMED' | 'SHIPPED', cookies?: string) =>
+    request<VendorFulfilmentResponse>(`/vendor/orders/${id}/status`, { method: 'PATCH', body: { status }, cookies }),
+
+  vendorListStaff: (cookies?: string) => request<VendorStaffListResponse>('/vendor/staff', { cookies }),
+
+  vendorInviteStaff: (email: string, cookies?: string) =>
+    request<{ status: string }>('/vendor/staff/invite', { method: 'POST', body: { email }, cookies }),
+
+  vendorAcceptStaffInvite: (token: string, cookies?: string) =>
+    request<{ id: string }>('/vendor/staff/accept', { method: 'POST', body: { token }, cookies }),
+
+  vendorUpdateStaffRole: (memberId: string, role: 'OWNER' | 'STAFF', cookies?: string) =>
+    request<{ id: string }>(`/vendor/staff/${memberId}/role`, { method: 'PATCH', body: { role }, cookies }),
+
+  vendorRevokeStaff: (memberId: string, cookies?: string) =>
+    request<void>(`/vendor/staff/${memberId}`, { method: 'DELETE', cookies }),
+
+  // ── Admin – Vendors ────────────────────────────────────────────────────────
+
+  adminListVendors: (status?: string, cookies?: string) => {
+    const qs = status ? `?status=${status}` : '';
+    return request<VendorResponse[]>(`/admin/vendors${qs}`, { cookies });
+  },
+
+  adminGetVendor: (id: string, cookies?: string) => request<VendorResponse>(`/admin/vendors/${id}`, { cookies }),
+
+  adminApproveVendor: (id: string, cookies?: string) =>
+    request<VendorResponse>(`/admin/vendors/${id}/approve`, { method: 'PATCH', cookies }),
+
+  adminRejectVendor: (id: string, cookies?: string) =>
+    request<VendorResponse>(`/admin/vendors/${id}/reject`, { method: 'PATCH', cookies }),
+
+  adminSuspendVendor: (id: string, cookies?: string) =>
+    request<VendorResponse>(`/admin/vendors/${id}/suspend`, { method: 'PATCH', cookies }),
 };
 
 // `PUT /cart/items` returns the raw upserted CartItem row (no nested

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '../mail/mail.module';
 import { OrdersModule } from '../orders/orders.module';
+import { CatalogModule } from '../catalog/catalog.module';
 import { VendorMembershipService } from './vendor-membership.service';
 import { VendorOnboardingService } from './vendor-onboarding.service';
 import { VendorOnboardingController, AdminVendorController } from './vendor-onboarding.controller';
@@ -13,7 +14,7 @@ import { VendorStaffController } from './vendor-staff.controller';
 import { VendorAnalyticsService } from './vendor-analytics.service';
 
 @Module({
-  imports: [MailModule, OrdersModule],
+  imports: [MailModule, OrdersModule, CatalogModule],
   controllers: [
     VendorOnboardingController,
     AdminVendorController,
