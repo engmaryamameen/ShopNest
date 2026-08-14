@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Put,
+  Post,
   Delete,
   Body,
   Param,
@@ -14,6 +15,7 @@ import { CartService } from './cart.service';
 import { UpsertCartItemDto } from './dto/upsert-cart-item.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
+import { ApplyPromotionDto } from '../promotions/dto/apply-promotion.dto';
 
 @ApiTags('cart')
 @Controller('cart')
@@ -47,5 +49,17 @@ export class CartController {
   @ApiOperation({ summary: 'Clear all items from cart' })
   clearCart(@CurrentUser() user: JwtPayload) {
     return this.cart.clearCart(user.sub);
+  }
+
+  @Post('promotion')
+  @ApiOperation({ summary: 'Apply a promotion code to the cart (re-validated authoritatively at checkout)' })
+  applyPromotion(@CurrentUser() user: JwtPayload, @Body() dto: ApplyPromotionDto) {
+    return this.cart.applyPromotion(user.sub, dto);
+  }
+
+  @Delete('promotion')
+  @ApiOperation({ summary: 'Remove the applied promotion code' })
+  removePromotion(@CurrentUser() user: JwtPayload) {
+    return this.cart.removePromotion(user.sub);
   }
 }

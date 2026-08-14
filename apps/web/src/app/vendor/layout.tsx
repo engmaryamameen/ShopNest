@@ -42,6 +42,8 @@ export default async function VendorLayout({ children }: { children: React.React
                 <Link href="/vendor" className="text-emerald-200 hover:text-white transition-colors">Dashboard</Link>
                 <Link href="/vendor/offers" className="text-emerald-200 hover:text-white transition-colors">Offers</Link>
                 <Link href="/vendor/orders" className="text-emerald-200 hover:text-white transition-colors">Orders</Link>
+                <Link href="/vendor/returns" className="text-emerald-200 hover:text-white transition-colors">Returns</Link>
+                <Link href="/vendor/promotions" className="text-emerald-200 hover:text-white transition-colors">Promotions</Link>
                 <Link href="/vendor/staff" className="text-emerald-200 hover:text-white transition-colors">Staff</Link>
               </nav>
             )}

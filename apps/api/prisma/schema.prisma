@@ -125,6 +125,10 @@ model User {
   reviews                 Review[]
   wishlist                Wishlist[]
   addresses               Address[]
+  returnRequests          ReturnRequest[]          @relation("returnRequester")
+  decidedReturnRequests   ReturnRequest[]          @relation("returnDecider")
+  createdPromotions       Promotion[]
+  promotionRedemptions    PromotionRedemption[]
 
   @@index([status])
 }
@@ -459,6 +463,7 @@ model Vendor {
   offers       VendorOffer[]
   orders       VendorOrder[]
   staffInvites VendorStaffInvite[]
+  promotions   Promotion[]
 
   @@index([status])
 }
@@ -585,11 +590,17 @@ model VendorOrder {
   vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Restrict)
   status        OrderStatus @default(PENDING)
   subtotalCents Int
+  /// Nonzero only when a VENDOR-scope promotion was redeemed against this
+  /// vendor's share of the order — a PLATFORM-scope discount is absorbed
+  /// at the Order level instead, so a vendor's own subtotal always
+  /// reflects what they're actually owed.
+  discountCents Int         @default(0)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  items         OrderItem[]
-  statusHistory OrderStatusHistory[]
+  items                OrderItem[]
+  statusHistory        OrderStatusHistory[]
+  promotionRedemptions PromotionRedemption[]
 
   @@unique([orderId, vendorId])
   @@index([vendorId, status])
@@ -654,6 +665,12 @@ model Cart {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   updatedAt DateTime @updatedAt
 
+  /// Pre-checkout only — re-validated live, under lock, at checkout time.
+  /// The redemption itself (and the discount that actually applied) is
+  /// recorded on PromotionRedemption, not here.
+  appliedPromotionId String?    @db.Uuid
+  appliedPromotion   Promotion? @relation(fields: [appliedPromotionId], references: [id], onDelete: SetNull)
+
   items CartItem[]
 }
 
@@ -688,9 +705,19 @@ model Order {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  items         OrderItem[]
-  statusHistory OrderStatusHistory[]
-  vendorOrders  VendorOrder[]
+  /// Snapshot of whatever discount applied at checkout — the authoritative
+  /// redemption record is PromotionRedemption; this is here so an order's
+  /// own total is self-explanatory without a join.
+  discountCents Int     @default(0)
+  /// The payment provider's charge reference for this order — set by
+  /// PaymentProvider.charge() inside the same checkout transaction that
+  /// creates this row. Reused as the reference on any later refund.
+  paymentRef    String?
+
+  items               OrderItem[]
+  statusHistory       OrderStatusHistory[]
+  vendorOrders        VendorOrder[]
+  promotionRedemption PromotionRedemption?
 
   @@unique([userId, idempotencyKey], name: "Order_userId_idempotencyKey_key")
   @@index([userId, createdAt])
@@ -704,19 +731,20 @@ model Order {
 /// link to the current PDP), but nothing here depends on that relation for
 /// its own correctness.
 model OrderItem {
-  id             String      @id @default(uuid()) @db.Uuid
-  orderId        String      @db.Uuid
-  order          Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  vendorOfferId  String      @db.Uuid
-  vendorOffer    VendorOffer @relation(fields: [vendorOfferId], references: [id], onDelete: Restrict)
-  vendorOrderId  String      @db.Uuid
-  vendorOrder    VendorOrder @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
+  id             String         @id @default(uuid()) @db.Uuid
+  orderId        String         @db.Uuid
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  vendorOfferId  String         @db.Uuid
+  vendorOffer    VendorOffer    @relation(fields: [vendorOfferId], references: [id], onDelete: Restrict)
+  vendorOrderId  String         @db.Uuid
+  vendorOrder    VendorOrder    @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
   quantity       Int
   unitPriceCents Int
   productName    String
   productSlug    String
   vendorName     String
   review         Review?
+  returnRequest  ReturnRequest?
 
   @@index([orderId])
   @@index([vendorOrderId])
@@ -741,4 +769,103 @@ model OrderStatusHistory {
 
   @@index([orderId])
   @@index([vendorOrderId])
+}
+
+enum ReturnReason {
+  DEFECTIVE
+  NOT_AS_DESCRIBED
+  NO_LONGER_NEEDED
+  WRONG_ITEM
+  OTHER
+}
+
+enum ReturnStatus {
+  REQUESTED
+  REJECTED
+  REFUNDED
+}
+
+/// One request per order item, ever — @unique on orderItemId, and a
+/// rejected request is terminal (no re-file endpoint exists). Approval and
+/// refund happen together: this scope has no separate "approved, refund
+/// pending" state, since the mock payment adapter's refund is synchronous.
+model ReturnRequest {
+  id              String       @id @default(uuid()) @db.Uuid
+  orderItemId     String       @unique @db.Uuid
+  orderItem       OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  userId          String       @db.Uuid
+  user            User         @relation("returnRequester", fields: [userId], references: [id], onDelete: Restrict)
+  reason          ReturnReason
+  note            String?
+  status          ReturnStatus @default(REQUESTED)
+  decidedByUserId String?      @db.Uuid
+  decidedBy       User?        @relation("returnDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  /// The decider's own note — distinct from `note` above (the customer's,
+  /// set at request time). Mainly useful on rejection.
+  decisionNote    String?
+  decidedAt       DateTime?
+  createdAt       DateTime     @default(now())
+
+  @@index([status, createdAt])
+}
+
+enum PromotionType {
+  PERCENT
+  FIXED_AMOUNT
+}
+
+enum PromotionScope {
+  PLATFORM
+  VENDOR
+}
+
+/// value is a percent (1-100) when type=PERCENT, or integer cents when
+/// type=FIXED_AMOUNT — range-checked by type via a hand-written CHECK
+/// (see the migration), the same technique already used elsewhere in this
+/// schema for constraints Prisma's DSL can't express.
+model Promotion {
+  id                    String         @id @default(uuid()) @db.Uuid
+  code                  String         @unique
+  type                  PromotionType
+  value                 Int
+  scope                 PromotionScope
+  vendorId              String?        @db.Uuid
+  vendor                Vendor?        @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  startsAt              DateTime
+  endsAt                DateTime
+  maxRedemptions        Int?
+  maxRedemptionsPerUser Int?
+  minSubtotalCents      Int?
+  isActive              Boolean        @default(true)
+  createdByUserId       String         @db.Uuid
+  createdBy             User           @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  carts       Cart[]
+  redemptions PromotionRedemption[]
+
+  @@index([scope, vendorId])
+  @@index([isActive])
+}
+
+/// One row per order a code was actually redeemed on — orderId is
+/// @unique because this scope allows exactly one code per order (no
+/// stacking); this table (not a live COUNT over Order) is what
+/// maxRedemptions/maxRedemptionsPerUser are checked against, under the
+/// promotion row lock, at checkout.
+model PromotionRedemption {
+  id            String       @id @default(uuid()) @db.Uuid
+  promotionId   String       @db.Uuid
+  promotion     Promotion    @relation(fields: [promotionId], references: [id], onDelete: Restrict)
+  orderId       String       @unique @db.Uuid
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  userId        String       @db.Uuid
+  user          User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  vendorOrderId String?      @db.Uuid
+  vendorOrder   VendorOrder? @relation(fields: [vendorOrderId], references: [id], onDelete: Restrict)
+  amountCents   Int
+  createdAt     DateTime     @default(now())
+
+  @@index([promotionId, userId])
 }

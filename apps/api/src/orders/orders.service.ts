@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   NotFoundException,
   ConflictException,
@@ -6,8 +7,11 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Prisma, OrderStatus, Role } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CartService } from '../cart/cart.service';
+import { PromotionsService } from '../promotions/promotions.service';
+import { PAYMENT_PROVIDER, type PaymentProvider } from '../payment/payment.types';
 import { CheckoutDto } from './dto/checkout.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { assertValidTransition } from './order-state-machine';
@@ -24,7 +28,7 @@ interface LockedOffer {
 }
 
 const ORDER_INCLUDE = {
-  items: true,
+  items: { include: { returnRequest: { select: { id: true, status: true } } } },
   statusHistory: { orderBy: { createdAt: 'asc' as const } },
   vendorOrders: { include: { vendor: { select: { id: true, name: true, slug: true } } } },
 } satisfies Prisma.OrderInclude;
@@ -61,6 +65,8 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cartService: CartService,
+    private readonly promotions: PromotionsService,
+    @Inject(PAYMENT_PROVIDER) private readonly payment: PaymentProvider,
   ) {}
 
   async checkout(userId: string, dto: CheckoutDto) {
@@ -115,32 +121,60 @@ export class OrdersService {
             }
           }
 
-          // One VendorOrder per distinct vendor represented in the cart.
-          const byVendor = new Map<string, typeof validItems>();
+          // One VendorOrder per distinct vendor represented in the cart —
+          // id generated up front (same trick as the Order id below) so
+          // promotion validation can reference it before the row exists.
+          const byVendor = new Map<string, { vendorOrderId: string; items: typeof validItems; subtotalCents: number }>();
           for (const item of validItems) {
             const offer = offerMap.get(item.vendorOfferId!)!;
-            const list = byVendor.get(offer.vendorId) ?? [];
-            list.push(item);
-            byVendor.set(offer.vendorId, list);
+            const entry = byVendor.get(offer.vendorId) ?? { vendorOrderId: randomUUID(), items: [], subtotalCents: 0 };
+            entry.items.push(item);
+            entry.subtotalCents += offer.priceCents * item.quantity;
+            byVendor.set(offer.vendorId, entry);
           }
 
-          const totalCents = validItems.reduce((sum, item) => {
+          const subtotalCents = validItems.reduce((sum, item) => {
             const offer = offerMap.get(item.vendorOfferId!)!;
             return sum + offer.priceCents * item.quantity;
           }, 0);
 
+          let discountCents = 0;
+          let redemption: { promotionId: string; vendorOrderId?: string } | null = null;
+          if (cart.appliedPromotionId) {
+            const result = await this.promotions.validateAndReserve(tx, cart.appliedPromotionId, {
+              userId,
+              platformSubtotalCents: subtotalCents,
+              vendorOrders: Array.from(byVendor, ([vendorId, v]) => ({
+                vendorId,
+                vendorOrderId: v.vendorOrderId,
+                subtotalCents: v.subtotalCents,
+              })),
+            });
+            discountCents = result.discountCents;
+            redemption = { promotionId: result.promotion.id, vendorOrderId: result.vendorOrderId };
+          }
+
+          const totalCents = subtotalCents - discountCents;
+          const orderId = randomUUID();
+          const chargeResult = await this.payment.charge({ orderId, amountCents: totalCents, currency: 'USD' });
+
           const order = await tx.order.create({
-            data: { userId, totalCents, currency: 'USD', idempotencyKey: dto.idempotencyKey },
+            data: {
+              id: orderId,
+              userId,
+              totalCents,
+              discountCents,
+              currency: 'USD',
+              idempotencyKey: dto.idempotencyKey,
+              paymentRef: chargeResult.providerRef,
+            },
           });
 
-          for (const [vendorId, items] of byVendor) {
-            const subtotalCents = items.reduce((sum, item) => {
-              const offer = offerMap.get(item.vendorOfferId!)!;
-              return sum + offer.priceCents * item.quantity;
-            }, 0);
+          for (const [vendorId, { vendorOrderId, items, subtotalCents: vendorSubtotalCents }] of byVendor) {
+            const vendorDiscountCents = redemption?.vendorOrderId === vendorOrderId ? discountCents : 0;
 
-            const vendorOrder = await tx.vendorOrder.create({
-              data: { orderId: order.id, vendorId, subtotalCents },
+            await tx.vendorOrder.create({
+              data: { id: vendorOrderId, orderId: order.id, vendorId, subtotalCents: vendorSubtotalCents, discountCents: vendorDiscountCents },
             });
 
             for (const item of items) {
@@ -149,7 +183,7 @@ export class OrdersService {
               await tx.orderItem.create({
                 data: {
                   orderId: order.id,
-                  vendorOrderId: vendorOrder.id,
+                  vendorOrderId,
                   vendorOfferId: offer.id,
                   quantity: item.quantity,
                   unitPriceCents: offer.priceCents,
@@ -180,7 +214,20 @@ export class OrdersService {
             }
           }
 
+          if (redemption) {
+            await tx.promotionRedemption.create({
+              data: {
+                promotionId: redemption.promotionId,
+                orderId: order.id,
+                userId,
+                vendorOrderId: redemption.vendorOrderId,
+                amountCents: discountCents,
+              },
+            });
+          }
+
           await tx.cartItem.deleteMany({ where: { id: { in: validItems.map((i) => i.id) } } });
+          await tx.cart.update({ where: { id: cart.id }, data: { appliedPromotionId: null } });
 
           return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
         },

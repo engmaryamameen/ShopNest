@@ -80,6 +80,14 @@ export default async function AdminDashboardPage() {
           <h2 className="text-xl font-semibold text-gray-900">Reviews</h2>
           <p className="text-gray-500 mt-1">Moderate published customer reviews</p>
         </Link>
+        <Link href="/admin/returns" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
+          <h2 className="text-xl font-semibold text-gray-900">Returns</h2>
+          <p className="text-gray-500 mt-1">Review and decide customer return requests</p>
+        </Link>
+        <Link href="/admin/promotions" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
+          <h2 className="text-xl font-semibold text-gray-900">Promotions</h2>
+          <p className="text-gray-500 mt-1">Create platform-wide discount codes</p>
+        </Link>
         <Link href="/admin/imports" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
           <h2 className="text-xl font-semibold text-gray-900">Catalog imports</h2>
           <p className="text-gray-500 mt-1">Preview, scope, and run supplier synchronizations</p>

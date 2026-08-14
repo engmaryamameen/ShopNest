@@ -8,6 +8,8 @@ import { OfferStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { UpsertCartItemDto } from './dto/upsert-cart-item.dto';
+import { PromotionsService } from '../promotions/promotions.service';
+import { ApplyPromotionDto } from '../promotions/dto/apply-promotion.dto';
 
 const CART_INCLUDE = {
   items: {
@@ -28,6 +30,7 @@ const CART_INCLUDE = {
     },
     orderBy: { addedAt: 'asc' as const },
   },
+  appliedPromotion: { select: { id: true, code: true, type: true, value: true, scope: true, vendorId: true } },
 } satisfies Prisma.CartInclude;
 
 @Injectable()
@@ -35,6 +38,7 @@ export class CartService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly promotions: PromotionsService,
   ) {}
 
   async getCart(userId: string) {
@@ -94,9 +98,31 @@ export class CartService {
     });
   }
 
-  async lockCart(tx: Prisma.TransactionClient, userId: string): Promise<{ id: string }> {
-    const rows = await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT id FROM "Cart" WHERE "userId" = ${userId}::uuid FOR UPDATE
+  /** Apply-time only checks the code itself is currently valid (active,
+   * in-window) — not redemption limits or minimum subtotal, both of which
+   * are re-checked authoritatively at checkout under a row lock, since
+   * cart contents and redemption counts can both change between now and
+   * then. This just sets the pointer; checkout is what actually decides. */
+  async applyPromotion(userId: string, dto: ApplyPromotionDto) {
+    const promotion = await this.promotions.resolveForApply(dto.code);
+    await this.prisma.$transaction(async (tx) => {
+      const cart = await this.lockCart(tx, userId);
+      await tx.cart.update({ where: { id: cart.id }, data: { appliedPromotionId: promotion.id } });
+    });
+    return this.getCart(userId);
+  }
+
+  async removePromotion(userId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const cart = await this.lockCart(tx, userId);
+      await tx.cart.update({ where: { id: cart.id }, data: { appliedPromotionId: null } });
+    });
+    return this.getCart(userId);
+  }
+
+  async lockCart(tx: Prisma.TransactionClient, userId: string): Promise<{ id: string; appliedPromotionId: string | null }> {
+    const rows = await tx.$queryRaw<Array<{ id: string; appliedPromotionId: string | null }>>`
+      SELECT id, "appliedPromotionId" FROM "Cart" WHERE "userId" = ${userId}::uuid FOR UPDATE
     `;
     if (rows.length === 0) throw new NotFoundException('Cart not found');
     return rows[0];
@@ -108,32 +134,48 @@ export class CartService {
    * for split-checkout display is a frontend concern, this just makes
    * every field available. */
   private toCartResponse(cart: Prisma.CartGetPayload<{ include: typeof CART_INCLUDE }>) {
+    const items = cart.items
+      .filter((item) => item.vendorOffer !== null)
+      .map((item) => {
+        const offer = item.vendorOffer!;
+        return {
+          id: item.id,
+          vendorOfferId: offer.id,
+          quantity: item.quantity,
+          addedAt: item.addedAt,
+          updatedAt: item.updatedAt,
+          priceCents: offer.priceCents,
+          stockQuantity: offer.stockQuantity,
+          offerStatus: offer.status,
+          vendor: offer.vendor,
+          product: {
+            id: offer.product.id,
+            name: offer.product.name,
+            slug: offer.product.slug,
+            imageUrl: offer.product.media[0]?.url ?? null,
+          },
+        };
+      });
+
+    // Best-effort preview only — checkout is the source of truth
+    // (redemption limits and minimum subtotal are re-checked there, under
+    // a lock, since they can change between now and then).
+    let discountPreviewCents = 0;
+    if (cart.appliedPromotion) {
+      const promo = cart.appliedPromotion;
+      const baseCents =
+        promo.scope === 'PLATFORM'
+          ? items.reduce((sum, i) => sum + i.priceCents * i.quantity, 0)
+          : items.filter((i) => i.vendor.id === promo.vendorId).reduce((sum, i) => sum + i.priceCents * i.quantity, 0);
+      discountPreviewCents = this.promotions.computeDiscountCents(promo, baseCents);
+    }
+
     return {
       id: cart.id,
       userId: cart.userId,
       updatedAt: cart.updatedAt,
-      items: cart.items
-        .filter((item) => item.vendorOffer !== null)
-        .map((item) => {
-          const offer = item.vendorOffer!;
-          return {
-            id: item.id,
-            vendorOfferId: offer.id,
-            quantity: item.quantity,
-            addedAt: item.addedAt,
-            updatedAt: item.updatedAt,
-            priceCents: offer.priceCents,
-            stockQuantity: offer.stockQuantity,
-            offerStatus: offer.status,
-            vendor: offer.vendor,
-            product: {
-              id: offer.product.id,
-              name: offer.product.name,
-              slug: offer.product.slug,
-              imageUrl: offer.product.media[0]?.url ?? null,
-            },
-          };
-        }),
+      items,
+      appliedPromotion: cart.appliedPromotion ? { code: cart.appliedPromotion.code, discountPreviewCents } : null,
     };
   }
 }

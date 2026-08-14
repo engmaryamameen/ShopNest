@@ -136,11 +136,17 @@ export interface CartItemResponse {
   product: CartItemProductRef;
 }
 
+export interface CartAppliedPromotion {
+  code: string;
+  discountPreviewCents: number;
+}
+
 export interface CartResponse {
   id: string;
   userId: string;
   updatedAt: string;
   items: CartItemResponse[];
+  appliedPromotion: CartAppliedPromotion | null;
 }
 
 // Shorter aliases for the shapes `use-cart.ts` and its consumers work with
@@ -148,6 +154,24 @@ export interface CartResponse {
 // raw-fetch call sites.
 export type Cart = CartResponse;
 export type CartItem = CartItemResponse;
+
+export type ReturnStatus = 'REQUESTED' | 'REJECTED' | 'REFUNDED';
+export type ReturnReason = 'DEFECTIVE' | 'NOT_AS_DESCRIBED' | 'NO_LONGER_NEEDED' | 'WRONG_ITEM' | 'OTHER';
+
+export interface ReturnRequestResponse {
+  id: string;
+  orderItemId: string;
+  userId: string;
+  reason: ReturnReason;
+  note: string | null;
+  status: ReturnStatus;
+  decidedByUserId: string | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  orderItem?: OrderItemResponse;
+  user?: { id: string; email: string };
+}
 
 export interface OrderItemResponse {
   id: string;
@@ -159,6 +183,8 @@ export interface OrderItemResponse {
   productName: string;
   productSlug: string;
   vendorName: string | null;
+  /** Only present on GET /orders/:id — a minimal projection, not the full ReturnRequestResponse. */
+  returnRequest?: { id: string; status: ReturnStatus } | null;
 }
 
 export interface OrderStatusHistoryResponse {
@@ -176,6 +202,7 @@ export interface VendorOrderResponse {
   vendorId: string;
   status: OrderStatus;
   subtotalCents: number;
+  discountCents: number;
   vendor: { id: string; name: string; slug: string };
 }
 
@@ -196,6 +223,8 @@ export interface OrderResponse {
   userId: string;
   status: OrderStatus;
   totalCents: number;
+  discountCents: number;
+  paymentRef: string | null;
   currency: string;
   idempotencyKey: string;
   createdAt: string;
@@ -427,4 +456,27 @@ export interface AddressInput {
   postalCode: string;
   country: string;
   phone?: string;
+}
+
+// ── Promotions & returns ─────────────────────────────────────────────────
+
+export type PromotionType = 'PERCENT' | 'FIXED_AMOUNT';
+export type PromotionScope = 'PLATFORM' | 'VENDOR';
+
+export interface PromotionResponse {
+  id: string;
+  code: string;
+  type: PromotionType;
+  value: number;
+  scope: PromotionScope;
+  vendorId: string | null;
+  startsAt: string;
+  endsAt: string;
+  maxRedemptions: number | null;
+  maxRedemptionsPerUser: number | null;
+  minSubtotalCents: number | null;
+  isActive: boolean;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
 }

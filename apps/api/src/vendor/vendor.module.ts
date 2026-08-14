@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { MailModule } from '../mail/mail.module';
 import { OrdersModule } from '../orders/orders.module';
 import { CatalogModule } from '../catalog/catalog.module';
+import { PromotionsModule } from '../promotions/promotions.module';
+import { ReturnsModule } from '../returns/returns.module';
 import { VendorMembershipService } from './vendor-membership.service';
 import { VendorOnboardingService } from './vendor-onboarding.service';
 import { VendorOnboardingController, AdminVendorController } from './vendor-onboarding.controller';
@@ -12,15 +14,19 @@ import { VendorOrdersController } from './vendor-orders.controller';
 import { VendorStaffService } from './vendor-staff.service';
 import { VendorStaffController } from './vendor-staff.controller';
 import { VendorAnalyticsService } from './vendor-analytics.service';
+import { VendorPromotionsController } from './vendor-promotions.controller';
+import { VendorReturnsController } from './vendor-returns.controller';
 
 @Module({
-  imports: [MailModule, OrdersModule, CatalogModule],
+  imports: [MailModule, OrdersModule, CatalogModule, PromotionsModule, ReturnsModule],
   controllers: [
     VendorOnboardingController,
     AdminVendorController,
     VendorOffersController,
     VendorOrdersController,
     VendorStaffController,
+    VendorPromotionsController,
+    VendorReturnsController,
   ],
   providers: [
     VendorMembershipService,
@@ -30,5 +36,6 @@ import { VendorAnalyticsService } from './vendor-analytics.service';
     VendorStaffService,
     VendorAnalyticsService,
   ],
+  exports: [VendorMembershipService],
 })
 export class VendorModule {}

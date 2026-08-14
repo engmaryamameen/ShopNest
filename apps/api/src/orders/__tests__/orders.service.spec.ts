@@ -9,6 +9,9 @@ import { OrderStatus } from '@prisma/client';
 import { OrdersService, aggregateOrderStatus } from '../orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CartService } from '../../cart/cart.service';
+import { PromotionsService } from '../../promotions/promotions.service';
+import { PAYMENT_PROVIDER } from '../../payment/payment.types';
+import { PaymentDeclinedException } from '../../payment/payment-declined.exception';
 
 const OFFER_ID_A = '00000000-0000-4000-a000-000000000001';
 const OFFER_ID_B = '00000000-0000-4000-a000-000000000002';
@@ -64,7 +67,15 @@ function makePrismaMock() {
 }
 
 function makeCartServiceMock() {
-  return { lockCart: jest.fn().mockResolvedValue({ id: 'cart-id' }) };
+  return { lockCart: jest.fn().mockResolvedValue({ id: 'cart-id', appliedPromotionId: null }) };
+}
+
+function makePromotionsServiceMock() {
+  return { validateAndReserve: jest.fn() };
+}
+
+function makePaymentProviderMock() {
+  return { charge: jest.fn().mockResolvedValue({ providerRef: 'mock_charge_test' }), refund: jest.fn() };
 }
 
 /** A fresh transaction-client mock matching every model the checkout path
@@ -80,6 +91,8 @@ function makeCheckoutTxMock() {
     orderItem: { create: jest.fn() },
     inventoryAdjustment: { create: jest.fn() },
     cartItem: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
+    cart: { update: jest.fn() },
+    promotionRedemption: { create: jest.fn() },
     $queryRaw: jest.fn().mockResolvedValue([]),
     $executeRaw: jest.fn().mockResolvedValue(1),
   };
@@ -109,16 +122,22 @@ describe('OrdersService', () => {
   let service: OrdersService;
   let prisma: ReturnType<typeof makePrismaMock>;
   let cartService: ReturnType<typeof makeCartServiceMock>;
+  let promotionsService: ReturnType<typeof makePromotionsServiceMock>;
+  let paymentProvider: ReturnType<typeof makePaymentProviderMock>;
 
   beforeEach(async () => {
     prisma = makePrismaMock();
     cartService = makeCartServiceMock();
+    promotionsService = makePromotionsServiceMock();
+    paymentProvider = makePaymentProviderMock();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
         { provide: PrismaService, useValue: prisma },
         { provide: CartService, useValue: cartService },
+        { provide: PromotionsService, useValue: promotionsService },
+        { provide: PAYMENT_PROVIDER, useValue: paymentProvider },
       ],
     }).compile();
 
@@ -281,6 +300,137 @@ describe('OrdersService', () => {
 
       expect(vendorOrderCreateCount).toBe(1);
       expect(orderItemCreateCount).toBe(2);
+    });
+  });
+
+  describe('payment boundary', () => {
+    it('charges the payment provider for the post-discount total before creating the order', async () => {
+      prisma.order.findUnique.mockResolvedValue(null);
+
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = makeCheckoutTxMock();
+        tx.cartItem.findMany.mockResolvedValue([mockCartItem(OFFER_ID_A, 2)]);
+        tx.$queryRaw.mockResolvedValue([mockOffer(OFFER_ID_A, { priceCents: 1000 })]);
+        return fn(tx);
+      });
+
+      await service.checkout(USER_ID, { idempotencyKey: IDEMPOTENCY_KEY });
+
+      expect(paymentProvider.charge).toHaveBeenCalledWith(
+        expect.objectContaining({ amountCents: 2000, currency: 'USD' }),
+      );
+    });
+
+    it('a declined charge propagates and nothing downstream (order/vendorOrder/stock) is written', async () => {
+      prisma.order.findUnique.mockResolvedValue(null);
+      paymentProvider.charge.mockRejectedValue(new PaymentDeclinedException());
+
+      let orderCreated = false;
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = makeCheckoutTxMock();
+        tx.cartItem.findMany.mockResolvedValue([mockCartItem(OFFER_ID_A, 1)]);
+        tx.$queryRaw.mockResolvedValue([mockOffer(OFFER_ID_A)]);
+        tx.order.create.mockImplementation(() => {
+          orderCreated = true;
+          return { id: ORDER_ID };
+        });
+        return fn(tx);
+      });
+
+      await expect(service.checkout(USER_ID, { idempotencyKey: IDEMPOTENCY_KEY })).rejects.toThrow(
+        PaymentDeclinedException,
+      );
+      expect(orderCreated).toBe(false);
+    });
+  });
+
+  describe('promotion at checkout', () => {
+    it('applies the discount returned by PromotionsService to the charged/stored total', async () => {
+      prisma.order.findUnique.mockResolvedValue(null);
+      cartService.lockCart.mockResolvedValue({ id: 'cart-id', appliedPromotionId: 'promo-1' });
+      promotionsService.validateAndReserve.mockResolvedValue({
+        promotion: { id: 'promo-1' },
+        discountCents: 300,
+        vendorOrderId: undefined,
+      });
+
+      let orderCreateArgs: unknown;
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = makeCheckoutTxMock();
+        tx.cartItem.findMany.mockResolvedValue([mockCartItem(OFFER_ID_A, 2)]);
+        tx.$queryRaw.mockResolvedValue([mockOffer(OFFER_ID_A, { priceCents: 1000 })]);
+        tx.order.create.mockImplementation((args: unknown) => {
+          orderCreateArgs = args;
+          return { id: ORDER_ID };
+        });
+        return fn(tx);
+      });
+
+      await service.checkout(USER_ID, { idempotencyKey: IDEMPOTENCY_KEY });
+
+      expect(paymentProvider.charge).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 1700 }));
+      expect((orderCreateArgs as { data: { totalCents: number; discountCents: number } }).data.totalCents).toBe(1700);
+      expect((orderCreateArgs as { data: { totalCents: number; discountCents: number } }).data.discountCents).toBe(300);
+    });
+
+    it("records a PromotionRedemption and clears the cart's applied promotion on success", async () => {
+      prisma.order.findUnique.mockResolvedValue(null);
+      cartService.lockCart.mockResolvedValue({ id: 'cart-id', appliedPromotionId: 'promo-1' });
+      promotionsService.validateAndReserve.mockResolvedValue({
+        promotion: { id: 'promo-1' },
+        discountCents: 100,
+        vendorOrderId: undefined,
+      });
+
+      let redemptionCreated = false;
+      let cartCleared = false;
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = makeCheckoutTxMock();
+        tx.cartItem.findMany.mockResolvedValue([mockCartItem(OFFER_ID_A, 1)]);
+        tx.$queryRaw.mockResolvedValue([mockOffer(OFFER_ID_A)]);
+        tx.promotionRedemption.create.mockImplementation(() => {
+          redemptionCreated = true;
+        });
+        tx.cart.update.mockImplementation((args: unknown) => {
+          if ((args as { data: { appliedPromotionId: null } }).data.appliedPromotionId === null) cartCleared = true;
+        });
+        return fn(tx);
+      });
+
+      await service.checkout(USER_ID, { idempotencyKey: IDEMPOTENCY_KEY });
+
+      expect(redemptionCreated).toBe(true);
+      expect(cartCleared).toBe(true);
+    });
+
+    it('a promotion that fails validation aborts checkout — no charge, no order', async () => {
+      prisma.order.findUnique.mockResolvedValue(null);
+      cartService.lockCart.mockResolvedValue({ id: 'cart-id', appliedPromotionId: 'promo-1' });
+      promotionsService.validateAndReserve.mockRejectedValue(new BadRequestException('Applied promotion is no longer valid'));
+
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = makeCheckoutTxMock();
+        tx.cartItem.findMany.mockResolvedValue([mockCartItem(OFFER_ID_A, 1)]);
+        tx.$queryRaw.mockResolvedValue([mockOffer(OFFER_ID_A)]);
+        return fn(tx);
+      });
+
+      await expect(service.checkout(USER_ID, { idempotencyKey: IDEMPOTENCY_KEY })).rejects.toThrow(BadRequestException);
+      expect(paymentProvider.charge).not.toHaveBeenCalled();
+    });
+
+    it('does not call PromotionsService at all when the cart has no applied promotion', async () => {
+      prisma.order.findUnique.mockResolvedValue(null);
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = makeCheckoutTxMock();
+        tx.cartItem.findMany.mockResolvedValue([mockCartItem(OFFER_ID_A, 1)]);
+        tx.$queryRaw.mockResolvedValue([mockOffer(OFFER_ID_A)]);
+        return fn(tx);
+      });
+
+      await service.checkout(USER_ID, { idempotencyKey: IDEMPOTENCY_KEY });
+
+      expect(promotionsService.validateAndReserve).not.toHaveBeenCalled();
     });
   });
 

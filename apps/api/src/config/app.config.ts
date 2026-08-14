@@ -42,4 +42,9 @@ export default registerAs('app', () => ({
   emailVerificationTokenTtlMs: parseInt(process.env.EMAIL_VERIFICATION_TOKEN_TTL_MS ?? `${24 * 60 * 60 * 1000}`, 10),
   passwordResetTokenTtlMs: parseInt(process.env.PASSWORD_RESET_TOKEN_TTL_MS ?? `${60 * 60 * 1000}`, 10),
   vendorStaffInviteTtlMs: parseInt(process.env.VENDOR_STAFF_INVITE_TTL_MS ?? `${7 * 24 * 60 * 60 * 1000}`, 10),
+  // Payment — same provider-selected-by-env shape as mail/geocoding, but
+  // only one adapter exists in this scope (no real gateway credentials
+  // available — see DECISIONS.md). An amount that exactly matches this
+  // deliberately declines, so the decline path is directly testable.
+  paymentMockDeclineCents: parseInt(process.env.PAYMENT_MOCK_DECLINE_CENTS ?? '66600', 10),
 }));

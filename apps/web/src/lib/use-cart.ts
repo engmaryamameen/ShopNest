@@ -70,6 +70,22 @@ export function useUpsertCartItem() {
   });
 }
 
+export function useApplyPromotion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => api.applyPromotion(code),
+    onSuccess: (cart) => queryClient.setQueryData(CART_QUERY_KEY, cart),
+  });
+}
+
+export function useRemovePromotion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.removePromotion(),
+    onSuccess: (cart) => queryClient.setQueryData(CART_QUERY_KEY, cart),
+  });
+}
+
 export function useRemoveCartItem() {
   const queryClient = useQueryClient();
 

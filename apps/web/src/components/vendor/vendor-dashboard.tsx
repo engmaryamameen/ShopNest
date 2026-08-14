@@ -36,6 +36,14 @@ export function VendorDashboard({ vendor, analytics }: { vendor: VendorResponse;
           <h2 className="text-xl font-semibold text-gray-900">Staff</h2>
           <p className="text-gray-500 mt-1">Invite teammates to help run your store</p>
         </Link>
+        <Link href="/vendor/returns" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
+          <h2 className="text-xl font-semibold text-gray-900">Returns</h2>
+          <p className="text-gray-500 mt-1">Review and decide customer return requests</p>
+        </Link>
+        <Link href="/vendor/promotions" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
+          <h2 className="text-xl font-semibold text-gray-900">Promotions</h2>
+          <p className="text-gray-500 mt-1">Create discount codes for your store</p>
+        </Link>
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-xl font-semibold text-gray-900">Offer status</h2>
           <p className="text-gray-500 mt-1">

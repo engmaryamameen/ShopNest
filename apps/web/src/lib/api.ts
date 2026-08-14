@@ -17,6 +17,8 @@ import type {
   ProductCardResponse,
   ProductDetailResponse,
   ProductListResponse,
+  PromotionResponse,
+  ReturnRequestResponse,
   ReviewEligibilityResponse,
   ReviewListResponse,
   ReviewResponse,
@@ -184,6 +186,11 @@ export const api = {
 
   clearCart: (cookies?: string) => request<void>('/cart', { method: 'DELETE', cookies }),
 
+  applyPromotion: (code: string, cookies?: string) =>
+    request<CartResponse>('/cart/promotion', { method: 'POST', body: { code }, cookies }),
+
+  removePromotion: (cookies?: string) => request<CartResponse>('/cart/promotion', { method: 'DELETE', cookies }),
+
   // ── Orders ─────────────────────────────────────────────────────────────────
 
   checkout: (body: Schemas['CheckoutDto'], cookies?: string) =>
@@ -195,6 +202,9 @@ export const api = {
 
   cancelOrder: (id: string, cookies?: string) =>
     request<OrderResponse>(`/orders/${id}/cancel`, { method: 'PATCH', cookies }),
+
+  requestReturn: (orderItemId: string, body: Schemas['CreateReturnRequestDto'], cookies?: string) =>
+    request<ReturnRequestResponse>(`/orders/items/${orderItemId}/returns`, { method: 'POST', body, cookies }),
 
   // ── Admin – Orders ─────────────────────────────────────────────────────────
 
@@ -329,6 +339,25 @@ export const api = {
   vendorRevokeInvite: (inviteId: string, cookies?: string) =>
     request<void>(`/vendor/staff/invites/${inviteId}`, { method: 'DELETE', cookies }),
 
+  vendorListPromotions: (cookies?: string) => request<PromotionResponse[]>('/vendor/promotions', { cookies }),
+
+  vendorCreatePromotion: (body: Schemas['CreatePromotionDto'], cookies?: string) =>
+    request<PromotionResponse>('/vendor/promotions', { method: 'POST', body, cookies }),
+
+  vendorUpdatePromotion: (id: string, body: Schemas['UpdatePromotionDto'], cookies?: string) =>
+    request<PromotionResponse>(`/vendor/promotions/${id}`, { method: 'PATCH', body, cookies }),
+
+  vendorListReturns: (status?: string, cookies?: string) => {
+    const qs = status ? `?status=${status}` : '';
+    return request<ReturnRequestResponse[]>(`/vendor/returns${qs}`, { cookies });
+  },
+
+  vendorApproveReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
+    request<ReturnRequestResponse>(`/vendor/returns/${id}/approve`, { method: 'PATCH', body, cookies }),
+
+  vendorRejectReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
+    request<ReturnRequestResponse>(`/vendor/returns/${id}/reject`, { method: 'PATCH', body, cookies }),
+
   // ── Admin – Vendors ────────────────────────────────────────────────────────
 
   adminListVendors: (status?: string, cookies?: string) => {
@@ -431,6 +460,29 @@ export const api = {
 
   setDefaultAddress: (id: string, cookies?: string) =>
     request<AddressResponse>(`/me/addresses/${id}/default`, { method: 'PATCH', cookies }),
+
+  // ── Admin – Promotions ───────────────────────────────────────────────────
+
+  adminListPromotions: (cookies?: string) => request<PromotionResponse[]>('/admin/promotions', { cookies }),
+
+  adminCreatePromotion: (body: Schemas['CreatePromotionDto'], cookies?: string) =>
+    request<PromotionResponse>('/admin/promotions', { method: 'POST', body, cookies }),
+
+  adminUpdatePromotion: (id: string, body: Schemas['UpdatePromotionDto'], cookies?: string) =>
+    request<PromotionResponse>(`/admin/promotions/${id}`, { method: 'PATCH', body, cookies }),
+
+  // ── Admin – Returns ──────────────────────────────────────────────────────
+
+  adminListReturns: (status?: string, cookies?: string) => {
+    const qs = status ? `?status=${status}` : '';
+    return request<ReturnRequestResponse[]>(`/admin/returns${qs}`, { cookies });
+  },
+
+  adminApproveReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
+    request<ReturnRequestResponse>(`/admin/returns/${id}/approve`, { method: 'PATCH', body, cookies }),
+
+  adminRejectReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
+    request<ReturnRequestResponse>(`/admin/returns/${id}/reject`, { method: 'PATCH', body, cookies }),
 };
 
 // `PUT /cart/items` returns the raw upserted CartItem row (no nested
