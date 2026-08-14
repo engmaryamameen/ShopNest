@@ -21,6 +21,9 @@ import { AuditModule } from './audit/audit.module';
 import { UsersModule } from './users/users.module';
 import { VendorModule } from './vendor/vendor.module';
 import { AdminModule } from './admin/admin.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { WishlistModule } from './wishlist/wishlist.module';
+import { AddressesModule } from './addresses/addresses.module';
 
 @Module({
   imports: [
@@ -81,6 +84,9 @@ import { AdminModule } from './admin/admin.module';
     CatalogImportModule,
     LocationModule,
     AdminModule,
+    ReviewsModule,
+    WishlistModule,
+    AddressesModule,
   ],
   providers: [
     // Guard execution order: 1 → 2 → 3 → 4 (then controller/route guards)

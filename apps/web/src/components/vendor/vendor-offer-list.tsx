@@ -5,10 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import type { VendorOfferResponse } from '@/lib/api-types';
 import { ProductPicker } from './product-picker';
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
+import { formatPrice } from '@/lib/format-price';
 
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-800',

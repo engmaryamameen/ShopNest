@@ -17,6 +17,6 @@ export interface ProductCardData {
   stockQuantity: number;
   category?: ProductCategory | null;
   compareAtPriceCents?: number | null;
-  rating?: number | null;
-  reviewCount?: number | null;
+  ratingAverage?: number | null;
+  ratingCount?: number | null;
 }

@@ -29,6 +29,8 @@ export function ProductCard({
   const [isPending, startTransition] = useTransition();
   const [imageFailed, setImageFailed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [wishlisted, setWishlisted] = useState(false);
+  const [wishlistPending, startWishlistTransition] = useTransition();
 
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -78,6 +80,19 @@ export function ProductCard({
     });
   }
 
+  function handleWishlist() {
+    startWishlistTransition(async () => {
+      try {
+        await api.addToWishlist(product.id);
+        setWishlisted(true);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          router.push(`/login?returnTo=${encodeURIComponent(productUrl)}`);
+        }
+      }
+    });
+  }
+
   return (
     <article className="group min-w-0 w-[300px] h-auto border border-[#eee] p-3">
       <div className="relative overflow-hidden rounded bg-[#f5f5f5]">
@@ -109,10 +124,15 @@ export function ProductCard({
 
         <button
           type="button"
-          aria-label={`Add ${product.name} to wishlist`}
-          className="absolute right-3 top-3 flex size-8 cursor-pointer items-center justify-center rounded-full bg-white text-black shadow-sm transition hover:bg-black hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+          onClick={handleWishlist}
+          disabled={wishlistPending || wishlisted}
+          aria-label={wishlisted ? `${product.name} saved to wishlist` : `Add ${product.name} to wishlist`}
+          aria-pressed={wishlisted}
+          className={`absolute right-3 top-3 flex size-8 cursor-pointer items-center justify-center rounded-full shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black disabled:cursor-default ${
+            wishlisted ? 'bg-black text-white' : 'bg-white text-black hover:bg-black hover:text-white'
+          }`}
         >
-          <HeartIcon />
+          <HeartIcon filled={wishlisted} />
         </button>
 
         {!isOutOfStock ? (
@@ -163,27 +183,22 @@ export function ProductCard({
           ) : null}
         </div>
 
-        {product.rating !== null &&
-        product.rating !== undefined ? (
+        {product.ratingCount ? (
           <div
             className="mt-2 flex items-center gap-2"
-            aria-label={`${product.rating} out of 5 stars`}
+            aria-label={`${product.ratingAverage} out of 5 stars`}
           >
             <div className="flex text-[#ffad33]" aria-hidden="true">
               {Array.from({ length: 5 }, (_, index) => (
                 <StarIcon
                   key={index}
-                  filled={index < Math.round(product.rating ?? 0)}
+                  filled={index < Math.round(product.ratingAverage ?? 0)}
                 />
               ))}
             </div>
-
-            {product.reviewCount !== null &&
-            product.reviewCount !== undefined ? (
-              <span className="text-sm font-semibold text-gray-500">
-                ({product.reviewCount})
-              </span>
-            ) : null}
+            <span className="text-sm font-semibold text-gray-500">
+              ({product.ratingCount})
+            </span>
           </div>
         ) : null}
 
@@ -214,13 +229,13 @@ function ProductImageFallback() {
   );
 }
 
-function HeartIcon() {
+function HeartIcon({ filled }: { filled: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
       className="size-5"
-      fill="none"
+      fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
       strokeWidth="1.8"
     >

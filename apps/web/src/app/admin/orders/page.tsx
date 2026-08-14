@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { formatPrice } from '@/lib/format-price';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,10 +12,6 @@ interface Order {
   createdAt: string;
   user?: { id: string; email: string };
   items: Array<{ productName: string; quantity: number }>;
-}
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 }
 
 const STATUS_COLORS: Record<string, string> = {

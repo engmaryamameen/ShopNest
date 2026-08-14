@@ -6,10 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
 import { useCart, useRemoveCartItem, type Cart } from '@/lib/use-cart';
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
+import { formatPrice } from '@/lib/format-price';
 
 interface CartViewProps {
   /** Server-fetched initial cart, hydrates the TanStack Query cache. */

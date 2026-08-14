@@ -4,10 +4,7 @@ import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import type { VendorFulfilmentResponse } from '@/lib/api-types';
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
+import { formatPrice } from '@/lib/format-price';
 
 const STATUS_STYLES: Record<string, string> = {
   PENDING: 'bg-amber-100 text-amber-800',

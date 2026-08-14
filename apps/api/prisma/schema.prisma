@@ -35,6 +35,8 @@ enum AuditAction {
   ADMIN_VENDOR_REJECT
   ADMIN_VENDOR_SUSPEND
   ADMIN_ADMIN_CREATE
+  ADMIN_REVIEW_HIDE
+  ADMIN_REVIEW_PUBLISH
 }
 
 enum OrderStatus {
@@ -120,6 +122,9 @@ model User {
   auditLogEntries         AuditLog[]               @relation("auditActor")
   vendorMemberships       VendorMember[]
   sentVendorStaffInvites  VendorStaffInvite[]
+  reviews                 Review[]
+  wishlist                Wishlist[]
+  addresses               Address[]
 
   @@index([status])
 }
@@ -253,6 +258,13 @@ model Product {
   category      Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   publishStatus ProductPublishStatus @default(PUBLISHED)
 
+  // Derived-only — never hand-set. Recomputed transactionally by
+  // ReviewsService whenever a review is created or its moderation status
+  // changes (published <-> hidden), from the actual Review rows, never
+  // written directly by any other code path.
+  ratingAverage Float @default(0)
+  ratingCount   Int   @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -261,10 +273,83 @@ model Product {
   attributeValues ProductAttributeValue[]
   variants        ProductVariant[]
   offers          VendorOffer[]
+  reviews         Review[]
+  wishlistedBy    Wishlist[]
 
   @@index([categoryId])
   @@index([brandId])
   @@index([publishStatus, createdAt])
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  HIDDEN
+}
+
+/// A review always backs exactly one delivered OrderItem — orderItemId is
+/// NOT NULL and unique, a structural (not just conventional) guarantee
+/// that every review is a verified purchase. ReviewsService validates
+/// ownership (the order belongs to the reviewer) and delivery status
+/// (the backing VendorOrder is DELIVERED) before the insert can succeed.
+model Review {
+  id          String       @id @default(uuid()) @db.Uuid
+  productId   String       @db.Uuid
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId      String       @db.Uuid
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItemId String       @unique @db.Uuid
+  orderItem   OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  rating      Int
+  title       String?
+  body        String
+  status      ReviewStatus @default(PUBLISHED)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Caps total reviews per user per product at one, even across multiple
+  // qualifying orders — buying the same product twice doesn't grant a
+  // second review.
+  @@unique([userId, productId])
+  @@index([productId, status])
+}
+
+model Wishlist {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String   @db.Uuid
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+/// One default per user is enforced two ways (same "lock + defense-in-
+/// depth constraint" discipline as the cart-row-lock pattern elsewhere in
+/// this app): AddressService.setDefault locks the user's address rows
+/// (SELECT ... FOR UPDATE) before flipping isDefault, and a hand-authored
+/// partial unique index (migration SQL, see that migration's comment)
+/// refuses a second true row at the database level regardless of what
+/// application code does.
+model Address {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String?
+  fullName   String
+  line1      String
+  line2      String?
+  city       String
+  state      String?
+  postalCode String
+  country    String
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
 }
 
 /// Ordered product images — replaces `Product.imageUrl`. Position is
@@ -631,6 +716,7 @@ model OrderItem {
   productName    String
   productSlug    String
   vendorName     String
+  review         Review?
 
   @@index([orderId])
   @@index([vendorOrderId])

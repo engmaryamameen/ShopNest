@@ -3,10 +3,10 @@ import Image from 'next/image';
 import { api, ApiError } from '@/lib/api';
 import type { ProductDetailResponse } from '@/lib/api-types';
 import { AddToCartButton } from '@/components/shop/add-to-cart-button';
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
+import { StarRating } from '@/components/product/star-rating';
+import { OffersList } from '@/components/product/offers-list';
+import { ReviewsSection } from '@/components/product/reviews-section';
+import { formatPrice } from '@/lib/format-price';
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -20,6 +20,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     }
     throw err;
   }
+
+  const productUrl = `/products/${slug}`;
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -51,6 +53,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             </span>
           )}
           <h1 className="mt-2 text-4xl font-bold text-gray-900">{product.name}</h1>
+
+          <div className="mt-2">
+            <StarRating average={product.ratingAverage} count={product.ratingCount} />
+          </div>
+
           <p className="mt-4 text-3xl font-bold text-gray-900">{formatPrice(product.priceCents)}</p>
 
           <div className="mt-4">
@@ -63,7 +70,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             )}
             {product.offers.length > 1 && (
               <span className="ml-3 text-sm text-gray-500">
-                {product.offers.length} sellers — sold by {product.offers[0].vendor.name}
+                {product.offers.length} sellers from {formatPrice(product.priceCents)}
               </span>
             )}
           </div>
@@ -75,6 +82,17 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           </div>
         </div>
       </div>
+
+      {product.offers.length > 1 && (
+        <div className="mt-16">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">
+            {product.offers.length} sellers
+          </h2>
+          <OffersList offers={product.offers} productUrl={productUrl} />
+        </div>
+      )}
+
+      <ReviewsSection slug={slug} />
     </div>
   );
 }

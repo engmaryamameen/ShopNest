@@ -157,7 +157,7 @@ export class CatalogService {
 
   // ---------------------------------------------------------------------------
   // Brands — read-only for now; admin CRUD lands with the rest of the admin
-  // app (Phase 4). Products can already reference one (Product.brandId).
+  // app. Products can already reference one (Product.brandId).
   // ---------------------------------------------------------------------------
 
   async listBrands() {
@@ -280,11 +280,21 @@ export class CatalogService {
     return rows.map((r) => this.toProductCard(r));
   }
 
-  /** For "which product am I listing" pickers (vendor offer creation,
-   * admin tooling) — deliberately *not* filtered by `offers: { some }`
-   * like the storefront listing is, since the whole point is finding a
-   * product that doesn't have the caller's offer yet (possibly no offer
-   * at all). Lightweight projection, no buy-box computation needed here. */
+  /** Product cards for a set of ids, in no particular order — for
+   * wishlist/recently-viewed style lists that already have their own
+   * ordering. */
+  async getProductCardsByIds(ids: string[]) {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.product.findMany({
+      where: { id: { in: ids } },
+      include: { category: { select: CATEGORY_SELECT }, brand: { select: BRAND_SELECT }, ...BUY_BOX_OFFER_INCLUDE },
+    });
+    return rows.map((r) => this.toProductCard(r));
+  }
+
+  /** For vendor/admin product pickers — unlike the storefront listing,
+   * not filtered by offer existence (the point is finding products with
+   * no offer yet). */
   async searchForListing(q: string, limit = 10) {
     return this.prisma.product.findMany({
       where: { publishStatus: 'PUBLISHED', name: { contains: q, mode: 'insensitive' } },
@@ -417,19 +427,21 @@ export class CatalogService {
         id: string; name: string; slug: string; description: string; categoryId: string;
         createdAt: Date; updatedAt: Date; categoryName: string; categorySlug: string;
         brandName: string | null; brandSlug: string | null;
-        priceCents: number; compareAtPriceCents: number | null; stockQuantity: number; imageUrl: string | null;
+        offerId: string; priceCents: number; compareAtPriceCents: number | null; stockQuantity: number;
+        imageUrl: string | null; publishStatus: string; ratingAverage: number; ratingCount: number;
       }>
     >`
       SELECT p.id, p.name, p.slug, p.description, p."categoryId", p."createdAt", p."updatedAt",
+             p."publishStatus", p."ratingAverage", p."ratingCount",
              c.name AS "categoryName", c.slug AS "categorySlug",
              b.name AS "brandName", b.slug AS "brandSlug",
-             bo."priceCents", bo."compareAtPriceCents", bo."stockQuantity",
+             bo.id AS "offerId", bo."priceCents", bo."compareAtPriceCents", bo."stockQuantity",
              (SELECT url FROM "ProductMedia" m WHERE m."productId" = p.id ORDER BY position ASC LIMIT 1) AS "imageUrl"
       FROM   "Product" p
       LEFT   JOIN "Category" c ON c.id = p."categoryId"
       LEFT   JOIN "Brand" b ON b.id = p."brandId"
       JOIN LATERAL (
-        SELECT "priceCents", "compareAtPriceCents", "stockQuantity"
+        SELECT id, "priceCents", "compareAtPriceCents", "stockQuantity"
         FROM   "VendorOffer" o
         WHERE  o."productId" = p.id AND o.status = 'ACTIVE'
         ORDER  BY o."priceCents" ASC
@@ -500,6 +512,8 @@ export class CatalogService {
       compareAtPriceCents: offer?.compareAtPriceCents ?? null,
       stockQuantity: offer?.stockQuantity ?? 0,
       imageUrl: product.media[0]?.url ?? null,
+      ratingAverage: product.ratingAverage,
+      ratingCount: product.ratingCount,
     };
   }
 
@@ -507,7 +521,7 @@ export class CatalogService {
    * specs, not just the buy-box winner. */
   private toProductDetail(product: {
     id: string; name: string; slug: string; description: string; categoryId: string;
-    createdAt: Date; updatedAt: Date;
+    createdAt: Date; updatedAt: Date; ratingAverage: number; ratingCount: number;
     category: { id: string; name: string; slug: string };
     brand: { id: string; name: string; slug: string } | null;
     media: Array<{ url: string; position: number; altText: string | null }>;
@@ -530,6 +544,8 @@ export class CatalogService {
       updatedAt: product.updatedAt,
       images: product.media.map((m) => ({ url: m.url, altText: m.altText })),
       imageUrl: product.media[0]?.url ?? null,
+      ratingAverage: product.ratingAverage,
+      ratingCount: product.ratingCount,
       attributes: (product.attributeValues ?? []).map((v) => ({ name: v.attributeDefinition.name, slug: v.attributeDefinition.slug, value: v.value })),
       // The offer the primary "Add to cart" button targets — cheapest
       // ACTIVE offer wins the buy box, same rule as the PLP. A shopper who

@@ -1,12 +1,9 @@
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { formatPrice } from '@/lib/format-price';
 
 export const dynamic = 'force-dynamic';
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
@@ -78,6 +75,10 @@ export default async function AdminDashboardPage() {
         <Link href="/admin/users" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
           <h2 className="text-xl font-semibold text-gray-900">Users</h2>
           <p className="text-gray-500 mt-1">Suspend or reactivate accounts</p>
+        </Link>
+        <Link href="/admin/reviews" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
+          <h2 className="text-xl font-semibold text-gray-900">Reviews</h2>
+          <p className="text-gray-500 mt-1">Moderate published customer reviews</p>
         </Link>
         <Link href="/admin/imports" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
           <h2 className="text-xl font-semibold text-gray-900">Catalog imports</h2>

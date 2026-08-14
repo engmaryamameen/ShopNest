@@ -1,21 +1,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import type { ProductCardResponse } from '@/lib/api-types';
+import { formatPrice } from '@/lib/format-price';
+import { WishlistButton } from './wishlist-button';
 
-interface Product {
-  id: string;
-  name: string;
-  slug: string;
-  priceCents: number;
-  imageUrl?: string | null;
-  category?: { name: string; slug: string };
-  stockQuantity: number;
-}
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
-
-export function ProductGrid({ products }: { products: Product[] }) {
+export function ProductGrid({ products }: { products: ProductCardResponse[] }) {
   if (products.length === 0) {
     return (
       <div className="text-center py-20">
@@ -30,9 +19,11 @@ export function ProductGrid({ products }: { products: Product[] }) {
         <Link
           key={product.id}
           href={`/products/${product.slug}`}
-          className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow"
+          data-testid="product-card"
+          className="group relative bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow"
         >
           <div className="relative aspect-square bg-gray-100">
+            <WishlistButton productId={product.id} productName={product.name} />
             {product.imageUrl ? (
               <Image
                 src={product.imageUrl}

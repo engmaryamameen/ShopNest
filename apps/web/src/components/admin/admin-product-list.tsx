@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import type { ProductCardResponse, CategoryResponse } from '@/lib/api-types';
+import { formatPrice } from '@/lib/format-price';
 
 type Product = ProductCardResponse;
 type Category = CategoryResponse;
@@ -11,10 +12,6 @@ type Category = CategoryResponse;
 interface AdminProductListProps {
   products: Product[];
   categories: Category[];
-}
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 }
 
 export function AdminProductList({ products, categories }: AdminProductListProps) {

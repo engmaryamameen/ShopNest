@@ -256,6 +256,153 @@ describe('Concurrent checkout — inventory race protection', () => {
   });
 });
 
+// ── Suite 1b: Multi-vendor checkout ────────────────────────────────────────────
+
+/** Registers a customer, applies as a vendor, has the given admin approve
+ * it, then returns the vendor id + the applicant's cookies. */
+async function createApprovedVendor(
+  adminCookies: Cookies,
+  suffix: string,
+): Promise<{ vendorId: string; ownerCookies: Cookies }> {
+  const email = `vendor-${suffix}-${run}@test.local`;
+  const ownerCookies = await register(email);
+  await assertOk(
+    await api('/vendor/apply', {
+      method: 'POST',
+      body: { name: `Vendor ${suffix} ${run}`, contactEmail: email },
+      cookies: ownerCookies,
+    }),
+    `apply(${suffix})`,
+  );
+  const me = (await assertOk(await api('/vendor/me', { cookies: ownerCookies }), `vendor/me(${suffix})`)) as {
+    id: string;
+  };
+  await assertOk(
+    await api(`/admin/vendors/${me.id}/approve`, { method: 'PATCH', cookies: adminCookies }),
+    `approve(${suffix})`,
+  );
+  return { vendorId: me.id, ownerCookies };
+}
+
+async function createActiveOffer(
+  ownerCookies: Cookies,
+  productId: string,
+  opts: { vendorSku: string; priceCents: number; stockQuantity: number },
+): Promise<string> {
+  const offer = (await assertOk(
+    await api('/vendor/offers', {
+      method: 'POST',
+      body: { productId, ...opts },
+      cookies: ownerCookies,
+    }),
+    `createOffer(${opts.vendorSku})`,
+  )) as { id: string };
+  await assertOk(
+    await api(`/vendor/offers/${offer.id}`, { method: 'PATCH', body: { status: 'ACTIVE' }, cookies: ownerCookies }),
+    `activateOffer(${opts.vendorSku})`,
+  );
+  return offer.id;
+}
+
+describe('Multi-vendor checkout', () => {
+  it('a cart spanning two vendors splits into one VendorOrder per vendor, and concurrent checkouts across different vendors do not deadlock or corrupt either vendor\'s stock', async () => {
+    const adminCookies = await createAdminSession('mv');
+    const categoryId = await createCategory(adminCookies, `MvCat-${run}`, `mv-cat-${run}`);
+
+    const [vendorA, vendorB] = await Promise.all([
+      createApprovedVendor(adminCookies, 'a'),
+      createApprovedVendor(adminCookies, 'b'),
+    ]);
+
+    // Two canonical products, each offered by a different vendor. Admin
+    // product creation also creates a system-vendor offer alongside — not
+    // used here, just along for the ride like any other admin-created
+    // product.
+    const productA = await createProduct(adminCookies, {
+      name: `MvProductA-${run}`,
+      slug: `mv-product-a-${run}`,
+      priceCents: 100,
+      stockQuantity: 100,
+      categoryId,
+    });
+    const productB = await createProduct(adminCookies, {
+      name: `MvProductB-${run}`,
+      slug: `mv-product-b-${run}`,
+      priceCents: 100,
+      stockQuantity: 100,
+      categoryId,
+    });
+
+    const offerA = await createActiveOffer(vendorA.ownerCookies, productA.id, {
+      vendorSku: `MV-A-${run}`,
+      priceCents: 1500,
+      stockQuantity: 1,
+    });
+    const offerB = await createActiveOffer(vendorB.ownerCookies, productB.id, {
+      vendorSku: `MV-B-${run}`,
+      priceCents: 2500,
+      stockQuantity: 1,
+    });
+
+    // One buyer, both vendors' offers in the same cart.
+    const buyerCookies = await register(`mv-buyer-${run}@test.local`);
+    await assertOk(
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerA, quantity: 1 }, cookies: buyerCookies }),
+      'add offerA to cart',
+    );
+    await assertOk(
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerB, quantity: 1 }, cookies: buyerCookies }),
+      'add offerB to cart',
+    );
+
+    const checkoutRes = await api('/orders/checkout', {
+      method: 'POST',
+      body: { idempotencyKey: randomUUID() },
+      cookies: buyerCookies,
+    });
+    expect(checkoutRes.status).toBe(201);
+    const order = (await checkoutRes.json()) as {
+      data: { vendorOrders: Array<{ vendor: { id: string } }> };
+    };
+    const vendorIds = order.data.vendorOrders.map((vo) => vo.vendor.id).sort();
+    expect(vendorIds).toEqual([vendorA.vendorId, vendorB.vendorId].sort());
+
+    // Separately: two more buyers race for a single unit of a fresh
+    // vendor-A offer — deterministic lock ordering across vendors (used
+    // above) must not have left anything that makes a same-vendor stock
+    // race behave differently from the single-vendor suite already
+    // covered earlier in this file.
+    const productC = await createProduct(adminCookies, {
+      name: `MvProductC-${run}`,
+      slug: `mv-product-c-${run}`,
+      priceCents: 100,
+      stockQuantity: 100,
+      categoryId,
+    });
+    const offerC = await createActiveOffer(vendorA.ownerCookies, productC.id, {
+      vendorSku: `MV-A2-${run}`,
+      priceCents: 900,
+      stockQuantity: 1,
+    });
+    const raceBuyer1 = await register(`mv-race1-${run}@test.local`);
+    const raceBuyer2 = await register(`mv-race2-${run}@test.local`);
+    await assertOk(
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerC, quantity: 1 }, cookies: raceBuyer1 }),
+      'race buyer1 add to cart',
+    );
+    await assertOk(
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerC, quantity: 1 }, cookies: raceBuyer2 }),
+      'race buyer2 add to cart',
+    );
+
+    const [r1, r2] = await Promise.all([
+      api('/orders/checkout', { method: 'POST', body: { idempotencyKey: randomUUID() }, cookies: raceBuyer1 }),
+      api('/orders/checkout', { method: 'POST', body: { idempotencyKey: randomUUID() }, cookies: raceBuyer2 }),
+    ]);
+    expect([r1.status, r2.status].sort()).toEqual([201, 409]);
+  });
+});
+
 // ── Suite 2: Concurrent refresh token rotation — grace period ─────────────────
 
 describe('Concurrent refresh token rotation — grace period', () => {

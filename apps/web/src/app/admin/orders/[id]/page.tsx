@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import type { OrderStatus } from '@/lib/api-types';
 import { AdminOrderStatusForm } from '@/components/admin/admin-order-status-form';
+import { formatPrice } from '@/lib/format-price';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,10 +26,6 @@ interface Order {
     toStatus: string;
     createdAt: string;
   }>;
-}
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 }
 
 export default async function AdminOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {

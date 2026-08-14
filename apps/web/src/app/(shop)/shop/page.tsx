@@ -1,10 +1,14 @@
 import { Suspense } from 'react';
 import { api } from '@/lib/api';
 import { ProductGrid } from '@/components/shop/product-grid';
+import { ShopFilters } from '@/components/shop/shop-filters';
 
 interface SearchParams {
   q?: string;
   category?: string;
+  brand?: string;
+  sortBy?: string;
+  sortOrder?: string;
   page?: string;
 }
 
@@ -15,8 +19,22 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
   const query: Record<string, string | number> = { page: parseInt(params.page ?? '1', 10), limit: 20 };
   if (params.q) query.q = params.q;
   if (params.category) query.category = params.category;
+  if (params.brand) query.brand = params.brand;
+  if (params.sortBy) query.sortBy = params.sortBy;
+  if (params.sortOrder) query.sortOrder = params.sortOrder;
 
-  const productsData = await api.listProducts(query);
+  const [productsData, brands] = await Promise.all([api.listProducts(query), api.listBrands()]);
+
+  function pageHref(page: number): string {
+    const p = new URLSearchParams();
+    p.set('page', String(page));
+    if (params.q) p.set('q', params.q);
+    if (params.category) p.set('category', params.category);
+    if (params.brand) p.set('brand', params.brand);
+    if (params.sortBy) p.set('sortBy', params.sortBy);
+    if (params.sortOrder) p.set('sortOrder', params.sortOrder);
+    return `?${p.toString()}`;
+  }
 
   return (
     <div>
@@ -28,18 +46,18 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
         </p>
       </div>
 
-      <Suspense fallback={<div>Loading products…</div>}>
-        <ProductGrid products={productsData.items as Product[]} />
+      <Suspense fallback={null}>
+        <ShopFilters brands={brands} />
       </Suspense>
 
-      {/* Pagination */}
+      <Suspense fallback={<div>Loading products…</div>}>
+        <ProductGrid products={productsData.items} />
+      </Suspense>
+
       {productsData.total > productsData.limit && (
         <div className="mt-8 flex justify-center gap-2">
           {productsData.page > 1 && (
-            <a
-              href={`?page=${productsData.page - 1}${params.q ? `&q=${params.q}` : ''}${params.category ? `&category=${params.category}` : ''}`}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
+            <a href={pageHref(productsData.page - 1)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
               Previous
             </a>
           )}
@@ -47,10 +65,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
             Page {productsData.page} of {Math.ceil(productsData.total / productsData.limit)}
           </span>
           {productsData.page < Math.ceil(productsData.total / productsData.limit) && (
-            <a
-              href={`?page=${productsData.page + 1}${params.q ? `&q=${params.q}` : ''}${params.category ? `&category=${params.category}` : ''}`}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
+            <a href={pageHref(productsData.page + 1)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
               Next
             </a>
           )}
@@ -58,14 +73,4 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
       )}
     </div>
   );
-}
-
-interface Product {
-  id: string;
-  name: string;
-  slug: string;
-  priceCents: number;
-  imageUrl?: string;
-  category?: { name: string; slug: string };
-  stockQuantity: number;
 }

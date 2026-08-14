@@ -1,6 +1,8 @@
 import type { components } from '@shopnest/api-client';
 
 import type {
+  AddressInput,
+  AddressResponse,
   AdminAccountResponse,
   AdminDashboardResponse,
   AuditLogListResponse,
@@ -15,12 +17,16 @@ import type {
   ProductCardResponse,
   ProductDetailResponse,
   ProductListResponse,
+  ReviewEligibilityResponse,
+  ReviewListResponse,
+  ReviewResponse,
   UserSummary,
   VendorAnalyticsResponse,
   VendorFulfilmentResponse,
   VendorOfferResponse,
   VendorResponse,
   VendorStaffListResponse,
+  WishlistItemResponse,
 } from './api-types';
 
 type Schemas = components['schemas'];
@@ -373,6 +379,58 @@ export const api = {
 
   adminListImportRuns: (limit = 20, cookies?: string) =>
     request<CatalogImportRunResponse[]>(`/admin/catalog-imports?limit=${limit}`, { cookies }),
+
+  // ── Reviews ──────────────────────────────────────────────────────────────
+
+  listReviews: (slug: string, page = 1, limit = 10, cookies?: string) =>
+    request<ReviewListResponse>(`/products/${slug}/reviews?page=${page}&limit=${limit}`, { cookies }),
+
+  reviewEligibility: (slug: string, cookies?: string) =>
+    request<ReviewEligibilityResponse>(`/products/${slug}/reviews/my-eligibility`, { cookies }),
+
+  createReview: (
+    slug: string,
+    body: { orderItemId: string; rating: number; title?: string; body: string },
+    cookies?: string,
+  ) => request<ReviewResponse>(`/products/${slug}/reviews`, { method: 'POST', body, cookies }),
+
+  adminListReviews: (page = 1, limit = 25, status?: 'PUBLISHED' | 'HIDDEN', cookies?: string) => {
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (status) qs.set('status', status);
+    return request<ReviewListResponse>(`/admin/reviews?${qs.toString()}`, { cookies });
+  },
+
+  adminHideReview: (id: string, cookies?: string) =>
+    request<ReviewResponse>(`/admin/reviews/${id}/hide`, { method: 'PATCH', cookies }),
+
+  adminPublishReview: (id: string, cookies?: string) =>
+    request<ReviewResponse>(`/admin/reviews/${id}/publish`, { method: 'PATCH', cookies }),
+
+  // ── Wishlist ─────────────────────────────────────────────────────────────
+
+  listWishlist: (cookies?: string) => request<WishlistItemResponse[]>('/me/wishlist', { cookies }),
+
+  addToWishlist: (productId: string, cookies?: string) =>
+    request<{ status: string }>('/me/wishlist', { method: 'POST', body: { productId }, cookies }),
+
+  removeFromWishlist: (productId: string, cookies?: string) =>
+    request<void>(`/me/wishlist/${productId}`, { method: 'DELETE', cookies }),
+
+  // ── Addresses ────────────────────────────────────────────────────────────
+
+  listAddresses: (cookies?: string) => request<AddressResponse[]>('/me/addresses', { cookies }),
+
+  createAddress: (body: AddressInput, cookies?: string) =>
+    request<AddressResponse>('/me/addresses', { method: 'POST', body, cookies }),
+
+  updateAddress: (id: string, body: Partial<AddressInput>, cookies?: string) =>
+    request<AddressResponse>(`/me/addresses/${id}`, { method: 'PATCH', body, cookies }),
+
+  removeAddress: (id: string, cookies?: string) =>
+    request<void>(`/me/addresses/${id}`, { method: 'DELETE', cookies }),
+
+  setDefaultAddress: (id: string, cookies?: string) =>
+    request<AddressResponse>(`/me/addresses/${id}/default`, { method: 'PATCH', cookies }),
 };
 
 // `PUT /cart/items` returns the raw upserted CartItem row (no nested

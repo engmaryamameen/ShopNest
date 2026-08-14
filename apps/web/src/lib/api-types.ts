@@ -66,6 +66,8 @@ export interface ProductCardResponse {
   compareAtPriceCents: number | null;
   stockQuantity: number;
   imageUrl: string | null;
+  ratingAverage: number;
+  ratingCount: number;
 }
 
 export interface ProductVendorOfferResponse {
@@ -91,6 +93,8 @@ export interface ProductDetailResponse {
   updatedAt: string;
   images: Array<{ url: string; altText: string | null }>;
   imageUrl: string | null;
+  ratingAverage: number;
+  ratingCount: number;
   attributes: Array<{ name: string; slug: string; value: string }>;
   offerId: string | null;
   priceCents: number;
@@ -360,4 +364,67 @@ export interface ImportScopeInput {
   categoryScope?: string[];
   maxRecords?: number;
   minImageCount?: number;
+}
+
+// ── Reviews ──────────────────────────────────────────────────────────────
+
+export interface ReviewResponse {
+  id: string;
+  productId: string;
+  userId: string;
+  orderItemId: string;
+  rating: number;
+  title: string | null;
+  body: string;
+  status: 'PUBLISHED' | 'HIDDEN';
+  createdAt: string;
+  updatedAt: string;
+  user?: { id: string; email: string };
+  product?: { id: string; name: string; slug: string };
+}
+
+export interface ReviewListResponse {
+  items: ReviewResponse[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ReviewEligibilityResponse {
+  eligible: boolean;
+  orderItemId: string | null;
+}
+
+// ── Wishlist ─────────────────────────────────────────────────────────────
+
+export type WishlistItemResponse = ProductCardResponse;
+
+// ── Addresses ────────────────────────────────────────────────────────────
+
+export interface AddressResponse {
+  id: string;
+  label: string | null;
+  fullName: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string | null;
+  postalCode: string;
+  country: string;
+  phone: string | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AddressInput {
+  label?: string;
+  fullName: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state?: string;
+  postalCode: string;
+  country: string;
+  phone?: string;
 }

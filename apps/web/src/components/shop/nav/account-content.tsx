@@ -1,4 +1,4 @@
-import { GridIcon, PackageIcon, ShieldCheckIcon, SignOutIcon, TagIcon } from "@/assets/icons";
+import { GridIcon, HeartIcon, MapPinIcon, PackageIcon, ShieldCheckIcon, SignOutIcon, TagIcon } from "@/assets/icons";
 import { UserIdentity } from "@/store/user.store";
 import Link from "next/link";
 
@@ -50,6 +50,46 @@ export function AccountContent({
         <PackageIcon className="h-[18px] w-[18px] text-black/45" />
 
         Your orders
+      </Link>
+
+      {/* Wishlist */}
+      <Link
+        href="/account/wishlist"
+        onClick={onClose}
+        className="
+          flex min-h-[48px]
+          items-center gap-3
+          border-b border-black/[0.07]
+          text-[13px]
+          text-black/75
+          lg:px-4
+          transition-colors
+          hover:text-black
+        "
+      >
+        <HeartIcon className="h-[18px] w-[18px] text-black/45" />
+
+        Wishlist
+      </Link>
+
+      {/* Addresses */}
+      <Link
+        href="/account/addresses"
+        onClick={onClose}
+        className="
+          flex min-h-[48px]
+          items-center gap-3
+          border-b border-black/[0.07]
+          text-[13px]
+          text-black/75
+          lg:px-4
+          transition-colors
+          hover:text-black
+        "
+      >
+        <MapPinIcon className="h-[18px] w-[18px] text-black/45" />
+
+        Addresses
       </Link>
 
       {/* Security */}
