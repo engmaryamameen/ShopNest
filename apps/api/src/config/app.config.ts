@@ -31,6 +31,9 @@ export default registerAs('app', () => ({
   // `local` (default) logs instead of sending; `smtp` requires SMTP_HOST at minimum.
   mailProvider: process.env.MAIL_PROVIDER ?? 'local',
   mailFromAddress: process.env.MAIL_FROM_ADDRESS ?? 'no-reply@shopnest.local',
+  // Test-only "fake inbox" file — see local-mail.adapter.ts. Never set outside
+  // an explicit E2E test run; unset (default) means zero behavior change.
+  mailTestCaptureFile: process.env.MAIL_TEST_CAPTURE_FILE ?? '',
   smtpHost: process.env.SMTP_HOST ?? '',
   smtpPort: parseInt(process.env.SMTP_PORT ?? '587', 10),
   smtpUser: process.env.SMTP_USER ?? '',

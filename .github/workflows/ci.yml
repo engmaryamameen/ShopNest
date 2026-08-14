@@ -111,6 +111,85 @@ jobs:
       - name: Run web unit tests
         run: pnpm --filter @shopnest/web test
 
+  # ── E2E ──────────────────────────────────────────────────────────────────
+  # Drives the real Next.js UI against the real API + an ephemeral Postgres
+  # in a real browser (Playwright's own pinned Chromium — the sandboxed dev
+  # environment this suite was authored in couldn't download it, so this is
+  # this suite's first from-scratch execution; see DECISIONS.md). Separate
+  # job from `web` because it needs the API built and a database, not just
+  # the frontend's own unit tests.
+  e2e:
+    name: E2E — full account-lifecycle journey (desktop + mobile)
+    runs-on: ubuntu-24.04
+    needs: [api, web]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: shopnest
+          POSTGRES_PASSWORD: shopnest
+          POSTGRES_DB: shopnest_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://shopnest:shopnest@localhost:5432/shopnest_e2e
+      JWT_ACCESS_SECRET: e2e-access-secret-placeholder-at-least-32-chars
+      JWT_REFRESH_SECRET: e2e-refresh-secret-placeholder-at-least-32-chars
+      WEB_URL: http://localhost:3000
+      API_URL: http://localhost:3001
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      INTERNAL_API_URL: http://localhost:3001
+      NODE_ENV: development # not `test` or `production` — production refuses the local mail adapter (env.validation.ts), and this job needs it to read verification/reset links back out.
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.28.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: pnpm exec prisma generate
+
+      - name: Apply migrations
+        working-directory: apps/api
+        run: pnpm exec prisma migrate deploy
+
+      - name: Seed (admin account the suite logs in as)
+        run: pnpm --filter @shopnest/api db:seed
+
+      - name: Build API
+        run: pnpm --filter @shopnest/api build
+
+      - name: Build web
+        run: pnpm --filter @shopnest/web build
+
+      - name: Install Playwright's Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E suite (starts API + web itself — see playwright.config.ts webServer)
+        run: pnpm --filter @shopnest/web test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 14
+
   # ── Build ────────────────────────────────────────────────────────────────
   build:
     name: Build all apps

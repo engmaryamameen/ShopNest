@@ -1,6 +1,6 @@
 import { CallHandler, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { AuditLogInterceptor } from '../audit-log.interceptor';
 import { AuditLogService } from '../audit-log.service';
 
@@ -115,6 +115,41 @@ describe('AuditLogInterceptor', () => {
       const call = auditLog.record.mock.calls[0][0];
       expect(call.metadata).toEqual({ status: 'SUSPENDED' });
       done();
+    });
+  });
+
+  it('redacts any body key matching password/token/secret/hash, case-insensitively', (done) => {
+    reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_USER_SUSPEND', targetType: 'User' });
+    const context = makeContext({
+      params: { id: 'user-1' },
+      body: {
+        status: 'SUSPENDED',
+        newPassword: 'x',
+        resetToken: 'y',
+        apiSecret: 'z',
+        passwordHash: 'w',
+        note: 'kept',
+      },
+      user: { sub: 'admin-1' },
+    });
+
+    interceptor.intercept(context, makeHandler({ id: 'user-1' })).subscribe(() => {
+      const call = auditLog.record.mock.calls[0][0];
+      expect(call.metadata).toEqual({ status: 'SUSPENDED', note: 'kept' });
+      done();
+    });
+  });
+
+  it('never calls record() when the handler throws — no misleading "this happened" row', (done) => {
+    reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_PRODUCT_UPDATE', targetType: 'Product' });
+    const context = makeContext({ params: { id: 'prod-1' }, body: {}, user: { sub: 'admin-1' } });
+    const handler: CallHandler = { handle: () => throwError(() => new Error('downstream failure')) };
+
+    interceptor.intercept(context, handler).subscribe({
+      error: () => {
+        expect(auditLog.record).not.toHaveBeenCalled();
+        done();
+      },
     });
   });
 });

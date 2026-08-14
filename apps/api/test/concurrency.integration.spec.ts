@@ -473,3 +473,91 @@ describe('Order state machine — transition enforcement', () => {
     expect(attempt.status).toBe(400);
   });
 });
+
+// ── Suite 5: Rate limiting — proves the throttle actually engages ─────────────
+
+describe('Rate limiting', () => {
+  it('login is throttled per-route: a burst well past the configured limit gets at least one 429', async () => {
+    // login's static @Throttle() limit is 15/min (auth.controller.ts). Fire a
+    // burst comfortably larger than that, regardless of how many login calls
+    // earlier suites in this file already made against the same window —
+    // 20 more requests cannot fit under any remaining budget of 15.
+    const attempts = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        api('/auth/login', {
+          method: 'POST',
+          body: { email: `nobody-${run}@test.local`, password: 'WrongPass123456!' },
+        }),
+      ),
+    );
+
+    const statuses = attempts.map((r) => r.status);
+    expect(statuses).toContain(429);
+    // Every response is either a normal auth failure or a throttle rejection
+    // — never a 500, which would mean the guard itself is broken.
+    expect(statuses.every((s) => s === 401 || s === 429)).toBe(true);
+  });
+
+  it('a throttled response still carries the standard error envelope, not a raw framework error', async () => {
+    const attempts = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        api('/auth/register', {
+          method: 'POST',
+          body: { email: `flood-${run}-${Math.random()}@test.local`, password: 'TestPass123456!' },
+        }),
+      ),
+    );
+
+    const throttled = attempts.find((r) => r.status === 429);
+    expect(throttled).toBeDefined();
+    const body = (await throttled!.json()) as { statusCode: number; message: unknown };
+    expect(body.statusCode).toBe(429);
+  });
+});
+
+// ── Suite 6: Account-enumeration prevention ────────────────────────────────────
+//
+// Deliberately reuses an email already registered by an earlier suite
+// (`buyer1-${run}@test.local`, Suite 1) instead of calling register() fresh
+// here — this suite runs after "Rate limiting" deliberately exhausts the
+// register endpoint's own throttle budget in the same 60s window, and a
+// fresh registration here would itself be throttled. Reusing an existing
+// account also decouples this suite from the register throttle entirely,
+// which is more robust regardless of suite ordering.
+
+describe('Account enumeration prevention', () => {
+  it('forgot-password responds identically for a registered and an unregistered email', async () => {
+    const registeredEmail = `buyer1-${run}@test.local`;
+
+    const realRes = await api('/auth/forgot-password', {
+      method: 'POST',
+      body: { email: registeredEmail },
+    });
+    const fakeRes = await api('/auth/forgot-password', {
+      method: 'POST',
+      body: { email: `definitely-not-registered-${run}@test.local` },
+    });
+
+    expect(realRes.status).toBe(fakeRes.status);
+    expect(realRes.status).toBe(204);
+    const realBody = await realRes.text();
+    const fakeBody = await fakeRes.text();
+    expect(realBody).toBe(fakeBody); // both empty — no distinguishing content either
+  });
+
+  it('resend-verification responds identically for a registered and an unregistered email', async () => {
+    const registeredEmail = `buyer2-${run}@test.local`;
+
+    const realRes = await api('/auth/resend-verification', {
+      method: 'POST',
+      body: { email: registeredEmail },
+    });
+    const fakeRes = await api('/auth/resend-verification', {
+      method: 'POST',
+      body: { email: `definitely-not-registered-${run}@test.local` },
+    });
+
+    expect(realRes.status).toBe(fakeRes.status);
+    expect(realRes.status).toBe(204);
+  });
+});

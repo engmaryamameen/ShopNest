@@ -19,6 +19,18 @@ import type { JwtPayload } from '../common/decorators/current-user.decorator';
  * `AuditLog` row after the handler succeeds — never before, so a
  * subsequently-thrown error (e.g. a downstream validation failure) never
  * produces a misleading "this happened" row for something that didn't.
+ *
+ * Failure semantics (see `AuditLogService.record()` for the enforcement):
+ * the write is fire-and-forget from the request's perspective — never
+ * awaited, and `record()` never throws. A dropped audit row (e.g. a DB
+ * blip at the exact moment) can never turn a successful mutation into a
+ * failed HTTP response, and can never delay the response either. This is a
+ * deliberate tradeoff: this audit trail is best-effort observability, not
+ * a transactionally-guaranteed compliance log. If a future requirement
+ * needs the latter, the fix is writing the AuditLog row inside the same
+ * Prisma transaction as the mutation (or an outbox/relay pattern) — not
+ * something this interceptor can provide, since it runs outside and after
+ * whatever transaction the handler used.
  */
 @Injectable()
 export class AuditLogInterceptor implements NestInterceptor {
@@ -83,15 +95,19 @@ export class AuditLogInterceptor implements NestInterceptor {
     return null;
   }
 
-  private static readonly REDACTED_BODY_KEYS = new Set(['password', 'passwordHash']);
+  // Case-insensitive substring match, not an exact-key set — cheap
+  // insurance against a future DTO field like `newPassword`,
+  // `currentPassword`, or `apiSecret` landing in an audited request body
+  // without anyone remembering to extend an exact-match list.
+  private static readonly REDACTED_BODY_KEY_PATTERN = /password|token|secret|hash/i;
 
   private safeBody(body: unknown): Prisma.InputJsonValue | undefined {
     if (!body || typeof body !== 'object') return undefined;
-    // Never persist credentials into an audit trail, even incidentally —
-    // no current admin-mutation DTO carries one, but this is cheap insurance
-    // against a future one (e.g. an admin-created-user flow) doing so.
+    // Never persist credentials/tokens into an audit trail, even
+    // incidentally — no current @Audit()-decorated route's DTO carries one
+    // today, but this is cheap insurance against a future one doing so.
     const entries = Object.entries(body as Record<string, unknown>).filter(
-      ([key]) => !AuditLogInterceptor.REDACTED_BODY_KEYS.has(key),
+      ([key]) => !AuditLogInterceptor.REDACTED_BODY_KEY_PATTERN.test(key),
     );
     return Object.fromEntries(entries) as Prisma.InputJsonValue;
   }

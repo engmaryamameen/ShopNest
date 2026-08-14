@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openAccountMenu, loginViaUI, registerViaUI } from './helpers/actions';
 
 /**
  * E2E auth flows — run against a live dev environment.
@@ -10,25 +11,27 @@ const TEST_PASSWORD = 'TestPassword123!';
 
 test.describe('Authentication', () => {
   test('register → login → logout flow', async ({ page }) => {
-    // Register
-    await page.goto('/register');
-    await page.fill('#email', TEST_EMAIL);
-    await page.fill('#password', TEST_PASSWORD);
-    await page.fill('#confirm', TEST_PASSWORD);
-    await page.click('button[type="submit"]');
-
-    // Should redirect to /shop after registration
+    // Register defaults an unqualified returnTo to /shop specifically
+    // (register/page.tsx) — a deliberate asymmetry with login, which lands
+    // on / (the homepage) instead. See the "returnTo redirect" test below
+    // and account-lifecycle.spec.ts for the login-side behavior.
+    await registerViaUI(page, TEST_EMAIL, TEST_PASSWORD);
     await expect(page).toHaveURL(/\/shop/);
 
-    // Logout
-    await page.click('text=Logout');
-    await expect(page).toHaveURL(/\/login/);
+    // Logout — the account-menu trigger has to be opened first; the "Sign
+    // out" button (this used to say "Logout" here, which doesn't match
+    // account-content.tsx's actual label and, combined with never clicking
+    // the trigger first, means this assertion was never actually exercised
+    // — test:e2e wasn't wired into CI until Phase 0) lives inside the panel
+    // it opens.
+    await openAccountMenu(page);
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await expect(page).toHaveURL(/\/shop|\/$/);
 
-    // Login
-    await page.fill('#email', TEST_EMAIL);
-    await page.fill('#password', TEST_PASSWORD);
-    await page.click('button[type="submit"]');
-    await expect(page).toHaveURL(/\/shop/);
+    // Login with no returnTo lands on / (validate-return-to.ts's fallback),
+    // which is the real homepage (a 200 render, not a redirect) — not /shop.
+    await loginViaUI(page, TEST_EMAIL, TEST_PASSWORD);
+    await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
   });
 
   test('protected route redirects to login', async ({ page }) => {
@@ -37,10 +40,7 @@ test.describe('Authentication', () => {
   });
 
   test('login with invalid credentials shows error', async ({ page }) => {
-    await page.goto('/login');
-    await page.fill('#email', 'nonexistent@example.com');
-    await page.fill('#password', 'wrongpassword123');
-    await page.click('button[type="submit"]');
+    await loginViaUI(page, 'nonexistent@example.com', 'wrongpassword123');
     await expect(page.locator('text=Invalid credentials')).toBeVisible();
   });
 
@@ -50,10 +50,7 @@ test.describe('Authentication', () => {
     const loginUrl = page.url();
     expect(loginUrl).toContain('returnTo=%2Forders');
 
-    // Login
-    await page.fill('#email', TEST_EMAIL);
-    await page.fill('#password', TEST_PASSWORD);
-    await page.click('button[type="submit"]');
+    await loginViaUI(page, TEST_EMAIL, TEST_PASSWORD);
 
     // Should return to /orders
     await expect(page).toHaveURL(/\/orders/);
@@ -61,10 +58,10 @@ test.describe('Authentication', () => {
 });
 
 test.describe('Shop catalog', () => {
-  test('home page is a public storefront entry point', async ({ page }) => {
+  test('the homepage renders the real storefront (not a redirect to /shop)', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveURL(/\/shop/);
-    await expect(page.getByRole('heading', { name: 'Shop' })).toBeVisible();
+    await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
+    await expect(page.getByRole('heading', { name: 'Browse By Category' })).toBeVisible();
   });
 
   test('shop page loads without auth', async ({ page }) => {

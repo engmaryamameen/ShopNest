@@ -1,5 +1,15 @@
 import { plainToInstance } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsUrl, Min, MinLength, validateSync } from 'class-validator';
+import {
+  Equals,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsUrl,
+  Min,
+  MinLength,
+  ValidateIf,
+  validateSync,
+} from 'class-validator';
 
 enum NodeEnv {
   Development = 'development',
@@ -46,6 +56,17 @@ class EnvironmentVariables {
     message: 'JWT_REFRESH_SECRET must be at least 32 characters — generate one with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"',
   })
   JWT_REFRESH_SECRET!: string;
+
+  // LocalMailAdapter logs verification/reset/invite tokens in full (that's
+  // the point of it — a dev-mode "fake inbox"). In production that would
+  // mean bearer tokens for account takeover sitting in stdout/log
+  // aggregators. Fail at boot rather than silently defaulting to `local` if
+  // an operator forgets to configure SMTP for a production deploy.
+  @ValidateIf((o: EnvironmentVariables) => o.NODE_ENV === NodeEnv.Production)
+  @Equals('smtp', {
+    message: 'MAIL_PROVIDER must be "smtp" in production — the local adapter logs bearer tokens in full and must never run outside development/test',
+  })
+  MAIL_PROVIDER?: string;
 }
 
 export function validate(config: Record<string, unknown>): EnvironmentVariables {
