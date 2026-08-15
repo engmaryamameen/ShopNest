@@ -54,6 +54,29 @@
    * transition can reference `ease-smooth` instead of re-typing it.
    */
   --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Admin fonts */
+  --font-inter: var(--font-inter);
+  --font-nunito: var(--font-nunito);
+
+  /*
+   * Admin design system — a deliberately separate palette from the
+   * storefront's brand/accent/ink tokens above (different intent: dense
+   * data screens, not merchandising chrome), so restyling admin never
+   * risks bleeding into the customer-facing site. Named semantically
+   * rather than as a generated 50–900 scale — only the shades the design
+   * actually specifies exist as tokens, nothing interpolated.
+   */
+  --color-admin-primary: #4ea674;
+  --color-admin-primary-soft: #eaf8e7;
+  --color-admin-primary-chart: #c1e6ba;
+  --color-admin-ink: #023337;
+  --color-admin-heading: #23272e;
+  --color-admin-accent: #6467f2;
+  --color-admin-muted: #6a717f;
+  --color-admin-success: #21c45d;
+  --color-admin-danger: #ef4343;
+  --color-admin-danger-soft: #f87272;
 }
 
 body {

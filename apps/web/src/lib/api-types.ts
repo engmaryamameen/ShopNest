@@ -333,6 +333,10 @@ export interface AdminDashboardResponse {
   orders: { byStatus: Partial<Record<OrderStatus, number>>; totalRevenueCents: number };
   pendingVendorApplications: number;
   recentAuditLogs: AuditLogResponse[];
+  weeklyTrend: Array<{ date: string; label: string; orderCount: number; revenueCents: number }>;
+  revenueChangePercent: number | null;
+  orderCountChangePercent: number | null;
+  topProducts: Array<{ productSlug: string; productName: string; unitsSold: number; averageUnitPriceCents: number }>;
 }
 
 export interface AuditLogResponse {

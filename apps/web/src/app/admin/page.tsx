@@ -2,119 +2,98 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { formatPrice } from '@/lib/format-price';
+import { StatCard } from '@/components/admin/dashboard/stat-card';
+import { StatusBreakdownCard } from '@/components/admin/dashboard/status-breakdown-card';
+import { TopProductsCard } from '@/components/admin/dashboard/top-products-card';
+import { RecentActivityCard } from '@/components/admin/dashboard/recent-activity-card';
+import { WeeklyAreaChart } from '@/components/admin/weekly-area-chart';
 
 export const dynamic = 'force-dynamic';
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-    </div>
-  );
-}
+const QUICK_LINKS = [
+  { href: '/admin/orders', title: 'Orders', description: 'Manage customer orders and update status' },
+  { href: '/admin/products', title: 'Products', description: 'Add, edit, and remove products' },
+  { href: '/admin/categories', title: 'Categories', description: 'Manage product categories' },
+  { href: '/admin/vendors', title: 'Vendors', description: 'Approve, reject, or suspend vendor applications' },
+  { href: '/admin/users', title: 'Customers', description: 'Suspend or reactivate accounts' },
+  { href: '/admin/reviews', title: 'Reviews', description: 'Moderate published customer reviews' },
+  { href: '/admin/returns', title: 'Returns', description: 'Review and decide customer return requests' },
+  { href: '/admin/promotions', title: 'Promotions', description: 'Create platform-wide discount codes' },
+  { href: '/admin/imports', title: 'Catalog imports', description: 'Preview, scope, and run supplier synchronizations' },
+];
 
 export default async function AdminDashboardPage() {
   const cookieHeader = (await cookies()).toString();
   const summary = await api.adminDashboard(cookieHeader);
 
-  return (
-    <div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Admin Dashboard</h1>
+  const weeklyRevenueCents = summary.weeklyTrend.reduce((sum, d) => sum + d.revenueCents, 0);
+  const weeklyOrderCount = summary.weeklyTrend.reduce((sum, d) => sum + d.orderCount, 0);
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 mb-8">
-        <StatCard label="Total revenue" value={formatPrice(summary.orders.totalRevenueCents)} />
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <StatCard label="Sales" sublabel="Last 7 days" value={formatPrice(weeklyRevenueCents)} changePercent={summary.revenueChangePercent} />
+        <StatCard label="Orders" sublabel="Last 7 days" value={weeklyOrderCount} changePercent={summary.orderCountChangePercent} />
+        <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
+          <p className="text-[18px] font-bold text-admin-heading font-lato mb-3">Pending &amp; cancelled</p>
+          <div className="flex items-center gap-6">
+            <div>
+              <p className="text-sm text-admin-muted font-lato">Pending</p>
+              <p className="text-[22px] font-bold text-admin-ink font-lato">{summary.orders.byStatus.PENDING ?? 0}</p>
+            </div>
+            <div className="w-px h-8 bg-gray-200" />
+            <div>
+              <p className="text-sm text-admin-muted font-lato">Cancelled</p>
+              <p className="text-[22px] font-bold text-admin-danger font-lato">{summary.orders.byStatus.CANCELLED ?? 0}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
+        <h2 className="font-bold text-admin-heading font-lato mb-4">Revenue this week</h2>
+        <WeeklyAreaChart data={summary.weeklyTrend} />
+      </div>
+
+      <TopProductsCard products={summary.topProducts} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <StatusBreakdownCard
+          title="Orders by status"
+          rows={Object.entries(summary.orders.byStatus).map(([label, value]) => ({ label, value: value ?? 0 }))}
+        />
+        <StatusBreakdownCard
+          title="Vendors by status"
+          rows={[
+            { label: 'Pending', value: summary.vendors.pending },
+            { label: 'Approved', value: summary.vendors.approved },
+            { label: 'Suspended', value: summary.vendors.suspended },
+            { label: 'Rejected', value: summary.vendors.rejected },
+          ]}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
+        <StatCard label="All-time revenue" value={formatPrice(summary.orders.totalRevenueCents)} />
         <StatCard label="Users" value={summary.users.total} />
         <StatCard label="Published products" value={summary.products.published} />
         <StatCard label="Pending vendor applications" value={summary.pendingVendorApplications} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="font-semibold text-gray-900 mb-3">Orders by status</h2>
-          <div className="space-y-1 text-sm">
-            {Object.entries(summary.orders.byStatus).length === 0 && (
-              <p className="text-gray-400">No orders yet</p>
-            )}
-            {Object.entries(summary.orders.byStatus).map(([status, count]) => (
-              <div key={status} className="flex justify-between">
-                <span className="text-gray-500">{status}</span>
-                <span className="font-medium text-gray-900">{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="font-semibold text-gray-900 mb-3">Vendors by status</h2>
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Pending</span><span className="font-medium text-gray-900">{summary.vendors.pending}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Approved</span><span className="font-medium text-gray-900">{summary.vendors.approved}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Suspended</span><span className="font-medium text-gray-900">{summary.vendors.suspended}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Rejected</span><span className="font-medium text-gray-900">{summary.vendors.rejected}</span></div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {QUICK_LINKS.map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5 hover:shadow-md transition-shadow"
+          >
+            <h2 className="text-lg font-bold text-admin-ink font-lato">{link.title}</h2>
+            <p className="text-admin-muted mt-1 text-sm font-lato">{link.description}</p>
+          </Link>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-        <Link href="/admin/orders" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <h2 className="text-xl font-semibold text-gray-900">Orders</h2>
-          <p className="text-gray-500 mt-1">Manage customer orders and update status</p>
-        </Link>
-        <Link href="/admin/products" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <h2 className="text-xl font-semibold text-gray-900">Products</h2>
-          <p className="text-gray-500 mt-1">Add, edit, and remove products</p>
-        </Link>
-        <Link href="/admin/categories" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <h2 className="text-xl font-semibold text-gray-900">Categories</h2>
-          <p className="text-gray-500 mt-1">Manage product categories</p>
-        </Link>
-        <Link href="/admin/vendors" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <h2 className="text-xl font-semibold text-gray-900">Vendors</h2>
-          <p className="text-gray-500 mt-1">Approve, reject, or suspend vendor applications</p>
-        </Link>
-        <Link href="/admin/users" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <h2 className="text-xl font-semibold text-gray-900">Users</h2>
-          <p className="text-gray-500 mt-1">Suspend or reactivate accounts</p>
-        </Link>
-        <Link href="/admin/reviews" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <h2 className="text-xl font-semibold text-gray-900">Reviews</h2>
-          <p className="text-gray-500 mt-1">Moderate published customer reviews</p>
-        </Link>
-        <Link href="/admin/returns" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <h2 className="text-xl font-semibold text-gray-900">Returns</h2>
-          <p className="text-gray-500 mt-1">Review and decide customer return requests</p>
-        </Link>
-        <Link href="/admin/promotions" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <h2 className="text-xl font-semibold text-gray-900">Promotions</h2>
-          <p className="text-gray-500 mt-1">Create platform-wide discount codes</p>
-        </Link>
-        <Link href="/admin/imports" className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <h2 className="text-xl font-semibold text-gray-900">Catalog imports</h2>
-          <p className="text-gray-500 mt-1">Preview, scope, and run supplier synchronizations</p>
-        </Link>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-gray-900">Recent activity</h2>
-          <Link href="/admin/audit-log" className="text-sm text-indigo-600 hover:text-indigo-700">View all →</Link>
-        </div>
-        {summary.recentAuditLogs.length === 0 ? (
-          <p className="text-gray-400 text-sm">No activity recorded yet.</p>
-        ) : (
-          <div className="space-y-2 text-sm">
-            {summary.recentAuditLogs.slice(0, 8).map((log) => (
-              <div key={log.id} className="flex justify-between border-b border-gray-100 pb-2 last:border-0">
-                <span className="text-gray-700">
-                  {log.action.replace(/_/g, ' ').toLowerCase()}
-                  {log.actor && <span className="text-gray-400"> · {log.actor.email}</span>}
-                </span>
-                <span className="text-gray-400">{new Date(log.createdAt).toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <RecentActivityCard logs={summary.recentAuditLogs} />
     </div>
   );
 }

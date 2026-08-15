@@ -33,6 +33,10 @@ function makePrismaMock() {
         { status: 'CANCELLED', _count: 2 },
       ]),
       aggregate: jest.fn().mockResolvedValue({ _sum: { totalCents: 500000 } }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    orderItem: {
+      groupBy: jest.fn().mockResolvedValue([]),
     },
     auditLog: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -78,6 +82,72 @@ describe('AdminService', () => {
       expect(prisma.order.aggregate).toHaveBeenCalledWith(
         expect.objectContaining({ where: { status: { not: 'CANCELLED' } } }),
       );
+    });
+
+    it('buckets real orders into a 7-entry weekly trend, oldest first, with correct per-day totals', async () => {
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      prisma.order.findMany.mockResolvedValue([
+        { createdAt: today, totalCents: 1000 },
+        { createdAt: today, totalCents: 500 },
+        { createdAt: yesterday, totalCents: 2000 },
+      ]);
+
+      const summary = await service.getDashboardSummary();
+
+      expect(summary.weeklyTrend).toHaveLength(7);
+      const todayBucket = summary.weeklyTrend[summary.weeklyTrend.length - 1];
+      const yesterdayBucket = summary.weeklyTrend[summary.weeklyTrend.length - 2];
+      expect(todayBucket).toEqual(expect.objectContaining({ orderCount: 2, revenueCents: 1500 }));
+      expect(yesterdayBucket).toEqual(expect.objectContaining({ orderCount: 1, revenueCents: 2000 }));
+      // The five days before that had no real orders — zero, not omitted.
+      expect(summary.weeklyTrend.slice(0, 5).every((d) => d.orderCount === 0 && d.revenueCents === 0)).toBe(true);
+    });
+
+    it('computes a real week-over-week revenue/order change from the prior 7 days', async () => {
+      const today = new Date();
+      const eightDaysAgo = new Date(today);
+      eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);
+
+      prisma.order.findMany.mockResolvedValue([
+        { createdAt: today, totalCents: 20000 }, // this week: $200
+        { createdAt: eightDaysAgo, totalCents: 10000 }, // prior week: $100
+      ]);
+
+      const summary = await service.getDashboardSummary();
+
+      expect(summary.revenueChangePercent).toBe(100); // doubled
+      expect(summary.orderCountChangePercent).toBe(0); // 1 order both weeks
+    });
+
+    it('reports null change percentages rather than 0% or Infinity% when the prior week had no activity', async () => {
+      const today = new Date();
+      prisma.order.findMany.mockResolvedValue([{ createdAt: today, totalCents: 5000 }]);
+
+      const summary = await service.getDashboardSummary();
+
+      expect(summary.revenueChangePercent).toBeNull();
+      expect(summary.orderCountChangePercent).toBeNull();
+    });
+
+    it('ranks topProducts from real OrderItem aggregation, scoped to the last 30 days and non-cancelled orders', async () => {
+      prisma.orderItem.groupBy.mockResolvedValue([
+        { productSlug: 'wireless-mouse', productName: 'Wireless Mouse', _sum: { quantity: 42 }, _avg: { unitPriceCents: 2550 } },
+      ]);
+
+      const summary = await service.getDashboardSummary();
+
+      expect(prisma.orderItem.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ order: expect.objectContaining({ status: { not: 'CANCELLED' } }) }),
+          take: 5,
+        }),
+      );
+      expect(summary.topProducts).toEqual([
+        { productSlug: 'wireless-mouse', productName: 'Wireless Mouse', unitsSold: 42, averageUnitPriceCents: 2550 },
+      ]);
     });
   });
 

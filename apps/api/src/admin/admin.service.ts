@@ -19,6 +19,18 @@ export interface DashboardSummary {
     createdAt: Date;
     actor: { id: string; email: string } | null;
   }>;
+  /** Real per-day order count/revenue for the last 7 days, oldest first —
+   * never fabricated, cancelled orders excluded (matches totalRevenueCents'
+   * own definition of revenue above). */
+  weeklyTrend: Array<{ date: string; label: string; orderCount: number; revenueCents: number }>;
+  /** This week vs. the prior 7 days. `null` when the prior week had zero
+   * activity — a percentage change from zero is not a meaningful number,
+   * not "0%" or "∞%" that would read as real data. */
+  revenueChangePercent: number | null;
+  orderCountChangePercent: number | null;
+  /** Top 5 products by units sold in the last 30 days, ranked from real
+   * OrderItem rows — never a placeholder list. */
+  topProducts: Array<{ productSlug: string; productName: string; unitsSold: number; averageUnitPriceCents: number }>;
 }
 
 @Injectable()
@@ -29,6 +41,17 @@ export class AdminService {
   ) {}
 
   async getDashboardSummary(): Promise<DashboardSummary> {
+    // UTC throughout, deliberately — day-key strings below are also
+    // UTC-derived (toISOString()), and mixing a server-local midnight with
+    // UTC day keys would misbucket every order near a day boundary on any
+    // server not running in UTC.
+    const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const fourteenDaysAgo = new Date(startOfToday);
+    fourteenDaysAgo.setUTCDate(fourteenDaysAgo.getUTCDate() - 13);
+    const thirtyDaysAgo = new Date(startOfToday);
+    thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 29);
+
     const [
       userCounts,
       vendorCounts,
@@ -36,6 +59,8 @@ export class AdminService {
       orderCounts,
       revenue,
       recentAuditLogs,
+      recentOrders,
+      topProductRows,
     ] = await Promise.all([
       this.prisma.user.groupBy({ by: ['role'], _count: true }),
       this.prisma.vendor.groupBy({ by: ['status'], _count: true }),
@@ -52,7 +77,34 @@ export class AdminService {
         orderBy: { createdAt: 'desc' },
         include: { actor: { select: { id: true, email: true } } },
       }),
+      // Raw rows for the last 14 days (this week + the prior week to
+      // compare against) — bucketed and diffed in JS below rather than a
+      // second round-trip per day; demo-scale order volume makes this
+      // simpler than raw SQL date-bucketing for no real cost.
+      this.prisma.order.findMany({
+        where: { createdAt: { gte: fourteenDaysAgo }, status: { not: 'CANCELLED' } },
+        select: { createdAt: true, totalCents: true },
+      }),
+      this.prisma.orderItem.groupBy({
+        by: ['productSlug', 'productName'],
+        where: { order: { createdAt: { gte: thirtyDaysAgo }, status: { not: 'CANCELLED' } } },
+        _sum: { quantity: true },
+        _avg: { unitPriceCents: true },
+        orderBy: { _sum: { quantity: 'desc' } },
+        take: 5,
+      }),
     ]);
+
+    const { weeklyTrend, revenueChangePercent, orderCountChangePercent } = this.buildWeeklyTrend(
+      recentOrders,
+      startOfToday,
+    );
+    const topProducts = topProductRows.map((row) => ({
+      productSlug: row.productSlug,
+      productName: row.productName,
+      unitsSold: row._sum.quantity ?? 0,
+      averageUnitPriceCents: Math.round(row._avg.unitPriceCents ?? 0),
+    }));
 
     const usersByRole = Object.fromEntries(userCounts.map((r) => [r.role, r._count]));
     const vendorsByStatus = Object.fromEntries(vendorCounts.map((r) => [r.status, r._count]));
@@ -90,6 +142,60 @@ export class AdminService {
         createdAt: log.createdAt,
         actor: log.actor,
       })),
+      weeklyTrend,
+      revenueChangePercent,
+      orderCountChangePercent,
+      topProducts,
+    };
+  }
+
+  /** Buckets real order rows into the last 7 days and the 7 before that,
+   * for a genuine day-by-day trend plus a real week-over-week comparison —
+   * never interpolated or estimated. */
+  private buildWeeklyTrend(
+    orders: Array<{ createdAt: Date; totalCents: number }>,
+    startOfToday: Date,
+  ): {
+    weeklyTrend: DashboardSummary['weeklyTrend'];
+    revenueChangePercent: number | null;
+    orderCountChangePercent: number | null;
+  } {
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+    const byDay = new Map<string, { orderCount: number; revenueCents: number }>();
+    for (const order of orders) {
+      const key = dayKey(order.createdAt);
+      const entry = byDay.get(key) ?? { orderCount: 0, revenueCents: 0 };
+      entry.orderCount++;
+      entry.revenueCents += order.totalCents;
+      byDay.set(key, entry);
+    }
+
+    const bucketFor = (daysAgo: number) => {
+      const d = new Date(startOfToday);
+      d.setUTCDate(d.getUTCDate() - daysAgo);
+      const key = dayKey(d);
+      const entry = byDay.get(key) ?? { orderCount: 0, revenueCents: 0 };
+      // timeZone: 'UTC' — d is already a UTC-midnight instant; formatting
+      // it in the server's local zone could shift the weekday label across
+      // a day boundary depending on where the process happens to run.
+      return { date: key, label: d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }), ...entry };
+    };
+
+    const weeklyTrend = Array.from({ length: 7 }, (_, i) => bucketFor(6 - i));
+    const priorWeek = Array.from({ length: 7 }, (_, i) => bucketFor(13 - i));
+
+    const sum = (rows: Array<{ orderCount: number; revenueCents: number }>, key: 'orderCount' | 'revenueCents') =>
+      rows.reduce((total, row) => total + row[key], 0);
+
+    const thisWeekRevenue = sum(weeklyTrend, 'revenueCents');
+    const thisWeekOrders = sum(weeklyTrend, 'orderCount');
+    const priorWeekRevenue = sum(priorWeek, 'revenueCents');
+    const priorWeekOrders = sum(priorWeek, 'orderCount');
+
+    return {
+      weeklyTrend,
+      revenueChangePercent: priorWeekRevenue > 0 ? ((thisWeekRevenue - priorWeekRevenue) / priorWeekRevenue) * 100 : null,
+      orderCountChangePercent: priorWeekOrders > 0 ? ((thisWeekOrders - priorWeekOrders) / priorWeekOrders) * 100 : null,
     };
   }
 
