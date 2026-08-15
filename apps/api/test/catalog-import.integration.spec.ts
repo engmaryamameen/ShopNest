@@ -149,7 +149,7 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
     // Postgres error rather than a mocked one: pre-insert a product whose
     // slug collides with product 3's — its upsert hits a genuine unique-
     // constraint violation, aborting that batch's transaction for real.
-    const collidingSlug = `${products[3].name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy_json-${products[3].externalId}`;
+    const collidingSlug = `${products[3].name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy-json-${products[3].externalId}`;
     const category = await prisma.category.create({
       data: { name: `Catimp Integration Category Collide ${randomUUID()}`, slug: `catimp-collide-${randomUUID()}` },
     });
@@ -165,7 +165,7 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
     expect(afterFailure.status).not.toBe(CatalogImportStatus.SUCCEEDED);
 
     const productsAfterFailure = await prisma.product.findMany({
-      where: { slug: { in: products.slice(0, 2).map((p) => `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy_json-${p.externalId}`) } },
+      where: { slug: { in: products.slice(0, 2).map((p) => `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy-json-${p.externalId}`) } },
     });
     expect(productsAfterFailure).toHaveLength(2); // really committed, not rolled back with the rest
 
@@ -183,7 +183,7 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
     expect(final.createdCount).toBe(4);
 
     const allCreated = await prisma.product.findMany({
-      where: { slug: { in: products.map((p) => `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy_json-${p.externalId}`) } },
+      where: { slug: { in: products.map((p) => `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy-json-${p.externalId}`) } },
     });
     expect(allCreated).toHaveLength(4); // no duplicates from the retried batch
   });

@@ -285,11 +285,6 @@ export class CatalogImportService {
     let productId: string;
     if (existing) {
       productId = existing.productId;
-      // publishStatus is deliberately NOT rewritten here — once a product
-      // exists, its publish state is admin-owned (set at creation, or
-      // changed later through the product-edit form). A re-sync of a
-      // supplier with no pricing data must not silently demote a product
-      // an admin has since priced and published.
       await tx.product.update({ where: { id: productId }, data: updatableFields });
       await tx.productSource.update({ where: { id: existing.id }, data: { checksum, lastSeenAt: now } });
       counts.updatedCount++;
@@ -297,11 +292,14 @@ export class CatalogImportService {
       const created = await tx.product.create({
         data: {
           ...updatableFields,
-          slug: `${this.slugify(incoming.name)}-${source.toLowerCase()}-${incoming.externalId}`,
-          // A brand-new product with no commercial data from its supplier
-          // (Open Food Facts) has nothing to sell yet — DRAFT until an
-          // admin prices it. One with a real offer publishes immediately,
-          // same as before.
+          // Both the source and externalId are slugified, not
+          // interpolated raw — `CatalogSource.DUMMY_JSON.toLowerCase()`
+          // is "dummy_json" (an underscore), and Amazon's ASINs (e.g.
+          // "B0BLXXGZJL") are uppercase; either one breaks the admin edit
+          // form's lowercase-kebab-case slug validation. An invalid slug
+          // would import fine but then reject the very first edit of
+          // that product.
+          slug: `${this.slugify(incoming.name)}-${this.slugify(source)}-${this.slugify(incoming.externalId)}`,
           publishStatus: hasCommercialData ? 'PUBLISHED' : 'DRAFT',
         },
       });

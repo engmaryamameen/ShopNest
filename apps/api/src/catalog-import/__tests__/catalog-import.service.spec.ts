@@ -185,6 +185,24 @@ describe('CatalogImportService', () => {
     expect(prisma.tx.inventoryAdjustment.create).not.toHaveBeenCalled();
   });
 
+  it('slugifies externalId, not just the name — an uppercase supplier id (e.g. an Amazon ASIN) must not end up in the slug', async () => {
+    const prisma = makePrismaMock();
+    const asinProduct = { ...supplierProduct, externalId: 'B0BLXXGZJL' };
+    const adapter: CatalogSourceAdapter = {
+      fetchProducts: jest.fn().mockResolvedValue({ products: [asinProduct], skippedCount: 0 }),
+    };
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+    await service.executeRun('run-id');
+
+    const slug = prisma.tx.product.create.mock.calls[0][0].data.slug as string;
+    // Same lowercase-kebab-case rule the admin edit form's slug field
+    // validates — an unslugified externalId would import fine, then
+    // reject the very first edit of that product.
+    expect(slug).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+    expect(slug).toContain('b0blxxgzjl');
+  });
+
   it('updating an existing product does not rewrite publishStatus — admin-owned once created', async () => {
     const prisma = makePrismaMock();
     prisma.tx.productSource.findUnique.mockResolvedValue({
