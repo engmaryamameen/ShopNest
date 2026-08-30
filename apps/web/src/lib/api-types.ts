@@ -426,6 +426,21 @@ export interface ReviewListResponse {
   limit: number;
 }
 
+export interface PublicReviewResponse {
+  id: string;
+  rating: number;
+  title: string | null;
+  body: string;
+  createdAt: string;
+}
+
+export interface PublicReviewListResponse {
+  items: PublicReviewResponse[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface ReviewEligibilityResponse {
   eligible: boolean;
   orderItemId: string | null;
