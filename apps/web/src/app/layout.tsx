@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import {
+  Inter,
   Lato,
+  Nunito,
   Plus_Jakarta_Sans,
   Poppins,
 } from 'next/font/google';
@@ -30,6 +32,21 @@ const lato = Lato({
   display: 'swap',
 });
 
+// Admin-only additions — the storefront doesn't use either of these.
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const nunito = Nunito({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  variable: '--font-nunito',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   title: 'ShopNest — Modern E-Commerce',
   description: 'A production-grade TypeScript e-commerce platform',
@@ -47,6 +64,8 @@ export default function RootLayout({
         ${poppins.variable}
         ${plusJakartaSans.variable}
         ${lato.variable}
+        ${inter.variable}
+        ${nunito.variable}
       `}
     >
       <body className="min-h-screen bg-gray-50 font-lato antialiased">

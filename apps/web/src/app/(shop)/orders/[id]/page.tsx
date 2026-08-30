@@ -3,33 +3,11 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
 import { CancelOrderButton } from '@/components/shop/cancel-order-button';
+import { RequestReturnButton } from '@/components/shop/request-return-button';
+import { formatPrice } from '@/lib/format-price';
+import type { OrderResponse } from '@/lib/api-types';
 
 export const dynamic = 'force-dynamic';
-
-interface Order {
-  id: string;
-  status: string;
-  totalCents: number;
-  currency: string;
-  createdAt: string;
-  items: Array<{
-    id: string;
-    productName: string;
-    productSlug: string;
-    quantity: number;
-    unitPriceCents: number;
-  }>;
-  statusHistory: Array<{
-    id: string;
-    fromStatus: string;
-    toStatus: string;
-    createdAt: string;
-  }>;
-}
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-yellow-100 text-yellow-800',
@@ -39,14 +17,20 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-red-100 text-red-800',
 };
 
+const RETURN_STATUS_LABELS: Record<string, string> = {
+  REQUESTED: 'Return requested',
+  REJECTED: 'Return rejected',
+  REFUNDED: 'Refunded',
+};
+
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
-  let order: Order;
+  let order: OrderResponse;
   try {
-    order = (await api.getOrder(id, cookieHeader)) as Order;
+    order = await api.getOrder(id, cookieHeader);
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
       redirect('/login?returnTo=/orders');
@@ -56,6 +40,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     }
     throw err;
   }
+
+  const subtotalCents = order.totalCents + order.discountCents;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -75,17 +61,39 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           <h2 className="font-semibold text-gray-900">Items</h2>
         </div>
         <div className="divide-y">
-          {order.items.map((item) => (
-            <div key={item.id} className="px-6 py-4 flex justify-between">
-              <div>
-                <Link href={`/products/${item.productSlug}`} className="font-medium text-gray-900 hover:text-indigo-600">
-                  {item.productName}
-                </Link>
-                <p className="text-sm text-gray-500">× {item.quantity}</p>
+          {order.items.map((item) => {
+            const vendorOrder = order.vendorOrders.find((vo) => vo.id === item.vendorOrderId);
+            const canRequestReturn = vendorOrder?.status === 'DELIVERED' && !item.returnRequest;
+
+            return (
+              <div key={item.id} className="px-6 py-4 flex justify-between">
+                <div>
+                  <Link href={`/products/${item.productSlug}`} className="font-medium text-gray-900 hover:text-indigo-600">
+                    {item.productName}
+                  </Link>
+                  <p className="text-sm text-gray-500">× {item.quantity}</p>
+                  {item.returnRequest ? (
+                    <p className="text-xs text-gray-500 mt-1">{RETURN_STATUS_LABELS[item.returnRequest.status]}</p>
+                  ) : canRequestReturn ? (
+                    <div className="mt-1">
+                      <RequestReturnButton orderItemId={item.id} />
+                    </div>
+                  ) : null}
+                </div>
+                <p className="font-medium">{formatPrice(item.unitPriceCents * item.quantity)}</p>
               </div>
-              <p className="font-medium">{formatPrice(item.unitPriceCents * item.quantity)}</p>
+            );
+          })}
+          <div className="px-6 py-3 flex justify-between text-sm text-gray-600">
+            <span>Subtotal</span>
+            <span>{formatPrice(subtotalCents)}</span>
+          </div>
+          {order.discountCents > 0 && (
+            <div className="px-6 py-3 flex justify-between text-sm text-emerald-700 bg-emerald-50">
+              <span>Discount</span>
+              <span>−{formatPrice(order.discountCents)}</span>
             </div>
-          ))}
+          )}
           <div className="px-6 py-4 flex justify-between bg-gray-50">
             <span className="font-bold">Total</span>
             <span className="font-bold text-lg">{formatPrice(order.totalCents)}</span>

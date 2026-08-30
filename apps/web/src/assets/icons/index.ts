@@ -4,6 +4,7 @@ export { ChevronDownIcon } from './chevron-down';
 export { ChevronRightIcon } from './chevron-right';
 export { CloseIcon } from './close';
 export { GridIcon } from './grid';
+export { HeartIcon } from './heart';
 export { LogoMark } from './logo-mark';
 export { MapPinIcon } from './map-pin';
 export { MenuIcon } from './menu';

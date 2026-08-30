@@ -1,24 +1,51 @@
 /**
  * PostgreSQL concurrency integration tests
  *
- * Run against the live Docker Compose stack (api on http://localhost:13001).
- * Requires the `shopnest-db-1` container to be reachable via `docker exec`.
+ * Boots the real Nest application in-process (via `createApp()` from
+ * `src/main.ts`) on an ephemeral port and talks to it over HTTP, exactly
+ * like a real client — no dependency on a separately-running server or on
+ * `docker exec`/a specific container name. Runs against whatever
+ * `DATABASE_URL` is configured (the CI `api` job's Postgres service
+ * container, or a local Postgres instance for `pnpm test:e2e` locally).
  *
  * Run: cd apps/api && pnpm test:e2e
  */
 
-import { execSync } from 'child_process';
+import type { INestApplication } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { createApp } from '../src/main';
 
-const API = process.env.API_URL ?? 'http://localhost:13001';
-const WEB_ORIGIN = 'http://localhost:3000'; // must match WEB_URL on the API container
-const DB_EXEC = (sql: string) =>
-  execSync(
-    `docker exec shopnest-db-1 psql -U shopnest -d shopnest_dev -c "${sql.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`,
-    { encoding: 'utf8' },
-  );
-
+const WEB_ORIGIN = process.env.WEB_URL ?? 'http://localhost:3000';
 const run = `${Date.now()}`;
+
+let app: INestApplication;
+let API: string;
+const prisma = new PrismaClient();
+
+beforeAll(async () => {
+  // The catalog-import scheduler/worker are irrelevant to these tests and
+  // would otherwise make live outbound HTTP calls / DB writes on a timer
+  // while assertions run — disabled for this process only.
+  process.env.CATALOG_WORKER_ENABLED = 'false';
+  process.env.CATALOG_SCHEDULE_ENABLED = 'false';
+
+  app = await createApp();
+  await app.listen(0); // ephemeral port — never collides across parallel runs
+  const address = app.getHttpServer().address();
+  const port = typeof address === 'object' && address ? address.port : address;
+  API = `http://localhost:${port}`;
+}, 30000);
+
+afterAll(async () => {
+  await app?.close();
+  await prisma.$disconnect();
+});
+
+/** Raw, parameterized SQL against the test database — replaces the old `docker exec psql` dependency. */
+async function dbExec(strings: TemplateStringsArray, ...values: unknown[]): Promise<void> {
+  await prisma.$executeRaw(strings, ...values);
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,14 +118,14 @@ async function login(email: string): Promise<Cookies> {
   return parseCookies(res);
 }
 
-function promoteToAdmin(email: string): void {
-  DB_EXEC(`UPDATE "User" SET role = 'ADMIN' WHERE email = '${email}'`);
+async function promoteToAdmin(email: string): Promise<void> {
+  await dbExec`UPDATE "User" SET role = 'ADMIN' WHERE email = ${email}`;
 }
 
 async function createAdminSession(suffix: string): Promise<Cookies> {
   const email = `admin-${suffix}-${run}@test.local`;
   await register(email);
-  promoteToAdmin(email);
+  await promoteToAdmin(email);
   return login(email);
 }
 
@@ -110,10 +137,13 @@ async function createCategory(adminCookies: Cookies, name: string, slug: string)
   return data.id;
 }
 
+/** Admin product creation now also creates a system-vendor VendorOffer
+ * transactionally (Phase 2) — the response's `offers[0].id` is what cart/
+ * checkout calls actually key on, not the canonical product id. */
 async function createProduct(
   adminCookies: Cookies,
   payload: { name: string; slug: string; priceCents: number; stockQuantity: number; categoryId: string },
-): Promise<string> {
+): Promise<{ id: string; offerId: string }> {
   const data = (await assertOk(
     await api('/products', {
       method: 'POST',
@@ -121,8 +151,8 @@ async function createProduct(
       cookies: adminCookies,
     }),
     `createProduct(${payload.slug})`,
-  )) as { id: string };
-  return data.id;
+  )) as { id: string; offers: Array<{ id: string }> };
+  return { id: data.id, offerId: data.offers[0].id };
 }
 
 // ── Suite 1: Concurrent checkout — inventory race protection ──────────────────
@@ -137,7 +167,7 @@ describe('Concurrent checkout — inventory race protection', () => {
 
     const categoryId = await createCategory(adminCookies, `ChkCat-${run}`, `chk-cat-${run}`);
     productSlug = `race-product-${run}`;
-    const productId = await createProduct(adminCookies, {
+    const { offerId } = await createProduct(adminCookies, {
       name: `RaceProduct-${run}`,
       slug: productSlug,
       priceCents: 1000,
@@ -150,11 +180,11 @@ describe('Concurrent checkout — inventory race protection', () => {
 
     // Both buyers add the scarce product to their carts
     await assertOk(
-      await api('/cart/items', { method: 'PUT', body: { productId, quantity: 1 }, cookies: user1Cookies }),
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: 1 }, cookies: user1Cookies }),
       'buyer1 add to cart',
     );
     await assertOk(
-      await api('/cart/items', { method: 'PUT', body: { productId, quantity: 1 }, cookies: user2Cookies }),
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: 1 }, cookies: user2Cookies }),
       'buyer2 add to cart',
     );
   });
@@ -190,7 +220,7 @@ describe('Concurrent checkout — inventory race protection', () => {
     // Register a third user with a product that has stock
     const adminCookies = await createAdminSession('idem');
     const categoryId = await createCategory(adminCookies, `IdemCat-${run}`, `idem-cat-${run}`);
-    const productId = await createProduct(adminCookies, {
+    const { offerId } = await createProduct(adminCookies, {
       name: `IdemProduct-${run}`,
       slug: `idem-product-${run}`,
       priceCents: 500,
@@ -199,7 +229,7 @@ describe('Concurrent checkout — inventory race protection', () => {
     });
     const buyerCookies = await register(`idem-buyer-${run}@test.local`);
     await assertOk(
-      await api('/cart/items', { method: 'PUT', body: { productId, quantity: 1 }, cookies: buyerCookies }),
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: 1 }, cookies: buyerCookies }),
       'idem buyer add to cart',
     );
 
@@ -223,6 +253,153 @@ describe('Concurrent checkout — inventory race protection', () => {
     const retryOrder = (await retry.json()) as { data: { id: string } };
 
     expect(retryOrder.data.id).toBe(firstOrder.data.id);
+  });
+});
+
+// ── Suite 1b: Multi-vendor checkout ────────────────────────────────────────────
+
+/** Registers a customer, applies as a vendor, has the given admin approve
+ * it, then returns the vendor id + the applicant's cookies. */
+async function createApprovedVendor(
+  adminCookies: Cookies,
+  suffix: string,
+): Promise<{ vendorId: string; ownerCookies: Cookies }> {
+  const email = `vendor-${suffix}-${run}@test.local`;
+  const ownerCookies = await register(email);
+  await assertOk(
+    await api('/vendor/apply', {
+      method: 'POST',
+      body: { name: `Vendor ${suffix} ${run}`, contactEmail: email },
+      cookies: ownerCookies,
+    }),
+    `apply(${suffix})`,
+  );
+  const me = (await assertOk(await api('/vendor/me', { cookies: ownerCookies }), `vendor/me(${suffix})`)) as {
+    id: string;
+  };
+  await assertOk(
+    await api(`/admin/vendors/${me.id}/approve`, { method: 'PATCH', cookies: adminCookies }),
+    `approve(${suffix})`,
+  );
+  return { vendorId: me.id, ownerCookies };
+}
+
+async function createActiveOffer(
+  ownerCookies: Cookies,
+  productId: string,
+  opts: { vendorSku: string; priceCents: number; stockQuantity: number },
+): Promise<string> {
+  const offer = (await assertOk(
+    await api('/vendor/offers', {
+      method: 'POST',
+      body: { productId, ...opts },
+      cookies: ownerCookies,
+    }),
+    `createOffer(${opts.vendorSku})`,
+  )) as { id: string };
+  await assertOk(
+    await api(`/vendor/offers/${offer.id}`, { method: 'PATCH', body: { status: 'ACTIVE' }, cookies: ownerCookies }),
+    `activateOffer(${opts.vendorSku})`,
+  );
+  return offer.id;
+}
+
+describe('Multi-vendor checkout', () => {
+  it('a cart spanning two vendors splits into one VendorOrder per vendor, and concurrent checkouts across different vendors do not deadlock or corrupt either vendor\'s stock', async () => {
+    const adminCookies = await createAdminSession('mv');
+    const categoryId = await createCategory(adminCookies, `MvCat-${run}`, `mv-cat-${run}`);
+
+    const [vendorA, vendorB] = await Promise.all([
+      createApprovedVendor(adminCookies, 'a'),
+      createApprovedVendor(adminCookies, 'b'),
+    ]);
+
+    // Two canonical products, each offered by a different vendor. Admin
+    // product creation also creates a system-vendor offer alongside — not
+    // used here, just along for the ride like any other admin-created
+    // product.
+    const productA = await createProduct(adminCookies, {
+      name: `MvProductA-${run}`,
+      slug: `mv-product-a-${run}`,
+      priceCents: 100,
+      stockQuantity: 100,
+      categoryId,
+    });
+    const productB = await createProduct(adminCookies, {
+      name: `MvProductB-${run}`,
+      slug: `mv-product-b-${run}`,
+      priceCents: 100,
+      stockQuantity: 100,
+      categoryId,
+    });
+
+    const offerA = await createActiveOffer(vendorA.ownerCookies, productA.id, {
+      vendorSku: `MV-A-${run}`,
+      priceCents: 1500,
+      stockQuantity: 1,
+    });
+    const offerB = await createActiveOffer(vendorB.ownerCookies, productB.id, {
+      vendorSku: `MV-B-${run}`,
+      priceCents: 2500,
+      stockQuantity: 1,
+    });
+
+    // One buyer, both vendors' offers in the same cart.
+    const buyerCookies = await register(`mv-buyer-${run}@test.local`);
+    await assertOk(
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerA, quantity: 1 }, cookies: buyerCookies }),
+      'add offerA to cart',
+    );
+    await assertOk(
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerB, quantity: 1 }, cookies: buyerCookies }),
+      'add offerB to cart',
+    );
+
+    const checkoutRes = await api('/orders/checkout', {
+      method: 'POST',
+      body: { idempotencyKey: randomUUID() },
+      cookies: buyerCookies,
+    });
+    expect(checkoutRes.status).toBe(201);
+    const order = (await checkoutRes.json()) as {
+      data: { vendorOrders: Array<{ vendor: { id: string } }> };
+    };
+    const vendorIds = order.data.vendorOrders.map((vo) => vo.vendor.id).sort();
+    expect(vendorIds).toEqual([vendorA.vendorId, vendorB.vendorId].sort());
+
+    // Separately: two more buyers race for a single unit of a fresh
+    // vendor-A offer — deterministic lock ordering across vendors (used
+    // above) must not have left anything that makes a same-vendor stock
+    // race behave differently from the single-vendor suite already
+    // covered earlier in this file.
+    const productC = await createProduct(adminCookies, {
+      name: `MvProductC-${run}`,
+      slug: `mv-product-c-${run}`,
+      priceCents: 100,
+      stockQuantity: 100,
+      categoryId,
+    });
+    const offerC = await createActiveOffer(vendorA.ownerCookies, productC.id, {
+      vendorSku: `MV-A2-${run}`,
+      priceCents: 900,
+      stockQuantity: 1,
+    });
+    const raceBuyer1 = await register(`mv-race1-${run}@test.local`);
+    const raceBuyer2 = await register(`mv-race2-${run}@test.local`);
+    await assertOk(
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerC, quantity: 1 }, cookies: raceBuyer1 }),
+      'race buyer1 add to cart',
+    );
+    await assertOk(
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerC, quantity: 1 }, cookies: raceBuyer2 }),
+      'race buyer2 add to cart',
+    );
+
+    const [r1, r2] = await Promise.all([
+      api('/orders/checkout', { method: 'POST', body: { idempotencyKey: randomUUID() }, cookies: raceBuyer1 }),
+      api('/orders/checkout', { method: 'POST', body: { idempotencyKey: randomUUID() }, cookies: raceBuyer2 }),
+    ]);
+    expect([r1.status, r2.status].sort()).toEqual([201, 409]);
   });
 });
 
@@ -270,10 +447,7 @@ describe('Concurrent refresh token rotation — grace period', () => {
     // PostgreSQL equivalent: encode(sha256(raw::bytea), 'hex')
     const rawToken = tokenCookies['refresh_token'];
     if (rawToken) {
-      DB_EXEC(
-        `UPDATE "RefreshToken" SET "usedAt" = NOW() - INTERVAL '60 seconds' ` +
-        `WHERE "tokenHash" = encode(sha256('${rawToken}'::bytea), 'hex')`,
-      );
+      await dbExec`UPDATE "RefreshToken" SET "usedAt" = NOW() - INTERVAL '60 seconds' WHERE "tokenHash" = encode(sha256(${rawToken}::bytea), 'hex')`;
     }
 
     // Reusing the original token after the grace period → theft signal → family revoked → 401
@@ -291,25 +465,27 @@ describe('Concurrent refresh token rotation — grace period', () => {
 
 describe('Concurrent cart mutations — no lost updates', () => {
   let userCookies: Cookies;
-  let productId1: string;
-  let productId2: string;
+  let offerId1: string;
+  let offerId2: string;
 
   beforeAll(async () => {
     const adminCookies = await createAdminSession('cart');
     const categoryId = await createCategory(adminCookies, `CartCat-${run}`, `cart-cat-${run}`);
 
-    [productId1, productId2] = await Promise.all([
+    const [p1, p2] = await Promise.all([
       createProduct(adminCookies, { name: `CartP1-${run}`, slug: `cart-p1-${run}`, priceCents: 500, stockQuantity: 50, categoryId }),
       createProduct(adminCookies, { name: `CartP2-${run}`, slug: `cart-p2-${run}`, priceCents: 750, stockQuantity: 50, categoryId }),
     ]);
+    offerId1 = p1.offerId;
+    offerId2 = p2.offerId;
 
     userCookies = await register(`cart-user-${run}@test.local`);
   });
 
-  it('concurrent upserts to different products both persist — no lost writes', async () => {
+  it('concurrent upserts to different offers both persist — no lost writes', async () => {
     const [r1, r2] = await Promise.all([
-      api('/cart/items', { method: 'PUT', body: { productId: productId1, quantity: 3 }, cookies: userCookies }),
-      api('/cart/items', { method: 'PUT', body: { productId: productId2, quantity: 2 }, cookies: userCookies }),
+      api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId1, quantity: 3 }, cookies: userCookies }),
+      api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId2, quantity: 2 }, cookies: userCookies }),
     ]);
 
     expect(r1.status).toBe(200);
@@ -317,27 +493,27 @@ describe('Concurrent cart mutations — no lost updates', () => {
 
     const cartRes = await api('/cart', { cookies: userCookies });
     expect(cartRes.status).toBe(200);
-    const cart = (await cartRes.json()) as { data: { items: Array<{ productId: string; quantity: number }> } };
+    const cart = (await cartRes.json()) as { data: { items: Array<{ vendorOfferId: string; quantity: number }> } };
     const items = cart.data.items;
 
     // Both writes must have persisted
     expect(items).toHaveLength(2);
-    expect(items.find((i) => i.productId === productId1)?.quantity).toBe(3);
-    expect(items.find((i) => i.productId === productId2)?.quantity).toBe(2);
+    expect(items.find((i) => i.vendorOfferId === offerId1)?.quantity).toBe(3);
+    expect(items.find((i) => i.vendorOfferId === offerId2)?.quantity).toBe(2);
   });
 
-  it('concurrent upserts to the same product yield a consistent final quantity', async () => {
+  it('concurrent upserts to the same offer yield a consistent final quantity', async () => {
     const [r1, r2] = await Promise.all([
-      api('/cart/items', { method: 'PUT', body: { productId: productId1, quantity: 5 }, cookies: userCookies }),
-      api('/cart/items', { method: 'PUT', body: { productId: productId1, quantity: 7 }, cookies: userCookies }),
+      api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId1, quantity: 5 }, cookies: userCookies }),
+      api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId1, quantity: 7 }, cookies: userCookies }),
     ]);
 
     expect(r1.status).toBe(200);
     expect(r2.status).toBe(200);
 
     const cartRes = await api('/cart', { cookies: userCookies });
-    const cart = (await cartRes.json()) as { data: { items: Array<{ productId: string; quantity: number }> } };
-    const qty = cart.data.items.find((i) => i.productId === productId1)?.quantity;
+    const cart = (await cartRes.json()) as { data: { items: Array<{ vendorOfferId: string; quantity: number }> } };
+    const qty = cart.data.items.find((i) => i.vendorOfferId === offerId1)?.quantity;
 
     // Must be one of the two requested values — never a partial/corrupted mix
     expect([5, 7]).toContain(qty);
@@ -349,25 +525,25 @@ describe('Concurrent cart mutations — no lost updates', () => {
 describe('Order state machine — transition enforcement', () => {
   let adminCookies: Cookies;
   let userCookies: Cookies;
-  let productId: string;
+  let offerId: string;
 
   beforeAll(async () => {
     adminCookies = await createAdminSession('sm');
     userCookies = await register(`sm-user-${run}@test.local`);
 
     const categoryId = await createCategory(adminCookies, `SMCat-${run}`, `sm-cat-${run}`);
-    productId = await createProduct(adminCookies, {
+    ({ offerId } = await createProduct(adminCookies, {
       name: `SMProduct-${run}`,
       slug: `sm-product-${run}`,
       priceCents: 2000,
       stockQuantity: 100,
       categoryId,
-    });
+    }));
   });
 
   async function placeOrder(key: string): Promise<string> {
     await assertOk(
-      await api('/cart/items', { method: 'PUT', body: { productId, quantity: 1 }, cookies: userCookies }),
+      await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: 1 }, cookies: userCookies }),
       'add to cart',
     );
     const data = (await assertOk(
@@ -415,7 +591,7 @@ describe('Order state machine — transition enforcement', () => {
 
   it('inventory is restored transactionally on cancellation', async () => {
     const qty = 5;
-    await api('/cart/items', { method: 'PUT', body: { productId, quantity: qty }, cookies: userCookies });
+    await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: qty }, cookies: userCookies });
     const data = (await assertOk(
       await api('/orders/checkout', { method: 'POST', body: { idempotencyKey: randomUUID() }, cookies: userCookies }),
       'checkout for cancel test',
@@ -447,5 +623,93 @@ describe('Order state machine — transition enforcement', () => {
     // Customer tries to cancel CONFIRMED → 400 (invalid transition)
     const attempt = await api(`/orders/${orderId}/cancel`, { method: 'PATCH', cookies: userCookies });
     expect(attempt.status).toBe(400);
+  });
+});
+
+// ── Suite 5: Rate limiting — proves the throttle actually engages ─────────────
+
+describe('Rate limiting', () => {
+  it('login is throttled per-route: a burst well past the configured limit gets at least one 429', async () => {
+    // login's static @Throttle() limit is 15/min (auth.controller.ts). Fire a
+    // burst comfortably larger than that, regardless of how many login calls
+    // earlier suites in this file already made against the same window —
+    // 20 more requests cannot fit under any remaining budget of 15.
+    const attempts = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        api('/auth/login', {
+          method: 'POST',
+          body: { email: `nobody-${run}@test.local`, password: 'WrongPass123456!' },
+        }),
+      ),
+    );
+
+    const statuses = attempts.map((r) => r.status);
+    expect(statuses).toContain(429);
+    // Every response is either a normal auth failure or a throttle rejection
+    // — never a 500, which would mean the guard itself is broken.
+    expect(statuses.every((s) => s === 401 || s === 429)).toBe(true);
+  });
+
+  it('a throttled response still carries the standard error envelope, not a raw framework error', async () => {
+    const attempts = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        api('/auth/register', {
+          method: 'POST',
+          body: { email: `flood-${run}-${Math.random()}@test.local`, password: 'TestPass123456!' },
+        }),
+      ),
+    );
+
+    const throttled = attempts.find((r) => r.status === 429);
+    expect(throttled).toBeDefined();
+    const body = (await throttled!.json()) as { statusCode: number; message: unknown };
+    expect(body.statusCode).toBe(429);
+  });
+});
+
+// ── Suite 6: Account-enumeration prevention ────────────────────────────────────
+//
+// Deliberately reuses an email already registered by an earlier suite
+// (`buyer1-${run}@test.local`, Suite 1) instead of calling register() fresh
+// here — this suite runs after "Rate limiting" deliberately exhausts the
+// register endpoint's own throttle budget in the same 60s window, and a
+// fresh registration here would itself be throttled. Reusing an existing
+// account also decouples this suite from the register throttle entirely,
+// which is more robust regardless of suite ordering.
+
+describe('Account enumeration prevention', () => {
+  it('forgot-password responds identically for a registered and an unregistered email', async () => {
+    const registeredEmail = `buyer1-${run}@test.local`;
+
+    const realRes = await api('/auth/forgot-password', {
+      method: 'POST',
+      body: { email: registeredEmail },
+    });
+    const fakeRes = await api('/auth/forgot-password', {
+      method: 'POST',
+      body: { email: `definitely-not-registered-${run}@test.local` },
+    });
+
+    expect(realRes.status).toBe(fakeRes.status);
+    expect(realRes.status).toBe(204);
+    const realBody = await realRes.text();
+    const fakeBody = await fakeRes.text();
+    expect(realBody).toBe(fakeBody); // both empty — no distinguishing content either
+  });
+
+  it('resend-verification responds identically for a registered and an unregistered email', async () => {
+    const registeredEmail = `buyer2-${run}@test.local`;
+
+    const realRes = await api('/auth/resend-verification', {
+      method: 'POST',
+      body: { email: registeredEmail },
+    });
+    const fakeRes = await api('/auth/resend-verification', {
+      method: 'POST',
+      body: { email: `definitely-not-registered-${run}@test.local` },
+    });
+
+    expect(realRes.status).toBe(fakeRes.status);
+    expect(realRes.status).toBe(204);
   });
 });

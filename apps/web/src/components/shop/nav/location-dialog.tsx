@@ -10,6 +10,7 @@ import { FOCUS_RING } from './styles';
 import { useBodyScrollLock } from './use-body-scroll-lock';
 import { useEscapeKey } from './use-escape-key';
 import { useFocusTrap } from './use-focus-trap';
+import { usePresence } from './use-presence';
 
 type LocationDialogProps = {
   open: boolean;
@@ -31,8 +32,7 @@ const GEOLOCATION_OPTIONS: PositionOptions = {
 export function LocationDialog({ open, currentLocation, onClose, onSave }: LocationDialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRequestRef = useRef(0);
-  const [present, setPresent] = useState(open);
-  const [visible, setVisible] = useState(false);
+  const { mounted: present, entered: visible } = usePresence(open, 220);
   const [permission, setPermission] = useState<PermissionState>('checking');
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
@@ -44,16 +44,9 @@ export function LocationDialog({ open, currentLocation, onClose, onSave }: Locat
   useFocusTrap(open, panelRef);
 
   useEffect(() => {
-    if (open) {
-      setPresent(true);
-      setStatus('idle');
-      setError('');
-      const frame = window.requestAnimationFrame(() => setVisible(true));
-      return () => window.cancelAnimationFrame(frame);
-    }
-    setVisible(false);
-    const timer = window.setTimeout(() => setPresent(false), 220);
-    return () => window.clearTimeout(timer);
+    if (!open) return;
+    setStatus('idle');
+    setError('');
   }, [open]);
 
   useEffect(() => {

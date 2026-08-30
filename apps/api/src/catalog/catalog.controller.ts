@@ -26,15 +26,23 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { Audit } from '../audit/audit.decorator';
 
 @ApiTags('catalog')
 @Controller()
 export class CatalogController {
   constructor(private readonly catalog: CatalogService) {}
 
+  @Get('brands')
+  @ApiOperation({ summary: 'List all brands' })
+  listBrands() {
+    return this.catalog.listBrands();
+  }
+
   @Post('categories')
   @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)
+  @Audit({ action: 'ADMIN_CATEGORY_CREATE', targetType: 'Category', idSource: 'body:id' })
   @ApiCookieAuth('access_token')
   @ApiOperation({ summary: '[Admin] Create a category' })
   createCategory(@Body() dto: CreateCategoryDto) {
@@ -50,6 +58,7 @@ export class CatalogController {
   @Patch('categories/:id')
   @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)
+  @Audit({ action: 'ADMIN_CATEGORY_UPDATE', targetType: 'Category' })
   @ApiCookieAuth('access_token')
   @ApiOperation({ summary: '[Admin] Update a category name/slug' })
   @ApiParam({ name: 'id', description: 'Category UUID' })
@@ -60,6 +69,7 @@ export class CatalogController {
   @Delete('categories/:id')
   @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)
+  @Audit({ action: 'ADMIN_CATEGORY_DELETE', targetType: 'Category' })
   @ApiCookieAuth('access_token')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '[Admin] Delete a category (rejected if any products reference it)' })
@@ -71,6 +81,7 @@ export class CatalogController {
   @Post('products')
   @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)
+  @Audit({ action: 'ADMIN_PRODUCT_CREATE', targetType: 'Product', idSource: 'body:id' })
   @ApiCookieAuth('access_token')
   @ApiOperation({ summary: '[Admin] Create a product' })
   createProduct(@Body() dto: CreateProductDto) {
@@ -102,6 +113,7 @@ export class CatalogController {
   @Patch('products/:id')
   @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)
+  @Audit({ action: 'ADMIN_PRODUCT_UPDATE', targetType: 'Product' })
   @ApiCookieAuth('access_token')
   @ApiOperation({ summary: '[Admin] Update a product' })
   updateProduct(@Param('id') id: string, @Body() dto: UpdateProductDto) {
@@ -111,6 +123,7 @@ export class CatalogController {
   @Delete('products/:id')
   @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)
+  @Audit({ action: 'ADMIN_PRODUCT_ARCHIVE', targetType: 'Product' })
   @ApiCookieAuth('access_token')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '[Admin] Archive a product (soft-delete; physical deletion is never performed)' })

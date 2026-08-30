@@ -5,11 +5,8 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
-import { useCart, useRemoveCartItem, type Cart } from '@/lib/use-cart';
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
+import { useCart, useRemoveCartItem, useApplyPromotion, useRemovePromotion, type Cart } from '@/lib/use-cart';
+import { formatPrice } from '@/lib/format-price';
 
 interface CartViewProps {
   /** Server-fetched initial cart, hydrates the TanStack Query cache. */
@@ -20,6 +17,8 @@ export function CartView({ initialCart }: CartViewProps) {
   const router = useRouter();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [isCheckingOut, startCheckoutTransition] = useTransition();
+  const [promoCode, setPromoCode] = useState('');
+  const [promoError, setPromoError] = useState<string | null>(null);
 
   // TanStack Query owns the cart state client-side.
   // initialCart seeds the cache so we render immediately without a waterfall.
@@ -28,14 +27,24 @@ export function CartView({ initialCart }: CartViewProps) {
   const { data } = useCart();
   const cart: Cart = data ?? initialCart;
   const removeItem = useRemoveCartItem();
+  const applyPromotion = useApplyPromotion();
+  const removePromotion = useRemovePromotion();
 
-  const total = cart.items.reduce(
-    (sum, item) => sum + item.product.priceCents * item.quantity,
-    0,
-  );
+  const subtotal = cart.items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
+  const discountPreview = cart.appliedPromotion?.discountPreviewCents ?? 0;
+  const total = subtotal - discountPreview;
 
-  function handleRemove(productId: string) {
-    removeItem.mutate(productId);
+  function handleApplyPromo(e: React.FormEvent) {
+    e.preventDefault();
+    setPromoError(null);
+    applyPromotion.mutate(promoCode, {
+      onSuccess: () => setPromoCode(''),
+      onError: (err) => setPromoError(err instanceof ApiError ? err.message : 'Could not apply that code'),
+    });
+  }
+
+  function handleRemove(vendorOfferId: string) {
+    removeItem.mutate(vendorOfferId);
   }
 
   function handleCheckout() {
@@ -95,19 +104,16 @@ export function CartView({ initialCart }: CartViewProps) {
                 >
                   {item.product.name}
                 </Link>
-                <p className="text-gray-500 text-sm mt-0.5">
-                  {formatPrice(item.product.priceCents)} each
-                </p>
+                <p className="text-gray-400 text-xs mt-0.5">Sold by {item.vendor.name}</p>
+                <p className="text-gray-500 text-sm mt-0.5">{formatPrice(item.priceCents)} each</p>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
-                  <span className="font-semibold">
-                    {formatPrice(item.product.priceCents * item.quantity)}
-                  </span>
+                  <span className="font-semibold">{formatPrice(item.priceCents * item.quantity)}</span>
                 </div>
               </div>
 
               <button
-                onClick={() => handleRemove(item.productId)}
+                onClick={() => handleRemove(item.vendorOfferId)}
                 disabled={removeItem.isPending}
                 className="text-red-400 hover:text-red-600 text-sm transition-colors disabled:opacity-50"
                 aria-label={`Remove ${item.product.name} from cart`}
@@ -128,12 +134,52 @@ export function CartView({ initialCart }: CartViewProps) {
                 <span>
                   {item.product.name} × {item.quantity}
                 </span>
-                <span>{formatPrice(item.product.priceCents * item.quantity)}</span>
+                <span>{formatPrice(item.priceCents * item.quantity)}</span>
               </div>
             ))}
           </div>
 
-          <div className="border-t pt-4 mb-6">
+          <div className="border-t pt-4 mb-4">
+            {cart.appliedPromotion ? (
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-emerald-700">
+                  Code <span className="font-mono font-medium">{cart.appliedPromotion.code}</span> applied
+                  {discountPreview > 0 ? ` (−${formatPrice(discountPreview)})` : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removePromotion.mutate()}
+                  disabled={removePromotion.isPending}
+                  className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleApplyPromo} className="flex gap-2 mb-2">
+                <input
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value)}
+                  placeholder="Promo code"
+                  className="flex-1 min-w-0 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={applyPromotion.isPending || !promoCode.trim()}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 shrink-0"
+                >
+                  Apply
+                </button>
+              </form>
+            )}
+            {promoError && <p className="text-xs text-red-600 mb-2">{promoError}</p>}
+
+            {discountPreview > 0 && (
+              <div className="flex justify-between text-sm text-gray-500 mb-1">
+                <span>Subtotal</span>
+                <span>{formatPrice(subtotal)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-bold text-lg">
               <span>Total</span>
               <span>{formatPrice(total)}</span>

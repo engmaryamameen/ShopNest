@@ -27,7 +27,8 @@ function LoginForm() {
         setUser({
           id: result.user.id,
           email: result.user.email,
-          role: result.user.role as 'CUSTOMER' | 'ADMIN',
+          role: result.user.role,
+          emailVerifiedAt: result.user.emailVerifiedAt,
         });
         const returnTo = validateReturnTo(params.get('returnTo'));
         router.push(returnTo);
@@ -51,6 +52,12 @@ function LoginForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {params.get('reset') === 'success' && (
+          <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg text-sm">
+            Password reset — sign in with your new password.
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
             {error}
@@ -74,9 +81,14 @@ function LoginForm() {
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-            Password
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <Link href="/forgot-password" className="text-sm text-indigo-600 hover:text-indigo-700">
+              Forgot password?
+            </Link>
+          </div>
           <input
             id="password"
             type="password"

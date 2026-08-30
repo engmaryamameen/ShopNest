@@ -2,27 +2,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import type { Cart, CartItem } from './api-types';
 
-export interface CartProduct {
-  id: string;
-  name: string;
-  slug: string;
-  priceCents: number;
-  imageUrl?: string | null;
-  stockQuantity: number;
-}
-
-export interface CartItem {
-  id: string;
-  productId: string;
-  quantity: number;
-  product: CartProduct;
-}
-
-export interface Cart {
-  id: string;
-  items: CartItem[];
-}
+export type { Cart, CartItem } from './api-types';
 
 export const CART_QUERY_KEY = ['cart'] as const;
 
@@ -31,7 +13,7 @@ export function useCart(enabled = true) {
     queryKey: CART_QUERY_KEY,
     queryFn: async () => {
       try {
-        return (await api.getCart()) as Cart;
+        return await api.getCart();
       } catch {
         // 401 = not logged in; treat as empty cart rather than an error.
         return null;
@@ -51,31 +33,28 @@ export function useUpsertCartItem() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ productId, quantity }: { productId: string; quantity: number }) =>
-      api.upsertCartItem({ productId, quantity }),
+    mutationFn: ({ vendorOfferId, quantity }: { vendorOfferId: string; quantity: number }) =>
+      api.upsertCartItem({ vendorOfferId, quantity }),
 
-    onMutate: async ({ productId, quantity }) => {
+    onMutate: async ({ vendorOfferId, quantity }) => {
       await queryClient.cancelQueries({ queryKey: CART_QUERY_KEY });
       const previous = queryClient.getQueryData<Cart | null>(CART_QUERY_KEY);
 
       queryClient.setQueryData<Cart | null>(CART_QUERY_KEY, (old) => {
         if (!old) return old;
-        const exists = old.items.find((i) => i.productId === productId);
-        return {
-          ...old,
-          items: exists
-            ? old.items.map((i) => (i.productId === productId ? { ...i, quantity } : i))
-            : [
-                ...old.items,
-                {
-                  id: `optimistic-${productId}`,
-                  productId,
-                  quantity,
-                  // exists is undefined in this branch; placeholder product for optimistic render
-                  product: { id: productId } as CartProduct,
-                },
-              ],
-        };
+        const exists = old.items.find((i) => i.vendorOfferId === vendorOfferId);
+        if (exists) {
+          return {
+            ...old,
+            items: old.items.map((i) => (i.vendorOfferId === vendorOfferId ? { ...i, quantity } : i)),
+          };
+        }
+        // A brand-new line can't be rendered correctly without its
+        // vendor/product/price data (which this mutation doesn't return —
+        // see api.ts's CartItemFromUpsert doc) — onSettled's refetch below
+        // fills it in moments later; skip the optimistic insert rather
+        // than render a placeholder with fabricated values.
+        return old;
       });
 
       return { previous };
@@ -91,18 +70,34 @@ export function useUpsertCartItem() {
   });
 }
 
+export function useApplyPromotion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => api.applyPromotion(code),
+    onSuccess: (cart) => queryClient.setQueryData(CART_QUERY_KEY, cart),
+  });
+}
+
+export function useRemovePromotion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.removePromotion(),
+    onSuccess: (cart) => queryClient.setQueryData(CART_QUERY_KEY, cart),
+  });
+}
+
 export function useRemoveCartItem() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (productId: string) => api.removeCartItem(productId),
+    mutationFn: (vendorOfferId: string) => api.removeCartItem(vendorOfferId),
 
-    onMutate: async (productId) => {
+    onMutate: async (vendorOfferId) => {
       await queryClient.cancelQueries({ queryKey: CART_QUERY_KEY });
       const previous = queryClient.getQueryData<Cart | null>(CART_QUERY_KEY);
 
       queryClient.setQueryData<Cart | null>(CART_QUERY_KEY, (old) =>
-        old ? { ...old, items: old.items.filter((i) => i.productId !== productId) } : old,
+        old ? { ...old, items: old.items.filter((i: CartItem) => i.vendorOfferId !== vendorOfferId) } : old,
       );
 
       return { previous };

@@ -90,7 +90,7 @@ export function HorizontalFadeScroll({
         ref={scrollRef}
         onScroll={updateScrollState}
         className={[
-          'horizontal-scrollbar-hidden',
+          'scrollbar-hidden',
           'overscroll-x-contain',
           viewportClassName,
         ].join(' ')}

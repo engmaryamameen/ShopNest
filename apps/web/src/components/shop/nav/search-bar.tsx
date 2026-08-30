@@ -11,6 +11,7 @@ import { CategoryPickerPanel } from './category-picker-panel';
 import { FOCUS_RING_INSET } from './styles';
 import type { HeaderCategory } from './types';
 import { usePopover } from './use-popover';
+import { usePresence } from './use-presence';
 
 type SearchBarProps = {
   categories: HeaderCategory[];
@@ -24,6 +25,7 @@ export function SearchBar({
   const [scopeSlug, setScopeSlug] = useState<string | null>(null);
 
   const scope = usePopover<HTMLFormElement, HTMLButtonElement>();
+  const scopePresence = usePresence(scope.open, 160);
   const inputId = useId();
 
   const scopeLabel = scopeSlug
@@ -127,12 +129,22 @@ export function SearchBar({
       </div>
 
       {/* Category dropdown */}
-      {scope.open && (
+      {scopePresence.mounted && (
         <div
-          className="
+          className={`
             absolute left-0 top-[calc(100%+8px)]
             z-50
-          "
+            origin-top-left
+            transition-[opacity,transform]
+            duration-150
+            ease-smooth
+
+            ${
+              scopePresence.entered
+                ? 'translate-y-0 scale-100 opacity-100'
+                : 'pointer-events-none -translate-y-1 scale-[0.98] opacity-0'
+            }
+          `}
         >
           <CategoryPickerPanel
             categories={categories}

@@ -17,6 +17,11 @@ export class RolesGuard implements CanActivate {
     if (!requiredRoles || requiredRoles.length === 0) return true;
 
     const request = context.switchToHttp().getRequest<Request & { user: JwtPayload }>();
-    return requiredRoles.includes(request.user?.role as Role);
+    const actualRole = request.user?.role as Role;
+
+    // SUPER_ADMIN satisfies ADMIN-gated routes; not the reverse.
+    if (actualRole === Role.SUPER_ADMIN && requiredRoles.includes(Role.ADMIN)) return true;
+
+    return requiredRoles.includes(actualRole);
   }
 }

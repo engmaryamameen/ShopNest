@@ -59,5 +59,5 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 export const config = {
   // Authentication is opt-in for account-specific areas. Public storefront
   // routes never pass through session refresh or redirect logic.
-  matcher: ['/cart/:path*', '/orders/:path*', '/admin/:path*'],
+  matcher: ['/cart/:path*', '/orders/:path*', '/admin/:path*', '/account/:path*'],
 };
