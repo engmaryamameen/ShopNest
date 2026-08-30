@@ -100,15 +100,39 @@ export class AuditLogInterceptor implements NestInterceptor {
   // `currentPassword`, or `apiSecret` landing in an audited request body
   // without anyone remembering to extend an exact-match list.
   private static readonly REDACTED_BODY_KEY_PATTERN = /password|token|secret|hash/i;
+  private static readonly MAX_DEPTH = 6;
+  private static readonly MAX_ARRAY_ITEMS = 50;
 
   private safeBody(body: unknown): Prisma.InputJsonValue | undefined {
     if (!body || typeof body !== 'object') return undefined;
-    // Never persist credentials/tokens into an audit trail, even
-    // incidentally — no current @Audit()-decorated route's DTO carries one
-    // today, but this is cheap insurance against a future one doing so.
-    const entries = Object.entries(body as Record<string, unknown>).filter(
-      ([key]) => !AuditLogInterceptor.REDACTED_BODY_KEY_PATTERN.test(key),
-    );
-    return Object.fromEntries(entries) as Prisma.InputJsonValue;
+    try {
+      return this.redactValue(body, 0, new WeakSet<object>()) as Prisma.InputJsonValue;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private redactValue(value: unknown, depth: number, ancestors: WeakSet<object>): unknown {
+    if (value === null || typeof value !== 'object') return value;
+    if (depth >= AuditLogInterceptor.MAX_DEPTH) return '[max depth exceeded]';
+    if (ancestors.has(value)) return '[circular]';
+
+    ancestors.add(value);
+    try {
+      if (Array.isArray(value)) {
+        return value
+          .slice(0, AuditLogInterceptor.MAX_ARRAY_ITEMS)
+          .map((item) => this.redactValue(item, depth + 1, ancestors));
+      }
+
+      const result: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+        if (AuditLogInterceptor.REDACTED_BODY_KEY_PATTERN.test(key)) continue;
+        result[key] = this.redactValue(val, depth + 1, ancestors);
+      }
+      return result;
+    } finally {
+      ancestors.delete(value);
+    }
   }
 }

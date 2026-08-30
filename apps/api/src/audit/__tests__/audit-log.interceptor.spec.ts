@@ -140,6 +140,103 @@ describe('AuditLogInterceptor', () => {
     });
   });
 
+  it('redacts a matching key nested inside a plain object, at any depth', (done) => {
+    reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_USER_SUSPEND', targetType: 'User' });
+    const context = makeContext({
+      params: { id: 'user-1' },
+      body: { status: 'SUSPENDED', profile: { name: 'Jane', credentials: { password: 'x', apiToken: 'y' } } },
+      user: { sub: 'admin-1' },
+    });
+
+    interceptor.intercept(context, makeHandler({ id: 'user-1' })).subscribe(() => {
+      const call = auditLog.record.mock.calls[0][0];
+      expect(call.metadata).toEqual({ status: 'SUSPENDED', profile: { name: 'Jane', credentials: {} } });
+      done();
+    });
+  });
+
+  it('redacts matching keys inside array elements', (done) => {
+    reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_USER_SUSPEND', targetType: 'User' });
+    const context = makeContext({
+      params: { id: 'user-1' },
+      body: { items: [{ name: 'a', secret: 'x' }, { name: 'b', token: 'y' }] },
+      user: { sub: 'admin-1' },
+    });
+
+    interceptor.intercept(context, makeHandler({ id: 'user-1' })).subscribe(() => {
+      const call = auditLog.record.mock.calls[0][0];
+      expect(call.metadata).toEqual({ items: [{ name: 'a' }, { name: 'b' }] });
+      done();
+    });
+  });
+
+  it('passes through null, numbers, booleans, and arrays of primitives unchanged', (done) => {
+    reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_USER_SUSPEND', targetType: 'User' });
+    const context = makeContext({
+      params: { id: 'user-1' },
+      body: { note: null, count: 3, active: true, tags: ['a', 'b', 3] },
+      user: { sub: 'admin-1' },
+    });
+
+    interceptor.intercept(context, makeHandler({ id: 'user-1' })).subscribe(() => {
+      const call = auditLog.record.mock.calls[0][0];
+      expect(call.metadata).toEqual({ note: null, count: 3, active: true, tags: ['a', 'b', 3] });
+      done();
+    });
+  });
+
+  it('caps recursion depth on deeply nested hostile input instead of crashing', (done) => {
+    reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_USER_SUSPEND', targetType: 'User' });
+    let deep: Record<string, unknown> = { password: 'leaf' };
+    for (let i = 0; i < 20; i++) deep = { nested: deep };
+    const context = makeContext({ params: { id: 'user-1' }, body: deep, user: { sub: 'admin-1' } });
+
+    interceptor.intercept(context, makeHandler({ id: 'user-1' })).subscribe(() => {
+      const call = auditLog.record.mock.calls[0][0];
+      expect(JSON.stringify(call.metadata)).toContain('max depth exceeded');
+      expect(JSON.stringify(call.metadata)).not.toContain('leaf');
+      done();
+    });
+  });
+
+  it('caps array length on an oversized array instead of persisting all of it', (done) => {
+    reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_USER_SUSPEND', targetType: 'User' });
+    const context = makeContext({
+      params: { id: 'user-1' },
+      body: { items: Array.from({ length: 500 }, (_, i) => i) },
+      user: { sub: 'admin-1' },
+    });
+
+    interceptor.intercept(context, makeHandler({ id: 'user-1' })).subscribe(() => {
+      const call = auditLog.record.mock.calls[0][0] as { metadata: { items: unknown[] } };
+      expect(call.metadata.items.length).toBeLessThan(500);
+      done();
+    });
+  });
+
+  it('does not hang or throw on a circular structure', (done) => {
+    reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_USER_SUSPEND', targetType: 'User' });
+    const circular: Record<string, unknown> = { name: 'x' };
+    circular.self = circular;
+    const context = makeContext({ params: { id: 'user-1' }, body: circular, user: { sub: 'admin-1' } });
+
+    interceptor.intercept(context, makeHandler({ id: 'user-1' })).subscribe(() => {
+      expect(auditLog.record).toHaveBeenCalled();
+      done();
+    });
+  });
+
+  it('never mutates the original request body', (done) => {
+    reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_USER_SUSPEND', targetType: 'User' });
+    const body = { status: 'SUSPENDED', nested: { password: 'x', kept: 'y' } };
+    const context = makeContext({ params: { id: 'user-1' }, body, user: { sub: 'admin-1' } });
+
+    interceptor.intercept(context, makeHandler({ id: 'user-1' })).subscribe(() => {
+      expect(body).toEqual({ status: 'SUSPENDED', nested: { password: 'x', kept: 'y' } });
+      done();
+    });
+  });
+
   it('never calls record() when the handler throws — no misleading "this happened" row', (done) => {
     reflector.getAllAndOverride.mockReturnValue({ action: 'ADMIN_PRODUCT_UPDATE', targetType: 'Product' });
     const context = makeContext({ params: { id: 'prod-1' }, body: {}, user: { sub: 'admin-1' } });

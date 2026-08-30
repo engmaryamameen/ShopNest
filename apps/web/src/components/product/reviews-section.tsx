@@ -46,7 +46,7 @@ export async function ReviewsSection({ slug }: { slug: string }) {
               {review.title && <h3 className="font-semibold text-gray-900 mt-2">{review.title}</h3>}
               <p className="text-gray-700 mt-1">{review.body}</p>
               <p className="text-xs text-gray-400 mt-2">
-                {review.user?.email ?? 'Verified buyer'} · {new Date(review.createdAt).toLocaleDateString()}
+                Verified buyer · {new Date(review.createdAt).toLocaleDateString()}
               </p>
             </div>
           ))}

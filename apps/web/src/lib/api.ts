@@ -18,6 +18,7 @@ import type {
   ProductDetailResponse,
   ProductListResponse,
   PromotionResponse,
+  PublicReviewListResponse,
   ReturnRequestResponse,
   ReviewEligibilityResponse,
   ReviewListResponse,
@@ -412,7 +413,7 @@ export const api = {
   // ── Reviews ──────────────────────────────────────────────────────────────
 
   listReviews: (slug: string, page = 1, limit = 10, cookies?: string) =>
-    request<ReviewListResponse>(`/products/${slug}/reviews?page=${page}&limit=${limit}`, { cookies }),
+    request<PublicReviewListResponse>(`/products/${slug}/reviews?page=${page}&limit=${limit}`, { cookies }),
 
   reviewEligibility: (slug: string, cookies?: string) =>
     request<ReviewEligibilityResponse>(`/products/${slug}/reviews/my-eligibility`, { cookies }),

@@ -1,6 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { UserStatus } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Role, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+
+export interface ActingAdmin {
+  id: string;
+  role: Role;
+}
 
 @Injectable()
 export class UsersService {
@@ -29,16 +34,28 @@ export class UsersService {
   async updateStatus(
     targetUserId: string,
     status: typeof UserStatus.ACTIVE | typeof UserStatus.SUSPENDED,
-    actingAdminId: string,
+    actingAdmin: ActingAdmin,
   ): Promise<{ id: string; email: string; status: UserStatus }> {
-    if (targetUserId === actingAdminId && status === UserStatus.SUSPENDED) {
+    if (targetUserId === actingAdmin.id && status === UserStatus.SUSPENDED) {
       throw new BadRequestException('You cannot suspend your own account.');
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: targetUserId } });
     if (!user) throw new NotFoundException('User not found');
 
+    this.assertCanModify(actingAdmin.role, user.role);
+
     const updated = await this.prisma.$transaction(async (tx) => {
+      if (status === UserStatus.SUSPENDED && user.role === Role.SUPER_ADMIN) {
+        const activeSuperAdmins = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "User" WHERE role = 'SUPER_ADMIN' AND status = 'ACTIVE' FOR UPDATE
+        `;
+        const othersStillActive = activeSuperAdmins.some((row) => row.id !== targetUserId);
+        if (!othersStillActive) {
+          throw new BadRequestException('Cannot suspend the last active super admin account.');
+        }
+      }
+
       const u = await tx.user.update({
         where: { id: targetUserId },
         data: { status },
@@ -56,5 +73,12 @@ export class UsersService {
     });
 
     return updated;
+  }
+
+  private assertCanModify(actingRole: Role, targetRole: Role): void {
+    if (actingRole === Role.SUPER_ADMIN) return;
+    if (targetRole === Role.ADMIN || targetRole === Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Only a super admin can modify an admin account.');
+    }
   }
 }

@@ -2,12 +2,27 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma, ReviewStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { PublicReviewDto } from './dto/public-review.dto';
+
+const PUBLIC_REVIEW_SELECT = {
+  id: true,
+  rating: true,
+  title: true,
+  body: true,
+  createdAt: true,
+} satisfies Prisma.ReviewSelect;
+
+type PublicReviewRow = Prisma.ReviewGetPayload<{ select: typeof PUBLIC_REVIEW_SELECT }>;
 
 @Injectable()
 export class ReviewsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listForProduct(slug: string, page = 1, limit = 10) {
+  async listForProduct(
+    slug: string,
+    page = 1,
+    limit = 10,
+  ): Promise<{ items: PublicReviewDto[]; total: number; page: number; limit: number }> {
     const product = await this.prisma.product.findUnique({ where: { slug }, select: { id: true } });
     if (!product) throw new NotFoundException('Product not found');
 
@@ -18,12 +33,12 @@ export class ReviewsService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: { user: { select: { id: true, email: true } } },
+        select: PUBLIC_REVIEW_SELECT,
       }),
       this.prisma.review.count({ where }),
     ]);
 
-    return { items, total, page, limit };
+    return { items: items.map((row) => this.toPublicReview(row)), total, page, limit };
   }
 
   /** Whether the caller can review this product, and which delivered
@@ -127,6 +142,16 @@ export class ReviewsService {
       await this.recomputeRating(tx, review.productId);
       return updated;
     });
+  }
+
+  private toPublicReview(row: PublicReviewRow): PublicReviewDto {
+    return {
+      id: row.id,
+      rating: row.rating,
+      title: row.title,
+      body: row.body,
+      createdAt: row.createdAt,
+    };
   }
 
   /** Derived-only — never hand-set elsewhere. */

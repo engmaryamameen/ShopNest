@@ -36,6 +36,6 @@ export class UsersController {
     @Body() dto: UpdateUserStatusDto,
     @CurrentUser() admin: JwtPayload,
   ): Promise<{ id: string; email: string; status: string }> {
-    return this.users.updateStatus(id, dto.status, admin.sub);
+    return this.users.updateStatus(id, dto.status, { id: admin.sub, role: admin.role as Role });
   }
 }

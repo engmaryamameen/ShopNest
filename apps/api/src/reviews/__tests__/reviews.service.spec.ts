@@ -39,6 +39,92 @@ describe('ReviewsService', () => {
     service = new ReviewsService(prisma as unknown as PrismaService);
   });
 
+  describe('listForProduct', () => {
+    it('lists published reviews for an anonymous caller', async () => {
+      prisma.review.findMany.mockResolvedValue([
+        { id: 'review-1', rating: 5, title: 'Great', body: 'Loved it', createdAt: new Date('2026-01-01') },
+      ]);
+      prisma.review.count.mockResolvedValue(1);
+
+      const result = await service.listForProduct('slug');
+
+      expect(result.items).toEqual([
+        { id: 'review-1', rating: 5, title: 'Great', body: 'Loved it', createdAt: new Date('2026-01-01') },
+      ]);
+      expect(result.total).toBe(1);
+    });
+
+    it('scopes the query to PUBLISHED reviews only', async () => {
+      prisma.review.findMany.mockResolvedValue([]);
+      prisma.review.count.mockResolvedValue(0);
+
+      await service.listForProduct('slug');
+
+      expect(prisma.review.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'PUBLISHED' }) }),
+      );
+      expect(prisma.review.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'PUBLISHED' }) }),
+      );
+    });
+
+    it('never returns an email, even if the underlying row carries one', async () => {
+      prisma.review.findMany.mockResolvedValue([
+        {
+          id: 'review-1',
+          rating: 4,
+          title: null,
+          body: 'Fine',
+          createdAt: new Date('2026-01-01'),
+          userId: 'user-1',
+          user: { id: 'user-1', email: 'reviewer@example.com' },
+          passwordHash: 'should-never-appear',
+        } as never,
+      ]);
+      prisma.review.count.mockResolvedValue(1);
+
+      const result = await service.listForProduct('slug');
+
+      expect(result.items[0]).toEqual({
+        id: 'review-1',
+        rating: 4,
+        title: null,
+        body: 'Fine',
+        createdAt: new Date('2026-01-01'),
+      });
+      expect(JSON.stringify(result.items)).not.toContain('email');
+      expect(JSON.stringify(result.items)).not.toContain('reviewer@example.com');
+    });
+
+    it('selects only public-safe fields, not the user/email relation', async () => {
+      prisma.review.findMany.mockResolvedValue([]);
+      prisma.review.count.mockResolvedValue(0);
+
+      await service.listForProduct('slug');
+
+      const call = prisma.review.findMany.mock.calls[0][0];
+      expect(call.select).toEqual({ id: true, rating: true, title: true, body: true, createdAt: true });
+      expect(call.include).toBeUndefined();
+    });
+
+    it('404s on a product that does not exist', async () => {
+      prisma.product.findUnique.mockResolvedValue(null);
+      await expect(service.listForProduct('missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('adminList', () => {
+    it('keeps the reviewer email for admin moderation', async () => {
+      prisma.review.findMany.mockResolvedValue([]);
+      prisma.review.count.mockResolvedValue(0);
+
+      await service.adminList();
+
+      const call = prisma.review.findMany.mock.calls[0][0];
+      expect(call.include.user.select).toEqual({ id: true, email: true });
+    });
+  });
+
   describe('create', () => {
     const validOrderItem = {
       id: ORDER_ITEM_ID,

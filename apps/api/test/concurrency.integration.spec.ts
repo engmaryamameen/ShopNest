@@ -122,6 +122,10 @@ async function promoteToAdmin(email: string): Promise<void> {
   await dbExec`UPDATE "User" SET role = 'ADMIN' WHERE email = ${email}`;
 }
 
+async function promoteToSuperAdmin(email: string): Promise<void> {
+  await dbExec`UPDATE "User" SET role = 'SUPER_ADMIN' WHERE email = ${email}`;
+}
+
 async function createAdminSession(suffix: string): Promise<Cookies> {
   const email = `admin-${suffix}-${run}@test.local`;
   await register(email);
@@ -623,6 +627,61 @@ describe('Order state machine — transition enforcement', () => {
     // Customer tries to cancel CONFIRMED → 400 (invalid transition)
     const attempt = await api(`/orders/${orderId}/cancel`, { method: 'PATCH', cookies: userCookies });
     expect(attempt.status).toBe(400);
+  });
+});
+
+describe('Concurrent super-admin suspension — last-active-super-admin invariant', () => {
+  let superA: Cookies;
+  let superB: Cookies;
+  let superAId: string;
+  let superBId: string;
+
+  beforeAll(async () => {
+    await dbExec`UPDATE "User" SET status = 'SUSPENDED' WHERE role = 'SUPER_ADMIN' AND status = 'ACTIVE'`;
+
+    const emailA = `super-a-${run}@test.local`;
+    const emailB = `super-b-${run}@test.local`;
+    superA = await register(emailA);
+    superB = await register(emailB);
+    await promoteToSuperAdmin(emailA);
+    await promoteToSuperAdmin(emailB);
+    superA = await login(emailA);
+    superB = await login(emailB);
+
+    const meA = (await assertOk(await api('/auth/me', { cookies: superA }), 'me superA')) as {
+      user: { id: string };
+    };
+    const meB = (await assertOk(await api('/auth/me', { cookies: superB }), 'me superB')) as {
+      user: { id: string };
+    };
+    superAId = meA.user.id;
+    superBId = meB.user.id;
+  });
+
+  it('with exactly two active super admins, racing suspend attempts on both leave exactly one active — never zero', async () => {
+    const [r1, r2] = await Promise.all([
+      api(`/admin/users/${superAId}/status`, { method: 'PATCH', body: { status: 'SUSPENDED' }, cookies: superB }),
+      api(`/admin/users/${superBId}/status`, { method: 'PATCH', body: { status: 'SUSPENDED' }, cookies: superA }),
+    ]);
+
+    expect([r1.status, r2.status].sort()).toEqual([200, 400]);
+
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT count(*)::int AS count FROM "User" WHERE role = 'SUPER_ADMIN' AND status = 'ACTIVE'
+    `;
+    expect(Number(rows[0].count)).toBe(1);
+  });
+
+  it('a plain admin cannot suspend a super admin', async () => {
+    const adminCookies = await createAdminSession('super-guard');
+
+    const res = await api(`/admin/users/${superAId}/status`, {
+      method: 'PATCH',
+      body: { status: 'ACTIVE' },
+      cookies: adminCookies,
+    });
+
+    expect(res.status).toBe(403);
   });
 });
 
