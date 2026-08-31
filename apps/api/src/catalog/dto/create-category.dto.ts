@@ -1,5 +1,6 @@
 import { IsString, MinLength, MaxLength, Matches, IsOptional, IsUUID, IsInt, IsBoolean, IsUrl } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsAllowedImageUrl } from '../../common/validators/allowed-image-url';
 
 export class CreateCategoryDto {
   @ApiProperty({ example: 'Electronics' })
@@ -41,5 +42,6 @@ export class CreateCategoryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUrl()
+  @IsAllowedImageUrl()
   imageUrl?: string;
 }

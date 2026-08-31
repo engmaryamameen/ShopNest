@@ -19,6 +19,7 @@
     "@iconify-icons/mingcute": "^1.2.9",
     "@iconify/react": "^6.0.2",
     "@shopnest/api-client": "workspace:*",
+    "@shopnest/media-origins": "workspace:*",
     "@tanstack/react-query": "5.80.7",
     "@tanstack/react-query-devtools": "5.80.7",
     "next": "15.5.21",

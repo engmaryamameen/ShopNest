@@ -655,6 +655,7 @@ model CatalogImportRun {
   // retried (they're not a transient failure), but explicitly counted
   // rather than silently dropped.
   skippedCount   Int @default(0)
+  imagesRejectedCount Int @default(0)
 
   @@index([source, startedAt])
   @@index([status, startedAt])

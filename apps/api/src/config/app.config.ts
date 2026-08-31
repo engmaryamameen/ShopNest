@@ -73,4 +73,5 @@ export default registerAs('app', () => ({
   mediaUploadDir: process.env.MEDIA_UPLOAD_DIR ?? 'uploads',
   mediaPublicBaseUrl: process.env.MEDIA_PUBLIC_BASE_URL ?? `http://localhost:${process.env.PORT ?? '3001'}`,
   mediaMaxFileSizeBytes: parseInt(process.env.MEDIA_MAX_FILE_SIZE_BYTES ?? `${5 * 1024 * 1024}`, 10),
+  mediaMaxImageDimensionPx: parseInt(process.env.MEDIA_MAX_IMAGE_DIMENSION_PX ?? '8000', 10),
 }));

@@ -12,6 +12,7 @@ import {
   calculateDiscountPercentage,
   formatPrice,
 } from '@/lib/format-price';
+import { isFirstPartyImageUrl } from '@/lib/is-first-party-image';
 
 import type { ProductCardData } from './product.types';
 
@@ -110,6 +111,7 @@ export function ProductCard({
               sizes="(max-width: 640px) 70vw, (max-width: 1024px) 33vw, 270px"
               className="object-contain p-7 transition-transform duration-500 ease-out group-hover:scale-105"
               onError={() => setImageFailed(true)}
+              unoptimized={!isFirstPartyImageUrl(product.imageUrl)}
             />
           ) : (
             <ProductImageFallback />

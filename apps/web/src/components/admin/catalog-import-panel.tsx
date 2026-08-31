@@ -183,13 +183,14 @@ export function CatalogImportPanel() {
 
       {preview && (
         <div className="border-t border-gray-100 pt-4">
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 mb-4 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-7 gap-4 mb-4 text-sm">
             <div><p className="text-gray-500">Discovered</p><p className="font-semibold text-gray-900">{preview.discoveredCount}</p></div>
             <div><p className="text-gray-500">In scope</p><p className="font-semibold text-gray-900">{preview.scopedCount}</p></div>
             <div><p className="text-gray-500">Would create</p><p className="font-semibold text-green-700">{preview.wouldCreateCount}</p></div>
             <div><p className="text-gray-500">Would update</p><p className="font-semibold text-blue-700">{preview.wouldUpdateCount}</p></div>
             <div><p className="text-gray-500">Unchanged</p><p className="font-semibold text-gray-500">{preview.wouldBeUnchangedCount}</p></div>
             <div><p className="text-gray-500">Invalid (skipped)</p><p className="font-semibold text-amber-700">{preview.skippedCount}</p></div>
+            <div><p className="text-gray-500">Images rejected</p><p className="font-semibold text-amber-700">{preview.wouldRejectImageCount}</p></div>
           </div>
           {preview.sample.length > 0 && (
             <div className="max-h-64 overflow-y-auto border border-gray-100 rounded-lg">

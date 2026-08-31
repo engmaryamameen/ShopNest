@@ -26,25 +26,37 @@ describe('LocalMediaStorageAdapter', () => {
     return new LocalMediaStorageAdapter(config as unknown as ConfigService);
   }
 
-  it('writes the file to the configured upload directory and returns an absolute URL', async () => {
+  it('writes the file to the configured upload directory, using the validated extension', async () => {
     const adapter = build();
-    const result = await adapter.upload({
-      buffer: Buffer.from('fake-image-bytes'),
-      originalName: 'photo.jpg',
-      mimeType: 'image/jpeg',
-    });
+    const result = await adapter.upload({ buffer: Buffer.from('fake-image-bytes'), ext: 'jpg', mimeType: 'image/jpeg' });
 
     expect(result.url).toMatch(/^http:\/\/localhost:3001\/uploads\/.+\.jpg$/);
+    expect(result.contentType).toBe('image/jpeg');
 
     const filename = result.url.split('/uploads/')[1];
     const written = await readFile(join(uploadDir, filename));
     expect(written.toString()).toBe('fake-image-bytes');
   });
 
-  it('gives each upload a unique filename even for the same original name', async () => {
+  it('returns the validated content type for each supported extension', async () => {
     const adapter = build();
-    const a = await adapter.upload({ buffer: Buffer.from('a'), originalName: 'x.png', mimeType: 'image/png' });
-    const b = await adapter.upload({ buffer: Buffer.from('b'), originalName: 'x.png', mimeType: 'image/png' });
+    const png = await adapter.upload({ buffer: Buffer.from('a'), ext: 'png', mimeType: 'image/png' });
+    const webp = await adapter.upload({ buffer: Buffer.from('b'), ext: 'webp', mimeType: 'image/webp' });
+    const gif = await adapter.upload({ buffer: Buffer.from('c'), ext: 'gif', mimeType: 'image/gif' });
+
+    expect(png.url.endsWith('.png')).toBe(true);
+    expect(webp.url.endsWith('.webp')).toBe(true);
+    expect(gif.url.endsWith('.gif')).toBe(true);
+    expect([png.contentType, webp.contentType, gif.contentType]).toEqual(['image/png', 'image/webp', 'image/gif']);
+  });
+
+  it('generates the filename entirely server-side — two uploads never collide, and no caller-supplied name reaches the path', async () => {
+    const adapter = build();
+    const a = await adapter.upload({ buffer: Buffer.from('a'), ext: 'png', mimeType: 'image/png' });
+    const b = await adapter.upload({ buffer: Buffer.from('b'), ext: 'png', mimeType: 'image/png' });
     expect(a.url).not.toBe(b.url);
+
+    const filenameA = a.url.split('/uploads/')[1];
+    expect(filenameA).toMatch(/^[0-9a-f-]{36}\.png$/);
   });
 });

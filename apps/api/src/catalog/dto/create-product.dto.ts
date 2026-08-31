@@ -1,5 +1,6 @@
 import { IsString, IsInt, IsPositive, IsOptional, IsUrl, MinLength, MaxLength, Matches, Min, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsAllowedImageUrl } from '../../common/validators/allowed-image-url';
 
 export class CreateProductDto {
   @ApiProperty({ example: 'Wireless Headphones' })
@@ -33,6 +34,7 @@ export class CreateProductDto {
   @ApiPropertyOptional({ example: 'https://cdn.example.com/img/headphones.jpg' })
   @IsOptional()
   @IsUrl()
+  @IsAllowedImageUrl()
   imageUrl?: string;
 
   @ApiProperty({ example: 'uuid-of-category' })

@@ -20,7 +20,7 @@ const supplierProduct = {
   categoryName: 'Computer Accessories',
   priceCents: 4995,
   stockQuantity: 12,
-  imageUrl: 'https://cdn.example.com/keyboard.jpg',
+  imageUrl: 'http://localhost:3001/keyboard.jpg',
   imageCount: 3,
 };
 
@@ -42,6 +42,7 @@ function makeRunStore(overrides: Record<string, unknown> = {}) {
     scopedCount: 0,
     processedCount: 0,
     skippedCount: 0,
+    imagesRejectedCount: 0,
     categoryScope: [],
     maxRecords: null,
     minImageCount: null,
@@ -226,8 +227,8 @@ describe('CatalogImportService', () => {
     const prisma = makePrismaMock();
     const multiImage = {
       ...supplierProduct,
-      imageUrl: 'https://cdn.example.com/a.jpg',
-      imageUrls: ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg', 'https://cdn.example.com/c.jpg'],
+      imageUrl: 'http://localhost:3001/a.jpg',
+      imageUrls: ['http://localhost:3001/a.jpg', 'http://localhost:3001/b.jpg', 'http://localhost:3001/c.jpg'],
     };
     const adapter: CatalogSourceAdapter = {
       fetchProducts: jest.fn().mockResolvedValue({ products: [multiImage], skippedCount: 0 }),
@@ -248,6 +249,67 @@ describe('CatalogImportService', () => {
     expect(prisma.tx.productMedia.deleteMany).toHaveBeenCalledWith({
       where: { productId: 'product-id', position: { gte: 3 } },
     });
+  });
+
+  it('drops a supplier-hosted image URL rather than storing an unapproved host, and reports the rejection explicitly on the run — real supplier CDNs are not on the media allow-list', async () => {
+    const prisma = makePrismaMock();
+    const thirdPartyHosted = {
+      ...supplierProduct,
+      imageUrl: 'https://cdn.dummyjson.com/products/1/thumbnail.jpg',
+      imageUrls: ['https://cdn.dummyjson.com/products/1/thumbnail.jpg', 'https://images.openfoodfacts.org/1.jpg'],
+    };
+    const adapter: CatalogSourceAdapter = {
+      fetchProducts: jest.fn().mockResolvedValue({ products: [thirdPartyHosted], skippedCount: 0 }),
+    };
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+    await service.executeRun('run-id');
+
+    expect(prisma.tx.productMedia.upsert).not.toHaveBeenCalled();
+    expect(prisma.tx.product.create).toHaveBeenCalledTimes(1);
+    expect(prisma.runStore.snapshot().imagesRejectedCount).toBe(2);
+  });
+
+  it('keeps whichever images in a mixed list are on the approved media origin and drops the rest, counting only the dropped ones', async () => {
+    const prisma = makePrismaMock();
+    const mixed = {
+      ...supplierProduct,
+      imageUrl: 'http://localhost:3001/ok.jpg',
+      imageUrls: ['http://localhost:3001/ok.jpg', 'https://cdn.dummyjson.com/bad.jpg'],
+    };
+    const adapter: CatalogSourceAdapter = {
+      fetchProducts: jest.fn().mockResolvedValue({ products: [mixed], skippedCount: 0 }),
+    };
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+    await service.executeRun('run-id');
+
+    expect(prisma.tx.productMedia.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.tx.productMedia.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ url: 'http://localhost:3001/ok.jpg', position: 0 }) }),
+    );
+    expect(prisma.runStore.snapshot().imagesRejectedCount).toBe(1);
+  });
+
+  it('accepts real Amazon product-image URLs, matching the exact host every existing ProductMedia row already depends on', async () => {
+    const prisma = makePrismaMock();
+    const amazonHosted = {
+      ...supplierProduct,
+      imageUrl: 'https://m.media-amazon.com/images/I/41qfjSfqNyL.jpg',
+      imageUrls: [
+        'https://m.media-amazon.com/images/I/41qfjSfqNyL.jpg',
+        'https://m.media-amazon.com/images/I/71i77AuI9xL._SL1500_.jpg',
+      ],
+    };
+    const adapter: CatalogSourceAdapter = {
+      fetchProducts: jest.fn().mockResolvedValue({ products: [amazonHosted], skippedCount: 0 }),
+    };
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+    await service.executeRun('run-id');
+
+    expect(prisma.tx.productMedia.upsert).toHaveBeenCalledTimes(2);
+    expect(prisma.runStore.snapshot().imagesRejectedCount).toBe(0);
   });
 
   it('does not rewrite an unchanged canonical product or its offer', async () => {
@@ -422,6 +484,21 @@ describe('CatalogImportService', () => {
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.tx.product.create).not.toHaveBeenCalled();
       expect(prisma.catalogImportRun.create).not.toHaveBeenCalled();
+    });
+
+    it('preview reports how many images would be rejected, without writing anything', async () => {
+      const prisma = makePrismaMock();
+      prisma.productSource.findUnique.mockResolvedValue(null);
+      const thirdPartyHosted = { ...supplierProduct, imageUrl: 'https://cdn.dummyjson.com/x.jpg', imageUrls: ['https://cdn.dummyjson.com/x.jpg'] };
+      const adapter: CatalogSourceAdapter = {
+        fetchProducts: jest.fn().mockResolvedValue({ products: [thirdPartyHosted], skippedCount: 0 }),
+      };
+      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
+
+      const preview = await service.preview(CatalogSource.DUMMY_JSON, {});
+
+      expect(preview.wouldRejectImageCount).toBe(1);
+      expect(prisma.tx.productMedia.upsert).not.toHaveBeenCalled();
     });
 
     it('preview distinguishes create/update/unchanged using the same checksum logic as a real run', async () => {
