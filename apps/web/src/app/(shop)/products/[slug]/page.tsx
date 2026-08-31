@@ -7,6 +7,7 @@ import { StarRating } from '@/components/product/star-rating';
 import { OffersList } from '@/components/product/offers-list';
 import { ReviewsSection } from '@/components/product/reviews-section';
 import { formatPrice } from '@/lib/format-price';
+import { isFirstPartyImageUrl } from '@/lib/is-first-party-image';
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -35,6 +36,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               fill
               className="object-cover"
               priority
+              unoptimized={!isFirstPartyImageUrl(product.imageUrl)}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-300">

@@ -4,6 +4,7 @@ import { CatalogImportStatus, CatalogSource, OfferStatus, Prisma } from '@prisma
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_VENDOR_NAME, SYSTEM_VENDOR_SLUG } from '../catalog/system-vendor.constants';
+import { isAllowedImageUrl } from '../common/validators/allowed-image-url';
 import { SupplierProduct } from './catalog-source.adapter';
 import { CatalogSourceRegistry } from './catalog-source-registry';
 
@@ -11,6 +12,7 @@ type BatchCounts = {
   createdCount: number;
   updatedCount: number;
   unchangedCount: number;
+  imagesRejectedCount: number;
 };
 
 export interface ImportScope {
@@ -35,6 +37,7 @@ export interface ImportPreview {
   wouldCreateCount: number;
   wouldUpdateCount: number;
   wouldBeUnchangedCount: number;
+  wouldRejectImageCount: number;
   /** First N scoped items, for sanity-checking — not the full set
    * (see scopedCount for the true total). */
   sample: ImportPreviewItem[];
@@ -81,6 +84,7 @@ export class CatalogImportService {
     let wouldCreateCount = 0;
     let wouldUpdateCount = 0;
     let wouldBeUnchangedCount = 0;
+    let wouldRejectImageCount = 0;
 
     for (const product of scoped) {
       const existing = await this.prisma.productSource.findUnique({
@@ -96,6 +100,8 @@ export class CatalogImportService {
       else if (action === 'update') wouldUpdateCount++;
       else wouldBeUnchangedCount++;
 
+      wouldRejectImageCount += this.splitImages(product).rejectedCount;
+
       if (items.length < PREVIEW_SAMPLE_SIZE) {
         items.push({ externalId: product.externalId, name: product.name, categoryName: product.categoryName, action });
       }
@@ -108,6 +114,7 @@ export class CatalogImportService {
       wouldCreateCount,
       wouldUpdateCount,
       wouldBeUnchangedCount,
+      wouldRejectImageCount,
       sample: items,
     };
   }
@@ -170,7 +177,7 @@ export class CatalogImportService {
       if (!lock?.acquired) throw new ConflictException('A catalog import is already running');
 
       const systemVendorId = await this.ensureSystemVendor(tx);
-      const counts: BatchCounts = { createdCount: 0, updatedCount: 0, unchangedCount: 0 };
+      const counts: BatchCounts = { createdCount: 0, updatedCount: 0, unchangedCount: 0, imagesRejectedCount: 0 };
 
       for (const product of batch) await this.upsertProduct(tx, source, product, systemVendorId, counts);
 
@@ -181,6 +188,7 @@ export class CatalogImportService {
           createdCount: { increment: counts.createdCount },
           updatedCount: { increment: counts.updatedCount },
           unchangedCount: { increment: counts.unchangedCount },
+          imagesRejectedCount: { increment: counts.imagesRejectedCount },
           lockedAt: new Date(),
         },
       });
@@ -310,7 +318,8 @@ export class CatalogImportService {
       counts.createdCount++;
     }
 
-    const images = incoming.imageUrls && incoming.imageUrls.length > 0 ? incoming.imageUrls : incoming.imageUrl ? [incoming.imageUrl] : [];
+    const { approved: images, rejectedCount } = this.splitImages(incoming);
+    counts.imagesRejectedCount += rejectedCount;
     for (let position = 0; position < images.length; position++) {
       await tx.productMedia.upsert({
         where: { productId_position: { productId, position } },
@@ -379,6 +388,13 @@ export class CatalogImportService {
         },
       });
     }
+  }
+
+  private splitImages(incoming: SupplierProduct): { approved: string[]; rejectedCount: number } {
+    const raw =
+      incoming.imageUrls && incoming.imageUrls.length > 0 ? incoming.imageUrls : incoming.imageUrl ? [incoming.imageUrl] : [];
+    const approved = raw.filter((url) => isAllowedImageUrl(url));
+    return { approved, rejectedCount: raw.length - approved.length };
   }
 
   private checksum(product: SupplierProduct): string {

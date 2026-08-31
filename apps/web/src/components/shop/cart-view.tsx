@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
 import { useCart, useRemoveCartItem, useApplyPromotion, useRemovePromotion, type Cart } from '@/lib/use-cart';
 import { formatPrice } from '@/lib/format-price';
+import { isFirstPartyImageUrl } from '@/lib/is-first-party-image';
 
 interface CartViewProps {
   /** Server-fetched initial cart, hydrates the TanStack Query cache. */
@@ -91,6 +92,7 @@ export function CartView({ initialCart }: CartViewProps) {
                     alt={item.product.name}
                     fill
                     className="object-cover"
+                    unoptimized={!isFirstPartyImageUrl(item.product.imageUrl)}
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-100" />

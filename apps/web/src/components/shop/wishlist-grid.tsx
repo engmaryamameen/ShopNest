@@ -6,6 +6,7 @@ import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import { formatPrice } from '@/lib/format-price';
+import { isFirstPartyImageUrl } from '@/lib/is-first-party-image';
 import type { WishlistItemResponse } from '@/lib/api-types';
 
 export function WishlistGrid({ items }: { items: WishlistItemResponse[] }) {
@@ -40,7 +41,13 @@ export function WishlistGrid({ items }: { items: WishlistItemResponse[] }) {
         <div key={product.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <Link href={`/products/${product.slug}`} className="block relative aspect-square bg-gray-100">
             {product.imageUrl ? (
-              <Image src={product.imageUrl} alt={product.name} fill className="object-cover" />
+              <Image
+                src={product.imageUrl}
+                alt={product.name}
+                fill
+                className="object-cover"
+                unoptimized={!isFirstPartyImageUrl(product.imageUrl)}
+              />
             ) : (
               <div className="flex items-center justify-center h-full text-gray-300">No image</div>
             )}

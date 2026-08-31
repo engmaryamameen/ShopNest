@@ -29,18 +29,22 @@ export async function createApp(): Promise<NestExpressApplication> {
 
   app.useLogger(app.get(Logger));
 
-  // Serves whatever LocalMediaStorageAdapter writes — same directory,
-  // same config key, so the two never drift apart.
-  app.useStaticAssets(join(process.cwd(), config.get<string>('app.mediaUploadDir', 'uploads')), {
-    prefix: '/uploads',
-  });
-
   // CSP off — this app serves JSON, not HTML, except the Swagger docs
   // page (an internal dev tool), whose inline scripts a default CSP would
   // block. Every other helmet header (HSTS, X-Content-Type-Options,
   // X-Frame-Options, etc.) stays on.
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cookieParser());
+
+  // Serves whatever LocalMediaStorageAdapter writes — same directory,
+  // same config key, so the two never drift apart.
+  app.useStaticAssets(join(process.cwd(), config.get<string>('app.mediaUploadDir', 'uploads')), {
+    prefix: '/uploads',
+    setHeaders: (res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    },
+  });
 
   app.enableCors({
     origin: webUrl,

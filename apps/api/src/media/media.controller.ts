@@ -9,17 +9,20 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConfigService } from '@nestjs/config';
 import { ApiConsumes, ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { MEDIA_STORAGE_PROVIDER, type MediaStorageProvider } from './media.types';
+import {
+  validateImage,
+  ImageTooLargeError,
+  ImageTypeMismatchError,
+  UnsupportedImageError,
+} from './image-validator';
 
-// Static, not DI-sourced — same reasoning as the @Throttle() overrides
-// elsewhere in this app: decorator arguments run at class-definition
-// time, before ConfigService exists.
 const MAX_FILE_SIZE_BYTES = parseInt(process.env.MEDIA_MAX_FILE_SIZE_BYTES ?? `${5 * 1024 * 1024}`, 10);
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 @ApiTags('media')
 @ApiCookieAuth('access_token')
@@ -27,7 +30,10 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'
 @UseGuards(JwtAuthGuard)
 @Roles(Role.ADMIN, Role.VENDOR)
 export class MediaController {
-  constructor(@Inject(MEDIA_STORAGE_PROVIDER) private readonly storage: MediaStorageProvider) {}
+  constructor(
+    @Inject(MEDIA_STORAGE_PROVIDER) private readonly storage: MediaStorageProvider,
+    private readonly config: ConfigService,
+  ) {}
 
   @Post('upload')
   @ApiOperation({ summary: 'Upload a product image, returns its absolute URL' })
@@ -37,13 +43,26 @@ export class MediaController {
     @UploadedFile(new ParseFilePipe({ fileIsRequired: true }))
     file: Express.Multer.File,
   ) {
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-      throw new BadRequestException('Only JPEG, PNG, WEBP, or GIF images are allowed');
+    const maxDimensionPx = this.config.get<number>('app.mediaMaxImageDimensionPx', 8000);
+
+    let validated;
+    try {
+      validated = await validateImage(file.buffer, file.mimetype, maxDimensionPx);
+    } catch (error) {
+      if (
+        error instanceof UnsupportedImageError ||
+        error instanceof ImageTypeMismatchError ||
+        error instanceof ImageTooLargeError
+      ) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
     }
+
     return this.storage.upload({
       buffer: file.buffer,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
+      ext: validated.ext,
+      mimeType: validated.mimeType,
     });
   }
 }

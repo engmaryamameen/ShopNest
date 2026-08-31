@@ -371,6 +371,7 @@ export interface ImportPreviewResponse {
   wouldCreateCount: number;
   wouldUpdateCount: number;
   wouldBeUnchangedCount: number;
+  wouldRejectImageCount: number;
   sample: Array<{ externalId: string; name: string; categoryName: string; action: 'create' | 'update' | 'unchanged' }>;
 }
 
@@ -387,6 +388,7 @@ export interface CatalogImportRunResponse {
   createdCount: number;
   updatedCount: number;
   unchangedCount: number;
+  imagesRejectedCount: number;
   errorMessage: string | null;
   categoryScope: string[];
   maxRecords: number | null;
