@@ -25,7 +25,17 @@
   "pnpm": {
     "overrides": {
       "js-yaml": ">=4.3.0",
+      "@redocly/openapi-core>js-yaml": "4.3.0",
       "sharp": ">=0.35.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "argon2",
+      "nestjs-pino",
+      "prisma",
+      "@tailwindcss/oxide",
+      "unrs-resolver"
+    ]
   }
 }

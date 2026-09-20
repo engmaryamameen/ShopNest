@@ -1,0 +1,5 @@
+-- AlterEnum
+ALTER TYPE "Role" ADD VALUE 'SUPER_ADMIN';
+
+-- AlterEnum
+ALTER TYPE "AuditAction" ADD VALUE 'ADMIN_ADMIN_CREATE';

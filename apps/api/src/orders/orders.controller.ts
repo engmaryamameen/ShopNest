@@ -18,6 +18,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
+import { Audit } from '../audit/audit.decorator';
 
 @ApiTags('orders')
 @Controller()
@@ -71,6 +72,7 @@ export class OrdersController {
 
   @Patch('admin/orders/:id/status')
   @Roles(Role.ADMIN)
+  @Audit({ action: 'ADMIN_ORDER_STATUS_UPDATE', targetType: 'Order' })
   @ApiOperation({ summary: '[Admin] Advance order through state machine' })
   adminUpdateOrderStatus(
     @Param('id') id: string,

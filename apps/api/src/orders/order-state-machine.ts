@@ -3,11 +3,13 @@ import { Role } from '@prisma/client';
 import { BadRequestException } from '@nestjs/common';
 
 /**
- * Valid order state transitions:
+ * Valid order state transitions, per VendorOrder (each vendor represented
+ * in a checkout fulfils independently — see OrdersService's
+ * recomputeOrderStatus for how these roll up into the parent Order):
  *
- * PENDING   → CONFIRMED  (admin only)
+ * PENDING   → CONFIRMED  (admin, or the fulfilling vendor)
  * PENDING   → CANCELLED  (customer or admin)
- * CONFIRMED → SHIPPED    (admin only)
+ * CONFIRMED → SHIPPED    (admin, or the fulfilling vendor)
  * CONFIRMED → CANCELLED  (admin only)
  * SHIPPED   → DELIVERED  (admin only)
  * DELIVERED → (terminal — no transitions)
@@ -30,6 +32,19 @@ const CUSTOMER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.CANCELLED]: [],
 };
 
+// A vendor can move their own VendorOrder forward through the fulfilment
+// steps that are theirs to perform — confirming they'll fulfil it, then
+// shipping — but not cancel (that has inventory-restoration and refund
+// implications outside a single vendor's authority) or mark delivered
+// (arguably the customer's/carrier's event, not the seller's).
+const VENDOR_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  [OrderStatus.PENDING]: [OrderStatus.CONFIRMED],
+  [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPED],
+  [OrderStatus.SHIPPED]: [],
+  [OrderStatus.DELIVERED]: [],
+  [OrderStatus.CANCELLED]: [],
+};
+
 export function assertValidTransition(
   from: OrderStatus,
   to: OrderStatus,
@@ -38,7 +53,9 @@ export function assertValidTransition(
   const allowed =
     role === Role.ADMIN
       ? [...(ADMIN_ONLY_TRANSITIONS[from] ?? []), ...(CUSTOMER_TRANSITIONS[from] ?? [])]
-      : CUSTOMER_TRANSITIONS[from] ?? [];
+      : role === Role.VENDOR
+        ? (VENDOR_TRANSITIONS[from] ?? [])
+        : (CUSTOMER_TRANSITIONS[from] ?? []);
 
   if (!allowed.includes(to)) {
     throw new BadRequestException(

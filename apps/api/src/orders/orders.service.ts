@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   NotFoundException,
   ConflictException,
@@ -6,31 +7,66 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Prisma, OrderStatus, Role } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CartService } from '../cart/cart.service';
+import { PromotionsService } from '../promotions/promotions.service';
+import { PAYMENT_PROVIDER, type PaymentProvider } from '../payment/payment.types';
 import { CheckoutDto } from './dto/checkout.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { assertValidTransition } from './order-state-machine';
 
-interface LockedProduct {
+interface LockedOffer {
   id: string;
   priceCents: number;
-  name: string;
-  slug: string;
   stockQuantity: number;
-  isActive: boolean;
+  vendorId: string;
+  productId: string;
+  productName: string;
+  productSlug: string;
+  vendorName: string;
 }
 
 const ORDER_INCLUDE = {
-  items: true,
+  items: { include: { returnRequest: { select: { id: true, status: true } } } },
   statusHistory: { orderBy: { createdAt: 'asc' as const } },
+  vendorOrders: { include: { vendor: { select: { id: true, name: true, slug: true } } } },
 } satisfies Prisma.OrderInclude;
+
+/** Simple ordinal for the linear part of the state machine — CANCELLED is
+ * handled separately since it isn't "behind" DELIVERED, it's terminal. */
+const STATUS_RANK: Record<Exclude<OrderStatus, 'CANCELLED'>, number> = {
+  PENDING: 0,
+  CONFIRMED: 1,
+  SHIPPED: 2,
+  DELIVERED: 3,
+};
+
+/** `Order.status` is a denormalized aggregate over its VendorOrders — an
+ * order isn't "SHIPPED" until every vendor represented in it has shipped
+ * their part. Rule: CANCELLED only if every VendorOrder is CANCELLED
+ * (a partially-cancelled order is not itself cancelled); otherwise the
+ * *least*-progressed status among the still-active VendorOrders. Recomputed
+ * transactionally every time any VendorOrder transitions — see
+ * DECISIONS.md for the invariant and why (multi-vendor fulfilment is
+ * inherently uneven; this project keeps the aggregation rule deliberately
+ * simple rather than modeling partial-shipment order states).
+ */
+export function aggregateOrderStatus(vendorOrderStatuses: OrderStatus[]): OrderStatus {
+  if (vendorOrderStatuses.length === 0) return OrderStatus.PENDING;
+  if (vendorOrderStatuses.every((s) => s === OrderStatus.CANCELLED)) return OrderStatus.CANCELLED;
+
+  const active = vendorOrderStatuses.filter((s) => s !== OrderStatus.CANCELLED);
+  return active.reduce((min, s) => (STATUS_RANK[s] < STATUS_RANK[min] ? s : min), active[0]);
+}
 
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cartService: CartService,
+    private readonly promotions: PromotionsService,
+    @Inject(PAYMENT_PROVIDER) private readonly payment: PaymentProvider,
   ) {}
 
   async checkout(userId: string, dto: CheckoutDto) {
@@ -52,73 +88,148 @@ export class OrdersService {
           if (doubleCheck) return doubleCheck;
 
           const cartItems = await tx.cartItem.findMany({ where: { cartId: cart.id } });
-          if (cartItems.length === 0) throw new BadRequestException('Cart is empty');
+          const validItems = cartItems.filter((i) => i.vendorOfferId);
+          if (validItems.length === 0) throw new BadRequestException('Cart is empty');
 
-          const productIds = cartItems.map((i) => i.productId);
+          const offerIds = validItems.map((i) => i.vendorOfferId!);
 
-          const lockedProducts = await tx.$queryRaw<LockedProduct[]>(
+          // Deterministic lock order (ORDER BY id) across every implicated
+          // VendorOffer — identical discipline to the pre-Phase-2 Product
+          // lock, just against the table that now owns price/stock.
+          // `FOR UPDATE OF o` locks only VendorOffer rows, not the joined
+          // Product/Vendor rows (read-only here, never mutated by checkout).
+          const lockedOffers = await tx.$queryRaw<LockedOffer[]>(
             Prisma.sql`
-              SELECT id, "priceCents", name, slug, "stockQuantity", "isActive"
-              FROM   "Product"
-              WHERE  id IN (${Prisma.join(productIds.map((id) => Prisma.sql`${id}::uuid`))})
-              ORDER  BY id
-              FOR    UPDATE
+              SELECT o.id, o."priceCents", o."stockQuantity", o."vendorId", o."productId",
+                     p.name AS "productName", p.slug AS "productSlug", v.name AS "vendorName"
+              FROM   "VendorOffer" o
+              JOIN   "Product" p ON p.id = o."productId"
+              JOIN   "Vendor" v ON v.id = o."vendorId"
+              WHERE  o.id IN (${Prisma.join(offerIds.map((id) => Prisma.sql`${id}::uuid`))})
+                AND  o.status = 'ACTIVE'
+              ORDER  BY o.id
+              FOR    UPDATE OF o
             `,
           );
 
-          const productMap = new Map(lockedProducts.map((p) => [p.id, p]));
-          for (const item of cartItems) {
-            const product = productMap.get(item.productId);
-            if (!product || !product.isActive) {
-              throw new BadRequestException(`Product ${item.productId} is unavailable`);
-            }
-            if (product.stockQuantity < item.quantity) {
-              throw new ConflictException(`Insufficient stock for ${product.name}`);
+          const offerMap = new Map(lockedOffers.map((o) => [o.id, o]));
+          for (const item of validItems) {
+            const offer = offerMap.get(item.vendorOfferId!);
+            if (!offer) throw new BadRequestException(`Listing ${item.vendorOfferId} is unavailable`);
+            if (offer.stockQuantity < item.quantity) {
+              throw new ConflictException(`Insufficient stock for ${offer.productName}`);
             }
           }
 
-          for (const item of cartItems) {
-            const affected = await tx.$executeRaw`
-              UPDATE "Product"
-              SET    "stockQuantity" = "stockQuantity" - ${item.quantity}
-              WHERE  id = ${item.productId}::uuid
-                AND  "stockQuantity" >= ${item.quantity}
-            `;
-            if (affected === 0) {
-              throw new ConflictException(`Race condition: stock changed for product ${item.productId}`);
-            }
+          // One VendorOrder per distinct vendor represented in the cart —
+          // id generated up front (same trick as the Order id below) so
+          // promotion validation can reference it before the row exists.
+          const byVendor = new Map<string, { vendorOrderId: string; items: typeof validItems; subtotalCents: number }>();
+          for (const item of validItems) {
+            const offer = offerMap.get(item.vendorOfferId!)!;
+            const entry = byVendor.get(offer.vendorId) ?? { vendorOrderId: randomUUID(), items: [], subtotalCents: 0 };
+            entry.items.push(item);
+            entry.subtotalCents += offer.priceCents * item.quantity;
+            byVendor.set(offer.vendorId, entry);
           }
 
-          const totalCents = cartItems.reduce((sum, item) => {
-            const p = productMap.get(item.productId)!;
-            return sum + p.priceCents * item.quantity;
+          const subtotalCents = validItems.reduce((sum, item) => {
+            const offer = offerMap.get(item.vendorOfferId!)!;
+            return sum + offer.priceCents * item.quantity;
           }, 0);
+
+          let discountCents = 0;
+          let redemption: { promotionId: string; vendorOrderId?: string } | null = null;
+          if (cart.appliedPromotionId) {
+            const result = await this.promotions.validateAndReserve(tx, cart.appliedPromotionId, {
+              userId,
+              platformSubtotalCents: subtotalCents,
+              vendorOrders: Array.from(byVendor, ([vendorId, v]) => ({
+                vendorId,
+                vendorOrderId: v.vendorOrderId,
+                subtotalCents: v.subtotalCents,
+              })),
+            });
+            discountCents = result.discountCents;
+            redemption = { promotionId: result.promotion.id, vendorOrderId: result.vendorOrderId };
+          }
+
+          const totalCents = subtotalCents - discountCents;
+          const orderId = randomUUID();
+          const chargeResult = await this.payment.charge({ orderId, amountCents: totalCents, currency: 'USD' });
 
           const order = await tx.order.create({
             data: {
+              id: orderId,
               userId,
               totalCents,
+              discountCents,
               currency: 'USD',
               idempotencyKey: dto.idempotencyKey,
-              items: {
-                create: cartItems.map((item) => {
-                  const p = productMap.get(item.productId)!;
-                  return {
-                    productId: item.productId,
-                    quantity: item.quantity,
-                    unitPriceCents: p.priceCents,
-                    productName: p.name,
-                    productSlug: p.slug,
-                  };
-                }),
-              },
+              paymentRef: chargeResult.providerRef,
             },
-            include: ORDER_INCLUDE,
           });
 
-          await tx.cartItem.deleteMany({ where: { id: { in: cartItems.map((i) => i.id) } } });
+          for (const [vendorId, { vendorOrderId, items, subtotalCents: vendorSubtotalCents }] of byVendor) {
+            const vendorDiscountCents = redemption?.vendorOrderId === vendorOrderId ? discountCents : 0;
 
-          return order;
+            await tx.vendorOrder.create({
+              data: { id: vendorOrderId, orderId: order.id, vendorId, subtotalCents: vendorSubtotalCents, discountCents: vendorDiscountCents },
+            });
+
+            for (const item of items) {
+              const offer = offerMap.get(item.vendorOfferId!)!;
+
+              await tx.orderItem.create({
+                data: {
+                  orderId: order.id,
+                  vendorOrderId,
+                  vendorOfferId: offer.id,
+                  quantity: item.quantity,
+                  unitPriceCents: offer.priceCents,
+                  productName: offer.productName,
+                  productSlug: offer.productSlug,
+                  vendorName: offer.vendorName,
+                },
+              });
+
+              const affected = await tx.$executeRaw`
+                UPDATE "VendorOffer"
+                SET    "stockQuantity" = "stockQuantity" - ${item.quantity}
+                WHERE  id = ${offer.id}::uuid
+                  AND  "stockQuantity" >= ${item.quantity}
+              `;
+              if (affected === 0) {
+                throw new ConflictException(`Race condition: stock changed for ${offer.productName}`);
+              }
+
+              await tx.inventoryAdjustment.create({
+                data: {
+                  vendorOfferId: offer.id,
+                  delta: -item.quantity,
+                  reason: 'SALE',
+                  reference: order.id,
+                },
+              });
+            }
+          }
+
+          if (redemption) {
+            await tx.promotionRedemption.create({
+              data: {
+                promotionId: redemption.promotionId,
+                orderId: order.id,
+                userId,
+                vendorOrderId: redemption.vendorOrderId,
+                amountCents: discountCents,
+              },
+            });
+          }
+
+          await tx.cartItem.deleteMany({ where: { id: { in: validItems.map((i) => i.id) } } });
+          await tx.cart.update({ where: { id: cart.id }, data: { appliedPromotionId: null } });
+
+          return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
       );
@@ -152,7 +263,6 @@ export class OrdersService {
     return this.transitionStatus(orderId, OrderStatus.CANCELLED, userId, Role.CUSTOMER);
   }
 
-
   async adminListOrders(status?: OrderStatus) {
     return this.prisma.order.findMany({
       where: status ? { status } : undefined,
@@ -174,7 +284,14 @@ export class OrdersService {
     return this.transitionStatus(orderId, dto.status, adminId, Role.ADMIN);
   }
 
-
+  /**
+   * Applies `toStatus` to every VendorOrder under this Order — used by
+   * customer/admin actions that apply to "the order" as a whole,
+   * all-or-nothing. Per-vendor-only transitions (one seller ships while
+   * another hasn't) are the vendor app's job (VendorOrdersService),
+   * operating on a single VendorOrder instead of looping every one under
+   * the order.
+   */
   private async transitionStatus(
     orderId: string,
     toStatus: OrderStatus,
@@ -182,45 +299,66 @@ export class OrdersService {
     role: Role,
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ id: string; status: OrderStatus; userId: string }>>`
-        SELECT id, status, "userId" FROM "Order" WHERE id = ${orderId}::uuid FOR UPDATE
+      const orderRows = await tx.$queryRaw<Array<{ id: string; userId: string }>>`
+        SELECT id, "userId" FROM "Order" WHERE id = ${orderId}::uuid FOR UPDATE
       `;
-      if (rows.length === 0) throw new NotFoundException('Order not found');
-      const order = rows[0];
+      if (orderRows.length === 0) throw new NotFoundException('Order not found');
+      const order = orderRows[0];
 
       if (role === Role.CUSTOMER && order.userId !== actorId) {
         throw new ForbiddenException('Not your order');
       }
 
-      assertValidTransition(order.status, toStatus, role);
+      const vendorOrders = await tx.vendorOrder.findMany({ where: { orderId }, select: { id: true, status: true } });
+      if (vendorOrders.length === 0) throw new NotFoundException('Order has no vendor fulfilments');
 
-      const updated = await tx.order.update({
-        where: { id: orderId },
-        data: { status: toStatus },
-        include: ORDER_INCLUDE,
-      });
+      for (const vo of vendorOrders) {
+        assertValidTransition(vo.status, toStatus, role);
+      }
 
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId,
-          changedById: actorId,
-          fromStatus: order.status,
-          toStatus,
-        },
-      });
+      for (const vo of vendorOrders) {
+        await tx.vendorOrder.update({ where: { id: vo.id }, data: { status: toStatus } });
 
-      // Restore inventory on cancellation (inside same transaction — exactly once)
-      if (toStatus === OrderStatus.CANCELLED) {
-        const items = await tx.orderItem.findMany({ where: { orderId } });
-        for (const item of items) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stockQuantity: { increment: item.quantity } },
-          });
+        await tx.orderStatusHistory.create({
+          data: { orderId, vendorOrderId: vo.id, changedById: actorId, fromStatus: vo.status, toStatus },
+        });
+
+        // Restore inventory on cancellation — inside the same transaction,
+        // exactly once, with a matching InventoryAdjustment per item.
+        if (toStatus === OrderStatus.CANCELLED) {
+          const items = await tx.orderItem.findMany({ where: { vendorOrderId: vo.id } });
+          for (const item of items) {
+            if (!item.vendorOfferId) continue;
+            await tx.vendorOffer.update({
+              where: { id: item.vendorOfferId },
+              data: { stockQuantity: { increment: item.quantity } },
+            });
+            await tx.inventoryAdjustment.create({
+              data: {
+                vendorOfferId: item.vendorOfferId,
+                delta: item.quantity,
+                reason: 'RETURN',
+                reference: orderId,
+              },
+            });
+          }
         }
       }
 
-      return updated;
+      return this.recomputeOrderStatus(tx, orderId);
+    });
+  }
+
+  /** Recomputes Order.status from its VendorOrders. Public — also called
+   * by VendorOrdersService. Must run inside the caller's transaction. */
+  async recomputeOrderStatus(tx: Prisma.TransactionClient, orderId: string) {
+    const vendorOrders = await tx.vendorOrder.findMany({ where: { orderId }, select: { status: true } });
+    const nextStatus = aggregateOrderStatus(vendorOrders.map((vo) => vo.status));
+
+    return tx.order.update({
+      where: { id: orderId },
+      data: { status: nextStatus },
+      include: ORDER_INCLUDE,
     });
   }
 }

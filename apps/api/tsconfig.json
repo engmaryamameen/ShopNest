@@ -21,5 +21,10 @@
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "strict": true
-  }
+  },
+  // prisma/seed.ts is run directly by Node's own type-stripping
+  // (`db:seed`), which requires an explicit .ts import extension —
+  // incompatible with this project's tsc, which rejects one. Never part
+  // of the compiled app, so excluding it here costs nothing.
+  "exclude": ["node_modules", "dist", "prisma/seed.ts"]
 }

@@ -2,12 +2,13 @@
 
 import { create } from 'zustand';
 
-export type UserRole = 'CUSTOMER' | 'ADMIN';
+export type UserRole = 'CUSTOMER' | 'VENDOR' | 'ADMIN' | 'SUPER_ADMIN';
 
 export interface UserIdentity {
   id: string;
   email: string;
   role: UserRole;
+  emailVerifiedAt: string | null;
 }
 
 interface UserState {

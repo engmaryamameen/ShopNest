@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   --background: #f9fafb;
@@ -8,13 +8,133 @@
   --danger: #dc2626;
 }
 
+/*
+ * ShopNest brand system — scoped as additive design tokens so existing
+ * screens (auth, admin, cart) that still use Tailwind's stock indigo/slate
+ * palette are unaffected. New storefront chrome (header, drawer, menus)
+ * should draw its colors exclusively from these tokens.
+ *
+ * brand  — deep teal-green: trust + marketplace growth, distinct from the
+ *          generic indigo/violet used by most SaaS-flavored AI UIs.
+ * accent — warm copper/gold: reserved for deals, badges and highlights.
+ * ink    — a warm near-black (not blue-leaning slate) for high-contrast
+ *          chrome such as the utility bar and drawer scrim.
+ */
+@theme {
+  /* Fonts */
+  --font-poppins: var(--font-poppins);
+  --font-jakarta: var(--font-plus-jakarta);
+  --font-lato: var(--font-lato);
+
+  --color-brand-50: #eaf7f2;
+  --color-brand-100: #cfeee2;
+  --color-brand-200: #9fddc6;
+  --color-brand-300: #6bc7a9;
+  --color-brand-400: #3eae8c;
+  --color-brand-500: #1f9270;
+  --color-brand-600: #0f7a5c;
+  --color-brand-700: #0b5f48;
+  --color-brand-800: #0a4b39;
+  --color-brand-900: #073a2c;
+
+  --color-accent-50: #fbf3e3;
+  --color-accent-100: #f5e3be;
+  --color-accent-200: #ecca85;
+  --color-accent-400: #d79a2c;
+  --color-accent-500: #bd810e;
+  --color-accent-600: #9c6b0c;
+  --color-accent-700: #7c5509;
+
+  --color-ink-800: #201c17;
+  --color-ink-900: #17140f;
+
+  /*
+   * The project's de-facto "smooth" curve — already hand-typed in the
+   * location dialog and hero carousel. Promoted to a token so every new
+   * transition can reference `ease-smooth` instead of re-typing it.
+   */
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Admin fonts */
+  --font-inter: var(--font-inter);
+  --font-nunito: var(--font-nunito);
+
+  /*
+   * Admin design system — a deliberately separate palette from the
+   * storefront's brand/accent/ink tokens above (different intent: dense
+   * data screens, not merchandising chrome), so restyling admin never
+   * risks bleeding into the customer-facing site. Named semantically
+   * rather than as a generated 50–900 scale — only the shades the design
+   * actually specifies exist as tokens, nothing interpolated.
+   */
+  --color-admin-primary: #4ea674;
+  --color-admin-primary-soft: #eaf8e7;
+  --color-admin-primary-chart: #c1e6ba;
+  --color-admin-ink: #023337;
+  --color-admin-heading: #23272e;
+  --color-admin-accent: #6467f2;
+  --color-admin-muted: #6a717f;
+  --color-admin-success: #21c45d;
+  --color-admin-danger: #ef4343;
+  --color-admin-danger-soft: #f87272;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+a[href],
+button:not(:disabled),
+[role='button'] {
+  cursor: pointer;
 }
 
 /* Simple focus ring utility */
 .focus-ring:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+.location-dialog-backdrop,
+.location-dialog-panel {
+  transition-duration: 220ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.location-dialog-backdrop {
+  transition-property: opacity;
+}
+.location-dialog-backdrop[data-state='closed'] {
+  opacity: 0;
+}
+.location-dialog-panel {
+  transition-property: opacity, transform;
+}
+.location-dialog-panel[data-state='closed'] {
+  opacity: 0;
+  transform: translateY(20px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .location-dialog-backdrop,
+  .location-dialog-panel {
+    transition-duration: 1ms;
+  }
+}
+
+/* Axis-agnostic scroll container: hides the native scrollbar so the fade
+ * spans (HorizontalFadeScroll, VerticalFadeScroll) are the only visible
+ * scroll affordance, while keeping the area natively scrollable. */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }

@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "CatalogImportRun"
+  ADD COLUMN "scopedCount" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN "processedCount" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN "skippedCount" INTEGER NOT NULL DEFAULT 0;

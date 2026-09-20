@@ -7,18 +7,22 @@ import { api, ApiError } from '@/lib/api';
 import { CART_QUERY_KEY } from '@/lib/use-cart';
 
 interface AddToCartButtonProps {
-  productId: string;
+  /** The specific seller's listing to add — not the canonical product id.
+   * `null` means the product has no purchasable offer right now (shouldn't
+   * normally reach this component, since a stockQuantity>0 product always
+   * has one, but stays defensive). */
+  offerId: string | null;
   stockQuantity: number;
 }
 
-export function AddToCartButton({ productId, stockQuantity }: AddToCartButtonProps) {
+export function AddToCartButton({ offerId, stockQuantity }: AddToCartButtonProps) {
   const [quantity, setQuantity] = useState(1);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  if (stockQuantity === 0) {
+  if (stockQuantity === 0 || !offerId) {
     return (
       <button
         disabled
@@ -29,11 +33,16 @@ export function AddToCartButton({ productId, stockQuantity }: AddToCartButtonPro
     );
   }
 
+  // Narrowed once here — `offerId` is `string | null` at the parameter
+  // level, and TS doesn't carry the guard's narrowing into a nested
+  // closure defined afterward.
+  const confirmedOfferId = offerId;
+
   function handleAdd() {
     setMessage(null);
     startTransition(async () => {
       try {
-        await api.upsertCartItem({ productId, quantity });
+        await api.upsertCartItem({ vendorOfferId: confirmedOfferId, quantity });
         setMessage({ type: 'success', text: 'Added to cart!' });
         await queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
         router.refresh();

@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useTransition } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
 import { useUserStore } from '@/store/user.store';
+import { validateReturnTo } from '@/lib/validate-return-to';
 
-export default function RegisterPage() {
+/** Inner form — isolated so useSearchParams() gets its own Suspense boundary. */
+function RegisterForm() {
   const router = useRouter();
+  const params = useSearchParams();
   const setUser = useUserStore((s) => s.setUser);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,9 +39,14 @@ export default function RegisterPage() {
         setUser({
           id: result.user.id,
           email: result.user.email,
-          role: result.user.role as 'CUSTOMER' | 'ADMIN',
+          role: result.user.role,
+          emailVerifiedAt: result.user.emailVerifiedAt,
         });
-        router.push('/shop');
+        // Same returnTo handling as login — previously hardcoded to /shop,
+        // silently dropping a link like /login?returnTo=/cart if the visitor
+        // registered instead of logging in.
+        const returnTo = validateReturnTo(params.get('returnTo'));
+        router.push(returnTo === '/' ? '/shop' : returnTo);
         router.refresh();
       } catch (err) {
         if (err instanceof ApiError) {
@@ -65,6 +73,11 @@ export default function RegisterPage() {
               {error}
             </div>
           )}
+
+          <p className="text-xs text-gray-500 bg-gray-100 rounded-lg px-4 py-3">
+            We&apos;ll send a verification link to your email after you sign up — you can start
+            shopping right away, but verify when you get a chance.
+          </p>
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
@@ -131,5 +144,13 @@ export default function RegisterPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
   );
 }

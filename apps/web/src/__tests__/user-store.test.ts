@@ -16,17 +16,22 @@ describe('useUserStore', () => {
     const { result } = renderHook(() => useUserStore());
 
     act(() => {
-      result.current.setUser({ id: 'u1', email: 'test@example.com', role: 'CUSTOMER' });
+      result.current.setUser({ id: 'u1', email: 'test@example.com', role: 'CUSTOMER', emailVerifiedAt: null });
     });
 
-    expect(result.current.user).toEqual({ id: 'u1', email: 'test@example.com', role: 'CUSTOMER' });
+    expect(result.current.user).toEqual({
+      id: 'u1',
+      email: 'test@example.com',
+      role: 'CUSTOMER',
+      emailVerifiedAt: null,
+    });
   });
 
   it('setUser(null) clears the user', () => {
     const { result } = renderHook(() => useUserStore());
 
     act(() => {
-      result.current.setUser({ id: 'u1', email: 'test@example.com', role: 'CUSTOMER' });
+      result.current.setUser({ id: 'u1', email: 'test@example.com', role: 'CUSTOMER', emailVerifiedAt: null });
     });
     act(() => {
       result.current.setUser(null);
@@ -39,9 +44,15 @@ describe('useUserStore', () => {
     const { result } = renderHook(() => useUserStore());
 
     act(() => {
-      result.current.setUser({ id: 'admin-id', email: 'admin@example.com', role: 'ADMIN' });
+      result.current.setUser({
+        id: 'admin-id',
+        email: 'admin@example.com',
+        role: 'ADMIN',
+        emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+      });
     });
 
     expect(result.current.user?.role).toBe('ADMIN');
+    expect(result.current.user?.emailVerifiedAt).toBe('2026-01-01T00:00:00.000Z');
   });
 });

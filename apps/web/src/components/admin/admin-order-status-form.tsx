@@ -3,14 +3,15 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
+import type { OrderStatus } from '@/lib/api-types';
 
 interface AdminOrderStatusFormProps {
   orderId: string;
-  availableStatuses: string[];
+  availableStatuses: OrderStatus[];
 }
 
 export function AdminOrderStatusForm({ orderId, availableStatuses }: AdminOrderStatusFormProps) {
-  const [status, setStatus] = useState(availableStatuses[0] ?? '');
+  const [status, setStatus] = useState<OrderStatus | ''>(availableStatuses[0] ?? '');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -18,9 +19,12 @@ export function AdminOrderStatusForm({ orderId, availableStatuses }: AdminOrderS
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!status) return;
+    const nextStatus = status;
+
     startTransition(async () => {
       try {
-        await api.adminUpdateOrderStatus(orderId, { status });
+        await api.adminUpdateOrderStatus(orderId, { status: nextStatus });
         router.refresh();
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Update failed');
@@ -41,7 +45,7 @@ export function AdminOrderStatusForm({ orderId, availableStatuses }: AdminOrderS
       <form onSubmit={handleSubmit} className="flex gap-3">
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => setStatus(e.target.value as OrderStatus)}
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
           {availableStatuses.map((s) => (
