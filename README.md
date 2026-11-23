@@ -1,5 +1,7 @@
 # ShopNest
 
+Catalog imports are disabled while ownership and overwrite safeguards are incomplete. Existing import history remains available, and queued runs are not processed. The worker and scheduler are off by default. Import execution can only be enabled in an isolated test process using `NODE_ENV=test` and `CATALOG_IMPORT_TEST_ENABLED=true`; this is not a production import feature.
+
 A production-grade TypeScript multivendor marketplace built with NestJS, Next.js 15, PostgreSQL, and Prisma. Demonstrates senior-level engineering decisions: concurrency-safe multi-vendor checkout, refresh token rotation with theft detection, full-text search, structural verified-purchase reviews, and a clean domain model separating canonical products from vendor-owned commercial data.
 
 ## Tech Stack
