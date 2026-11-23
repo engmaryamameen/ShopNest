@@ -96,8 +96,8 @@ export class OrdersService {
           // Deterministic lock order (ORDER BY id) across every implicated
           // VendorOffer — identical discipline to the pre-Phase-2 Product
           // lock, just against the table that now owns price/stock.
-          // `FOR UPDATE OF o` locks only VendorOffer rows, not the joined
-          // Product/Vendor rows (read-only here, never mutated by checkout).
+          // Lock the seller and product too so eligibility cannot change
+          // between validation and order creation.
           const lockedOffers = await tx.$queryRaw<LockedOffer[]>(
             Prisma.sql`
               SELECT o.id, o."priceCents", o."stockQuantity", o."vendorId", o."productId",
@@ -107,15 +107,17 @@ export class OrdersService {
               JOIN   "Vendor" v ON v.id = o."vendorId"
               WHERE  o.id IN (${Prisma.join(offerIds.map((id) => Prisma.sql`${id}::uuid`))})
                 AND  o.status = 'ACTIVE'
+                AND  p."publishStatus" = 'PUBLISHED'
+                AND  v.status = 'APPROVED'
               ORDER  BY o.id
-              FOR    UPDATE OF o
+              FOR    UPDATE OF o, p, v
             `,
           );
 
           const offerMap = new Map(lockedOffers.map((o) => [o.id, o]));
           for (const item of validItems) {
             const offer = offerMap.get(item.vendorOfferId!);
-            if (!offer) throw new BadRequestException(`Listing ${item.vendorOfferId} is unavailable`);
+            if (!offer) throw new BadRequestException('An item in your cart is no longer available. Remove it and try again.');
             if (offer.stockQuantity < item.quantity) {
               throw new ConflictException(`Insufficient stock for ${offer.productName}`);
             }
