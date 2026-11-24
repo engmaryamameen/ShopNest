@@ -83,29 +83,19 @@ test.describe('Admin app', () => {
     await expect(page).toHaveURL(/\/shop/);
   });
 
-  test('catalog-import panel previews a scoped run without committing it, then can trigger a real one', async ({ page }) => {
+  test('catalog imports remain disabled and explain why', async ({ page }) => {
     await loginViaUI(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
     await page.goto('/admin/imports');
 
     await expect(page.getByRole('main').getByRole('heading', { name: 'Catalog imports' })).toBeVisible();
+    const previewResponse = page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/preview'));
+    await page.getByRole('button', { name: 'Preview' }).click();
+    expect((await previewResponse).status()).toBe(503);
+    await expect(page.getByText(/Catalog imports are disabled/i)).toBeVisible();
 
-    await page.locator('#import-category-scope').fill('smartphones');
-    await page.locator('#import-max-records').fill('2');
-
-    await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/preview')),
-      page.getByRole('button', { name: 'Preview' }).click(),
-    ]);
-
-    await expect(page.getByText('In scope')).toBeVisible();
-    // A scoped-to-2 preview must never claim more than 2 are in scope.
-    const scopedCountText = await page.locator('text=In scope').locator('..').locator('p.font-semibold').innerText();
-    expect(Number(scopedCountText)).toBeLessThanOrEqual(2);
-
-    await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/run')),
-      page.getByRole('button', { name: 'Run synchronization' }).click(),
-    ]);
-    await expect(page.getByText(/Synchronization queued/i)).toBeVisible();
+    const runResponse = page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/run'));
+    await page.getByRole('button', { name: 'Run synchronization' }).click();
+    expect((await runResponse).status()).toBe(503);
+    await expect(page.getByText(/Catalog imports are disabled/i)).toBeVisible();
   });
 });
