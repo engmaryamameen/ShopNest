@@ -62,7 +62,7 @@ jobs:
           pnpm --filter @shopnest/api exec prisma migrate resolve --schema prisma/schema.prisma --applied 0016_amazon_source
           pnpm --filter @shopnest/api exec prisma migrate deploy --schema prisma/schema.prisma
       - name: Run catalog and checkout integration tests
-        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand catalog-import.integration.spec.ts concurrency.integration.spec.ts
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand catalog-import.integration.spec.ts concurrency.integration.spec.ts media-upload.integration.spec.ts
 
   web:
     name: Web type check, lint, tests, and build
