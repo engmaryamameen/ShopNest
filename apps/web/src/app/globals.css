@@ -138,3 +138,11 @@ button:not(:disabled),
   width: 0;
   height: 0;
 }
+
+:root {
+  --font-poppins: 'Poppins';
+  --font-plus-jakarta: 'Plus Jakarta Sans Variable';
+  --font-lato: 'Lato';
+  --font-inter: 'Inter Variable';
+  --font-nunito: 'Nunito Variable';
+}

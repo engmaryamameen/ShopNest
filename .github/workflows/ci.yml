@@ -194,15 +194,22 @@ jobs:
         working-directory: apps/web
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Run E2E suite (starts API + web itself — see playwright.config.ts webServer)
-        run: pnpm --filter @shopnest/web test:e2e
+      - name: Run E2E suite (isolated browser test groups)
+        working-directory: apps/web
+        run: |
+          failed=0
+          for spec in e2e/*.spec.ts; do
+            name="$(basename "$spec" .spec.ts)"
+            PLAYWRIGHT_HTML_OUTPUT_DIR="playwright-reports/$name" pnpm test:e2e "$spec" || failed=1
+          done
+          exit "$failed"
 
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: apps/web/playwright-report/
+          path: apps/web/playwright-reports/
           retention-days: 14
 
   # ── Build ────────────────────────────────────────────────────────────────

@@ -1,51 +1,26 @@
 import type { Metadata } from 'next';
-import {
-  Inter,
-  Lato,
-  Nunito,
-  Plus_Jakarta_Sans,
-  Poppins,
-} from 'next/font/google';
+import '@fontsource/poppins/300.css';
+import '@fontsource/poppins/400.css';
+import '@fontsource/poppins/500.css';
+import '@fontsource/poppins/600.css';
+import '@fontsource/poppins/700.css';
+import '@fontsource/lato/100.css';
+import '@fontsource/lato/300.css';
+import '@fontsource/lato/400.css';
+import '@fontsource/lato/700.css';
+import '@fontsource/lato/900.css';
+import '@fontsource/lato/100-italic.css';
+import '@fontsource/lato/300-italic.css';
+import '@fontsource/lato/400-italic.css';
+import '@fontsource/lato/700-italic.css';
+import '@fontsource/lato/900-italic.css';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/nunito';
+import '@fontsource-variable/plus-jakarta-sans';
 
 import './globals.css';
 
 import { Providers } from './providers';
-
-const poppins = Poppins({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700'],
-  variable: '--font-poppins',
-  display: 'swap',
-});
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  variable: '--font-plus-jakarta',
-  display: 'swap',
-});
-
-const lato = Lato({
-  subsets: ['latin'],
-  weight: ['100', '300', '400', '700', '900'],
-  style: ['normal', 'italic'],
-  variable: '--font-lato',
-  display: 'swap',
-});
-
-// Admin-only additions — the storefront doesn't use either of these.
-const inter = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-
-const nunito = Nunito({
-  subsets: ['latin'],
-  weight: ['400', '700'],
-  variable: '--font-nunito',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: 'ShopNest — Modern E-Commerce',
@@ -58,16 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`
-        ${poppins.variable}
-        ${plusJakartaSans.variable}
-        ${lato.variable}
-        ${inter.variable}
-        ${nunito.variable}
-      `}
-    >
+    <html lang="en">
       <body className="min-h-screen bg-gray-50 font-lato antialiased">
         <Providers>{children}</Providers>
       </body>
