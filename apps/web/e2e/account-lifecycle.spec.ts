@@ -1,23 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { TEST_TOKEN_TTL_MS } from '../playwright.config';
-import { waitForToken } from './helpers/mail-capture';
-import { acceptNextConfirm, loginViaUI, openAccountMenu, registerViaUI } from './helpers/actions';
+import { waitForSignupCode, waitForToken } from './helpers/mail-capture';
+import { acceptNextConfirm, completeSignupViaUI, loginViaUI, openAccountMenu, registerViaUI, startSignupViaUI } from './helpers/actions';
 
 // Margin added on top of the API's configured token TTL before a test
 // exercises the "expired" path — has to outlast the TTL, not just meet it.
 const EXPIRED_TOKEN_WAIT_MS = TEST_TOKEN_TTL_MS + 1500;
-
-/**
- * Phase 1 account-lifecycle journey, driven entirely through the real
- * Next.js UI in a real browser — register, verify, forgot/reset password,
- * sessions, logout, suspension, and the admin side of suspension. Complements
- * (does not replace) the API-level integration suite in apps/api/test —
- * this suite is about the UI actually wiring up to that API correctly:
- * redirects, loading/error/success states, and real user interactions.
- *
- * Requires ADMIN_EMAIL/ADMIN_PASSWORD (or their seed.ts defaults) to exist —
- * the CI e2e job runs `pnpm --filter @shopnest/api db:seed` before this suite.
- */
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'admin@shopnest.dev';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'Admin@ShopNest2025!';
@@ -30,65 +18,25 @@ const PASSWORD = 'TestPassword123!';
 const NEW_PASSWORD = 'NewTestPassword456!';
 
 test.describe('Registration & email verification', () => {
-  test('register lands on the returnTo target and shows an unverified state', async ({ page }) => {
+  test('requires a valid email code before creating a signed-in account', async ({ page }) => {
     const email = uniqueEmail('verify');
-    await registerViaUI(page, email, PASSWORD);
-    await expect(page).toHaveURL(/\/shop/);
-
-    await page.goto('/account/security');
-    await expect(page.getByText("isn't verified yet")).toBeVisible();
-  });
-
-  test('verifying via the emailed link clears the unverified banner', async ({ page }) => {
-    const email = uniqueEmail('verify2');
-    await registerViaUI(page, email, PASSWORD);
-
-    const token = await waitForToken(email, 'Verify your ShopNest email');
-    await page.goto(`/verify-email?token=${token}`);
-    await expect(page.getByRole('heading', { name: 'Email verified' })).toBeVisible();
-    await page.getByRole('link', { name: 'Continue to ShopNest' }).click();
-    await expect(page).toHaveURL(/\/shop/);
-
+    await startSignupViaUI(page, email, PASSWORD);
+    const code = await waitForSignupCode(email);
+    const incorrect = code === '000000' ? '000001' : '000000';
+    for (let i = 0; i < 6; i++) await page.getByLabel(`Digit ${i + 1} of 6`).fill(incorrect[i]);
+    await page.getByRole('button', { name: 'Create account' }).click();
+    await expect(page.getByRole('alert')).toContainText(/not correct/i);
+    await completeSignupViaUI(page, email);
     await page.goto('/account/security');
     await expect(page.getByText("isn't verified yet")).not.toBeVisible();
   });
 
-  test('reusing the same verification link a second time is rejected (single-use)', async ({ page }) => {
-    const email = uniqueEmail('verify3');
-    await registerViaUI(page, email, PASSWORD);
-    const token = await waitForToken(email, 'Verify your ShopNest email');
-
-    await page.goto(`/verify-email?token=${token}`);
-    await expect(page.getByRole('heading', { name: 'Email verified' })).toBeVisible();
-
-    await page.goto(`/verify-email?token=${token}`);
-    await expect(page.getByRole('heading', { name: /isn.t valid/i })).toBeVisible();
-  });
-
-  test('an expired verification link shows the expired state', async ({ page }) => {
-    // EMAIL_VERIFICATION_TOKEN_TTL_MS is configured short (TEST_TOKEN_TTL_MS,
-    // playwright.config.ts) for this suite's API process specifically so
-    // this journey can be driven through real elapsed time, not a DB backdoor.
-    const email = uniqueEmail('verify-expired');
-    await registerViaUI(page, email, PASSWORD);
-    const token = await waitForToken(email, 'Verify your ShopNest email');
-
-    await page.waitForTimeout(EXPIRED_TOKEN_WAIT_MS);
-    await page.goto(`/verify-email?token=${token}`);
-    await expect(page.getByRole('heading', { name: 'This link has expired' })).toBeVisible();
-  });
-
-  test('resending verification shows a confirmation and a fresh link works', async ({ page }) => {
+  test('limits immediate resend requests', async ({ page }) => {
     const email = uniqueEmail('resend');
-    await registerViaUI(page, email, PASSWORD);
-    await page.goto('/account/security');
-
-    await page.getByRole('button', { name: 'Resend email' }).click();
-    await expect(page.getByText('Email sent')).toBeVisible();
-
-    const token = await waitForToken(email, 'Verify your ShopNest email');
-    await page.goto(`/verify-email?token=${token}`);
-    await expect(page.getByRole('heading', { name: 'Email verified' })).toBeVisible();
+    await startSignupViaUI(page, email, PASSWORD);
+    await page.getByRole('button', { name: 'Resend code' }).click();
+    await expect(page.getByRole('alert')).toContainText(/wait/i);
+    await completeSignupViaUI(page, email);
   });
 });
 

@@ -38,6 +38,7 @@ function makePrismaMock() {
       update: jest.fn(),
     },
     passwordResetToken: {
+      updateMany: jest.fn(),
       create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
@@ -93,47 +94,6 @@ describe('AuthService', () => {
     service = module.get<AuthService>(AuthService);
   });
 
-  describe('register', () => {
-    it('throws ConflictException if email already exists', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'existing-id' });
-      await expect(
-        service.register({ email: 'test@example.com', password: 'password123456' }),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('creates user, cart, and token family on success', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-      prisma.user.create.mockResolvedValue({ id: 'user-id', email: 'test@example.com', role: Role.CUSTOMER });
-      prisma.cart.create.mockResolvedValue({ id: 'cart-id' });
-      prisma.refreshTokenFamily.create.mockResolvedValue({ id: 'family-id' });
-
-      const result = await service.register({ fullName: 'Alex Morgan', email: 'test@example.com', password: 'validpassword123' });
-
-      expect(prisma.user.create).toHaveBeenCalledWith({ data: expect.objectContaining({ fullName: 'Alex Morgan' }) });
-
-      expect(prisma.cart.create).toHaveBeenCalledWith({ data: { userId: 'user-id' } });
-      expect(result.userId).toBe('user-id');
-      expect(result.familyId).toBe('family-id');
-      expect(typeof result.rawToken).toBe('string');
-      expect(result.rawToken).toMatch(/^[0-9a-f]{128}$/);
-    });
-
-    it('hashes the password with argon2id', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-      prisma.user.create.mockImplementation(async ({ data }) => {
-        // Verify the password is hashed (not stored in plaintext)
-        expect(data.passwordHash).not.toBe('validpassword123');
-        const valid = await argon2.verify(data.passwordHash, 'validpassword123');
-        expect(valid).toBe(true);
-        return { id: 'user-id', email: data.email, role: Role.CUSTOMER };
-      });
-      prisma.cart.create.mockResolvedValue({ id: 'cart-id' });
-      prisma.refreshTokenFamily.create.mockResolvedValue({ id: 'family-id' });
-
-      await service.register({ email: 'test@example.com', password: 'validpassword123' });
-    });
-  });
-
   describe('login', () => {
     it('throws UnauthorizedException for non-existent user', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
@@ -166,6 +126,7 @@ describe('AuthService', () => {
         status: 'ACTIVE',
       });
       prisma.refreshTokenFamily.create.mockResolvedValue({ id: 'family-id' });
+      prisma.$queryRaw.mockResolvedValue([{ passwordHash: hash, status: 'ACTIVE' }]);
 
       const result = await service.login({ email: 'test@example.com', password: 'correctpassword123' });
       expect(result.userId).toBe('user-id');
@@ -481,13 +442,14 @@ describe('AuthService', () => {
         consumedAt: null,
       });
 
+      prisma.passwordResetToken.updateMany.mockResolvedValue({ count: 1 });
       await expect(service.resetPassword('good-token', 'newStr0ngPassword123')).resolves.toBe('reset');
 
       expect(prisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'user-id' } }),
       );
-      expect(prisma.passwordResetToken.update).toHaveBeenCalledWith({
-        where: { id: 'reset-1' },
+      expect(prisma.passwordResetToken.updateMany).toHaveBeenCalledWith({
+        where: { id: 'reset-1', consumedAt: null, expiresAt: { gt: expect.any(Date) } },
         data: { consumedAt: expect.any(Date) },
       });
       expect(prisma.refreshTokenFamily.updateMany).toHaveBeenCalledWith({

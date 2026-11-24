@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import styles from './auth.module.css';
 
-type Props = { children: ReactNode; title?: string; description?: string; mode?: 'login' | 'register'; returnTo?: string | null };
+type Props = { children: ReactNode; title?: string; description?: ReactNode; mode?: 'login' | 'register'; returnTo?: string | null };
 export function AuthShell({ children, title, description, mode }: Props) {
   return <div className={`${styles.formWrap} ${styles.loginView}`}>
     <h1 className='font-extrabold text-7xl'>{title ?? (mode === 'login' ? 'Login' : 'account')}</h1>

@@ -1,0 +1,7 @@
+# Google sign-in
+
+Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_CALLBACK_URL` in the API environment. For the local API on port 3001, register `http://localhost:3001/auth/google/callback` as an authorized redirect URI on the Google OAuth web client. Restart the API after changing its environment. Production callbacks must use HTTPS, and their origin must match the environment where the API is deployed.
+
+The login and registration pages start the same authorization-code flow. ShopNest verifies Google's ID token, the nonce, a signed state cookie and the PKCE verifier before creating a session. Google identities are identified by their Google subject. A new verified Google identity creates a customer and cart. Existing password accounts are not automatically linked by email. After the user confirms, Google-authoritative verified Gmail or Workspace addresses can link directly. If the ShopNest account was not verified, linking verifies it, invalidates its old password and outstanding recovery links, and revokes existing sessions; the user can set a new password through recovery. Other email addresses require signing in to the existing ShopNest account. The linking request expires after ten minutes. Suspended or deactivated users cannot sign in.
+
+The Google consent screen and authorized test users are configured in Google Cloud. The name shown there belongs to the Google OAuth client, not the ShopNest UI. Do not commit client secrets. If a secret has been exposed, rotate it in Google Cloud and update the local environment.

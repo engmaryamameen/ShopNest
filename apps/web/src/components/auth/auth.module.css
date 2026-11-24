@@ -255,7 +255,7 @@
 .loginForm .input:-webkit-autofill, .loginForm .input:-webkit-autofill:hover, .loginForm .input:-webkit-autofill:focus { -webkit-box-shadow: 0 0 0 1000px #fff inset; -webkit-text-fill-color: #172126; caret-color: #172126; }
 
 /* Primary actions use the same states as the rest of ShopNest. */
-.loginForm .action { background: #0077b6; color: #fff; border-radius: 12px; box-shadow: none; transition: background-color 160ms ease; }
+.loginForm .action { background: #0077b6; color: #fff; border-radius: 999px; box-shadow: none; transition: background-color 160ms ease; }
 @media (hover: hover) { .loginForm .action:hover:not(:disabled) { background: #006a9b; } }
 .loginForm .action:active:not(:disabled) { background: #005b85; }
 .loginForm .action:disabled { background: #e2e8f0; color: #64748b; opacity: 1; cursor: not-allowed; }
@@ -272,3 +272,40 @@
 @media (min-width: 768px) { .shell { margin: 12px auto 24px; } }
 @media (max-width: 767px) { .authHeader { min-height: 68px; } .loginPanel { padding-top: 24px; min-height: calc(100dvh - 68px); } }
 .page { padding-top: 0; }
+
+.codeField { border: 0; padding: 0; margin: 0; min-width: 0; }
+.codeField legend { margin-bottom: 12px; color: #172126; font-size: 14px; font-weight: 600; }
+.codeInputs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.codeInputs input { width: 100%; height: 48px; padding: 0; text-align: center; border: 1px solid #cbd2e0; border-radius: 6px; background: #fff; color: #172126; font: 500 18px/1 var(--font-dm-sans), sans-serif; }
+.codeInputs input:focus-visible { outline: 2px solid #0077b6; outline-offset: 2px; }
+.codeInputs input[aria-invalid='true'] { border-color: #ea2a2a; }
+.resendCode { border: 0; padding: 0; background: transparent; color: #006a9b; font: inherit; cursor: pointer; }
+.resendCode:hover { color: #005b85; }
+.resendCode:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 360px) { .codeInputs { gap: 8px; } }
+
+.verificationEmail { color: #334155; font-weight: 600; overflow-wrap: anywhere; }
+.editEmail { display: inline-block; padding: 4px 0; color: #0077b6; font-size: 14px; font-weight: 600; line-height: 20px; text-decoration: none; white-space: nowrap; }
+.editEmail:hover { color: #005b85; text-decoration: underline; text-underline-offset: 3px; }
+.editEmail:focus-visible { outline: 2px solid #0077b6; outline-offset: 3px; border-radius: 2px; }
+
+.googleSection { width: 100%; margin-bottom: 24px; }
+.googleButton { display: flex; width: 100%; min-height: 50px; align-items: center; justify-content: center; gap: 10px; border: 1px solid #d6deec; border-radius: 999px; background: #f4f7ff; color: #495569; font: 500 14px/20px var(--font-dm-sans), sans-serif; }
+.googleButton { text-decoration: none; cursor: pointer; }
+.googleButton:hover { background: #eaf0fc; }
+.googleButton:focus-visible { outline: 2px solid #0077b6; outline-offset: 3px; }
+.googleLabel { display: flex; align-items: center; line-height: 20px; }
+.googleIcon { display: block; width: 19px; height: 19px; flex: none; background: url('../../assets/svg/google.svg') center / contain no-repeat; }
+.googleStatus { margin: 8px 0 0; color: #64748b; font-size: 12px; line-height: 18px; }
+.authDivider { display: flex; align-items: center; gap: 12px; margin-top: 20px; color: #64748b; font-size: 13px; line-height: 20px; }
+.authDivider::before, .authDivider::after { content: ''; height: 1px; flex: 1; background: #d6deec; }
+
+.linkConfirmation { display: flex; flex-direction: column; gap: 16px; width: 100%; }
+.linkConfirmButton { display: flex; align-items: center; justify-content: center; min-height: 48px; width: 100%; border: 0; border-radius: 999px; background: #0077b6; color: #fff; font: 600 15px/22px var(--font-dm-sans), sans-serif; cursor: pointer; }
+.linkConfirmButton:hover { background: #006a9b; }
+.linkConfirmButton:focus-visible, .linkDecline:focus-visible { outline: 2px solid #0077b6; outline-offset: 3px; }
+.linkDecline { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid #d6deec; border-radius: 999px; background: #fff; box-shadow: 0 2px 6px rgb(15 23 42 / 6%); color: #006a9b; font: 600 15px/22px var(--font-dm-sans), sans-serif; text-decoration: none; padding: 12px 20px; }
+.linkDecline:hover { background: #f8fafc; color: #005b85; }
+
+.linkNotice { margin: 0; color: #596b7b; font: 400 14px/21px var(--font-dm-sans), sans-serif; }
+.linkConfirmButton:disabled { cursor: wait; opacity: .7; }

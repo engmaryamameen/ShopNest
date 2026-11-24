@@ -23,6 +23,7 @@ import '@fontsource-variable/plus-jakarta-sans';
 import './globals.css';
 
 import { Providers } from './providers';
+import { AuthPageTracker } from '@/components/auth/auth-modal';
 
 export const metadata: Metadata = {
   title: 'ShopNest — Modern E-Commerce',
@@ -31,13 +32,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
+  auth,
 }: Readonly<{
   children: React.ReactNode;
+  auth: React.ReactNode;
 }>) {
   return (
     <html lang="en">
       <body className="min-h-screen bg-gray-50 font-lato antialiased">
-        <Providers>{children}</Providers>
+        <Providers><AuthPageTracker />{children}{auth}</Providers>
       </body>
     </html>
   );

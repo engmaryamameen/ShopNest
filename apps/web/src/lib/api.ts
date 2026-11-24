@@ -102,6 +102,8 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 }
 
 export const api = {
+  confirmGoogleLink: () => request<{ status: 'linked' | 'requires_signin'; returnTo?: string }>('/auth/google/link-confirm', { method: 'POST' }),
+  linkGoogle: () => request<{ returnTo: string }>('/auth/google/link', { method: 'POST' }),
   addDemoCatalog: () => request<{ result: 'created' | 'already_applied' }>('/admin/demo-catalog', { method: 'POST' }),
   // ── Auth ───────────────────────────────────────────────────────────────────
   // Request bodies and the auth response shape below are the generated
@@ -109,8 +111,11 @@ export const api = {
   // committed, CI-verified spec instead of hand-typed duplicates.
 
   register: (body: Schemas['RegisterDto']) =>
-    request<Schemas['AuthResponseDto']>('/auth/register', { method: 'POST', body }),
+    request<{ status: 'code_sent' }>('/auth/register', { method: 'POST', body }),
 
+  verifySignup: (code: string) =>
+    request<Schemas['AuthResponseDto']>('/auth/signup/verify', { method: 'POST', body: { code } }),
+  resendSignup: () => request<void>('/auth/signup/resend', { method: 'POST' }),
   login: (body: Schemas['LoginDto']) =>
     request<Schemas['AuthResponseDto']>('/auth/login', { method: 'POST', body }),
 

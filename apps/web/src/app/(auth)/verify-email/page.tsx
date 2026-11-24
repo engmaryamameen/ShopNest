@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { SignupVerification } from '@/components/auth/signup-verification';
 import { AuthShell } from '@/components/auth/auth-shell';
 import styles from '@/components/auth/auth.module.css';
 import Link from 'next/link';
@@ -66,10 +67,15 @@ function VerifyEmailContent() {
   </AuthShell>;
 }
 
+function VerificationRoute() {
+  const params = useSearchParams();
+  return params.get('signup') === '1' ? <SignupVerification /> : <VerifyEmailContent />;
+}
+
 export default function VerifyEmailPage() {
   return (
     <Suspense>
-      <VerifyEmailContent />
+      <VerificationRoute />
     </Suspense>
   );
 }

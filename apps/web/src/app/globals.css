@@ -8,18 +8,7 @@
   --danger: #dc2626;
 }
 
-/*
- * ShopNest brand system — scoped as additive design tokens so existing
- * screens (auth, admin, cart) that still use Tailwind's stock indigo/slate
- * palette are unaffected. New storefront chrome (header, drawer, menus)
- * should draw its colors exclusively from these tokens.
- *
- * brand  — deep teal-green: trust + marketplace growth, distinct from the
- *          generic indigo/violet used by most SaaS-flavored AI UIs.
- * accent — warm copper/gold: reserved for deals, badges and highlights.
- * ink    — a warm near-black (not blue-leaning slate) for high-contrast
- *          chrome such as the utility bar and drawer scrim.
- */
+/* Storefront, accent and admin color tokens. */
 @theme {
   /* Fonts */
   --font-poppins: var(--font-poppins);

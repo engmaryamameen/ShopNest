@@ -35,8 +35,7 @@ test.describe('Mobile — account journey', () => {
 
     await page.goto('/account/security');
     await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
-    await expect(page.getByText("isn't verified yet")).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Resend email' })).toBeVisible();
+    await expect(page.getByText("isn't verified yet")).not.toBeVisible();
 
     await expect(page.getByText('This device')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Revoke' }).first()).toBeVisible();
