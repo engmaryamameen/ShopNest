@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
-import { useCart, useRemoveCartItem, useApplyPromotion, useRemovePromotion, type Cart } from '@/lib/use-cart';
+import { CART_QUERY_KEY, useCart, useRemoveCartItem, useApplyPromotion, useRemovePromotion, type Cart } from '@/lib/use-cart';
 import { formatPrice } from '@/lib/format-price';
 import { isFirstPartyImageUrl } from '@/lib/is-first-party-image';
 
@@ -16,6 +17,7 @@ interface CartViewProps {
 
 export function CartView({ initialCart }: CartViewProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [isCheckingOut, startCheckoutTransition] = useTransition();
   const [promoCode, setPromoCode] = useState('');
@@ -55,6 +57,9 @@ export function CartView({ initialCart }: CartViewProps) {
         // Client-generated UUID v4 as idempotency key — stable for this attempt.
         const idempotencyKey = crypto.randomUUID();
         const order = (await api.checkout({ idempotencyKey })) as { id: string };
+        // Checkout changes the server cart. Refetch rather than assuming it is empty.
+        await queryClient.cancelQueries({ queryKey: CART_QUERY_KEY });
+        void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
         router.push(`/orders/${order.id}`);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -202,7 +207,7 @@ export function CartView({ initialCart }: CartViewProps) {
             {isCheckingOut ? 'Processing…' : 'Place Order'}
           </button>
 
-          <p className="text-xs text-gray-400 text-center mt-4">All amounts in USD</p>
+          <p className="text-xs text-gray-600 text-center mt-4">Demo checkout: payments are simulated and no money is charged. All amounts are in USD.</p>
         </div>
       </div>
     </div>

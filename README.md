@@ -2,7 +2,13 @@
 
 Catalog imports are disabled while ownership and overwrite safeguards are incomplete. Existing import history remains available, and queued runs are not processed. The worker and scheduler are off by default. Import execution can only be enabled in an isolated test process using `NODE_ENV=test` and `CATALOG_IMPORT_TEST_ENABLED=true`; this is not a production import feature.
 
-A production-grade TypeScript multivendor marketplace built with NestJS, Next.js 15, PostgreSQL, and Prisma. Demonstrates senior-level engineering decisions: concurrency-safe multi-vendor checkout, refresh token rotation with theft detection, full-text search, structural verified-purchase reviews, and a clean domain model separating canonical products from vendor-owned commercial data.
+## Fictional demo catalog
+
+For an isolated development installation, set `NODE_ENV=development` and `DEMO_CATALOG_ENABLED=true` in both API and web processes, then sign in as an existing platform administrator and open **Demo data** in the admin navigation. The action creates two fictional sellers and two fictional products; payments and orders are simulated. It creates no login accounts, does not alter roles, and does not reset previously added stock. A repeated request reports that the fixture was already applied. If a fixture name collides with existing data, the operation fails and rolls back; inspect the collision before retrying. The action is unavailable in production.
+
+To exercise vendor access, register a separate test user, apply to sell, and approve that application as an administrator. The fictional sellers created by the demo action do not have login accounts.
+
+A TypeScript marketplace built with NestJS, Next.js, PostgreSQL, and Prisma. Customers can place simulated orders, vendors manage offers, and administrators oversee the catalog and orders. See the limitations below before deploying.
 
 ## Tech Stack
 

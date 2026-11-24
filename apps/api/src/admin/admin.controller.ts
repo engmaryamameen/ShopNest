@@ -6,13 +6,21 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { Audit } from '../audit/audit.decorator';
 import { AdminService } from './admin.service';
 import { CreateAdminDto } from './dto/create-admin.dto';
+import { DemoCatalogService } from './demo-catalog.service';
 
 @ApiTags('admin')
 @ApiCookieAuth('access_token')
 @Controller('admin')
 @UseGuards(JwtAuthGuard)
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(private readonly admin: AdminService, private readonly demoCatalog: DemoCatalogService) {}
+
+  @Post('demo-catalog')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: '[Admin] Add the fictional demo catalog in an enabled development environment' })
+  addDemoCatalog() {
+    return this.demoCatalog.apply();
+  }
 
   @Get('dashboard')
   @Roles(Role.ADMIN)
