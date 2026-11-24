@@ -74,7 +74,7 @@ password, overridable via `DEMO_PASSWORD`:
 Passwords: admin's is `Admin@ShopNest2025!` (override with `ADMIN_PASSWORD`); everyone else's is
 `Demo@ShopNest2025!` (override with `DEMO_PASSWORD`).
 
-For Google sign-in configuration and account-linking behavior, see [Google sign-in](docs/google-sign-in.md).
+For authentication setup, tests and known limitations, see [Authentication](docs/authentication.md). For Google account linking, see [Google sign-in](docs/google-sign-in.md).
 
 ## Docker
 

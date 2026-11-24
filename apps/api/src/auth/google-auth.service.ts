@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { OAuth2Client } from 'google-auth-library';
+import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
@@ -42,7 +42,7 @@ export class GoogleAuthService {
     const flow: Flow = { state, nonce, verifier, returnTo: safeReturnTo(returnTo) };
     const client = new OAuth2Client(clientId, clientSecret, callback);
     const challenge = createHash('sha256').update(verifier).digest('base64url');
-    const url = client.generateAuthUrl({ response_type: 'code', scope: ['openid', 'email', 'profile'], state, nonce, code_challenge: challenge, code_challenge_method: 'S256' as never });
+    const url = client.generateAuthUrl({ response_type: 'code', scope: ['openid', 'email', 'profile'], state, nonce, code_challenge: challenge, code_challenge_method: CodeChallengeMethod.S256 });
     return { url, cookie: this.jwt.sign(flow, { expiresIn: '10m' }) };
   }
 

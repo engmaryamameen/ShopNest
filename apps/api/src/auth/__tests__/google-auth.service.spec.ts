@@ -3,7 +3,7 @@ import { GoogleAuthService, safeReturnTo } from '../google-auth.service';
 
 const getToken = jest.fn();
 const verifyIdToken = jest.fn();
-jest.mock('google-auth-library', () => ({ OAuth2Client: jest.fn().mockImplementation(() => ({
+jest.mock('google-auth-library', () => ({ CodeChallengeMethod: { S256: 'S256' }, OAuth2Client: jest.fn().mockImplementation(() => ({
   generateAuthUrl: (options: Record<string, string>) => `https://accounts.google.com/?${new URLSearchParams(options)}`,
   getToken: (...args: unknown[]) => getToken(...args),
   verifyIdToken: (...args: unknown[]) => verifyIdToken(...args),

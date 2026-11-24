@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { MailService } from '../src/mail/mail.service';
 import { SignupService } from '../src/auth/signup.service';
+import { AuthService } from '../src/auth/auth.service';
+import { generateSecureToken } from '../src/auth/token.util';
 
 const enabled = process.env.SHOPNEST_DISPOSABLE_DB === 'true' && /\/shopnest_signup_test_[a-zA-Z0-9_]+(?:\?|$)/.test(process.env.DATABASE_URL ?? '');
 (enabled ? describe : describe.skip)('signup verification', () => {
@@ -33,6 +35,15 @@ const enabled = process.env.SHOPNEST_DISPOSABLE_DB === 'true' && /\/shopnest_sig
     await expect(service.verify(challenge, captured[0])).rejects.toThrow('start signup');
   });
 
+  it('sends a code for an existing account without changing it', async () => {
+    const before = await prisma.user.findUniqueOrThrow({ where: { email } });
+    const token = await service.begin({ email, fullName: 'Different Name', password: 'DifferentPassword123!' });
+    expect(await prisma.user.findUniqueOrThrow({ where: { email } })).toEqual(before);
+    await expect(service.verify(token, captured[captured.length - 1])).rejects.toThrow('already exists');
+    expect(await prisma.user.findUniqueOrThrow({ where: { email } })).toEqual(before);
+    await expect(service.verify(token, captured[captured.length - 1])).rejects.toThrow('start signup');
+  });
+
   it('limits guesses, enforces resend cooldown and expires codes', async () => {
     const nextEmail = `attempts-${Date.now()}@example.test`;
     const token = await service.begin({ email: nextEmail, password: 'TestPassword123!' });
@@ -47,6 +58,17 @@ const enabled = process.env.SHOPNEST_DISPOSABLE_DB === 'true' && /\/shopnest_sig
     await prisma.pendingSignup.update({ where: { email: nextEmail }, data: { expiresAt: new Date(Date.now() - 1) } });
     await expect(service.verify(token, replacement)).rejects.toThrow('expired');
     expect(await prisma.user.findUnique({ where: { email: nextEmail } })).toBeNull();
+  });
+
+  it('keeps the previous code usable when resend delivery fails', async () => {
+    const nextEmail = `resend-failure-${Date.now()}@example.test`;
+    const token = await service.begin({ email: nextEmail, password: 'TestPassword123!' });
+    const code = captured[captured.length - 1];
+    await prisma.pendingSignup.update({ where: { email: nextEmail }, data: { lastSentAt: new Date(Date.now() - 61_000) } });
+    mail.sendSignupCode.mockRejectedValueOnce(new Error('SMTP unavailable'));
+    await expect(service.resend(token)).rejects.toThrow('could not send');
+    const userId = await service.verify(token, code);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: userId } })).email).toBe(nextEmail);
   });
 
   it('allows only one of two simultaneous submissions', async () => {
@@ -66,4 +88,15 @@ const enabled = process.env.SHOPNEST_DISPOSABLE_DB === 'true' && /\/shopnest_sig
     expect(await prisma.pendingSignup.findUnique({ where: { email: nextEmail } })).toBeNull();
     expect(await prisma.user.findUnique({ where: { email: nextEmail } })).toBeNull();
   });
+  it('consumes a legacy email-verification link only once under concurrent requests', async () => {
+    const nextEmail = `verify-race-${Date.now()}@example.test`;
+    const user = await prisma.user.create({ data: { email: nextEmail, passwordHash: await argon2.hash('TestPassword123!') } });
+    const token = generateSecureToken();
+    await prisma.emailVerificationToken.create({ data: { userId: user.id, tokenHash: token.hash, expiresAt: new Date(Date.now() + 60_000) } });
+    const auth = new AuthService(prisma as never, {} as never, {} as never, {} as never, {} as never);
+    const outcomes = await Promise.all([auth.verifyEmail(token.raw), auth.verifyEmail(token.raw)]);
+    expect(outcomes.sort()).toEqual(['invalid', 'verified']);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).emailVerifiedAt).not.toBeNull();
+  });
+
 });

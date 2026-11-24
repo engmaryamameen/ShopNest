@@ -24,9 +24,6 @@ export class SignupService {
   private newCode(): string { return randomInt(0, 1_000_000).toString().padStart(6, '0'); }
 
   async begin(dto: RegisterDto): Promise<string> {
-    if (await this.prisma.user.findUnique({ where: { email: dto.email }, select: { id: true } })) {
-      throw new ConflictException('An account already exists for this email. Please sign in.');
-    }
     const challenge = randomBytes(32).toString('hex');
     const code = this.newCode();
     const data = {
@@ -55,13 +52,21 @@ export class SignupService {
     if (!pending) throw new BadRequestException('Please start signup again.');
     const now = new Date();
     const code = this.newCode();
+    const nextHash = this.codeHash(challenge, code);
     const updated = await this.prisma.pendingSignup.updateMany({
-      where: { challengeHash, lastSentAt: { lte: new Date(now.getTime() - RESEND_DELAY_MS) } },
-      data: { codeHash: this.codeHash(challenge, code), expiresAt: new Date(now.getTime() + CODE_TTL_MS), lastSentAt: now, attempts: 0 },
+      where: { challengeHash, codeHash: pending.codeHash, lastSentAt: { lte: new Date(now.getTime() - RESEND_DELAY_MS) } },
+      data: { codeHash: nextHash, expiresAt: new Date(now.getTime() + CODE_TTL_MS), lastSentAt: now, attempts: 0 },
     });
     if (updated.count !== 1) throw new HttpException('Please wait a minute before requesting another code.', HttpStatus.TOO_MANY_REQUESTS);
     try { await this.mail.sendSignupCode(pending.email, code); }
-    catch { throw new ServiceUnavailableException('We could not send your verification code. Please try again.'); }
+    catch {
+      // Do not overwrite a newer code or undo a concurrent verification attempt.
+      await this.prisma.pendingSignup.updateMany({
+        where: { challengeHash, codeHash: nextHash, lastSentAt: now, attempts: 0 },
+        data: { codeHash: pending.codeHash, expiresAt: pending.expiresAt, lastSentAt: pending.lastSentAt, attempts: pending.attempts },
+      });
+      throw new ServiceUnavailableException('We could not send your verification code. Please try again.');
+    }
   }
 
   async verify(challenge: string, code: string): Promise<string> {
@@ -76,7 +81,10 @@ export class SignupService {
         await tx.pendingSignup.update({ where: { id: pending.id }, data: { attempts: { increment: 1 } } });
         return { kind: 'invalid' as const };
       }
-      if (await tx.user.findUnique({ where: { email: pending.email }, select: { id: true } })) return { kind: 'exists' as const };
+      if (await tx.user.findUnique({ where: { email: pending.email }, select: { id: true } })) {
+        await tx.pendingSignup.delete({ where: { id: pending.id } });
+        return { kind: 'exists' as const };
+      }
       const user = await tx.user.create({ data: { email: pending.email, fullName: pending.fullName, passwordHash: pending.passwordHash, emailVerifiedAt: new Date() } });
       await tx.cart.create({ data: { userId: user.id } });
       await tx.pendingSignup.delete({ where: { id: pending.id } });

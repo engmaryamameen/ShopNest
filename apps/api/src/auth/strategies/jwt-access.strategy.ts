@@ -31,10 +31,10 @@ export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt-access') 
     // suspension instantly, no blacklist needed.
     const family = await this.prisma.refreshTokenFamily.findUnique({
       where: { id: payload.familyId },
-      select: { isRevoked: true, user: { select: { status: true, role: true } } },
+      select: { userId: true, isRevoked: true, user: { select: { status: true, role: true } } },
     });
 
-    if (!family || family.isRevoked) {
+    if (!family || family.isRevoked || family.userId !== payload.sub) {
       throw new UnauthorizedException('Session has been revoked');
     }
 

@@ -50,6 +50,8 @@ import { MediaModule } from './media/media.module';
               'req.headers.cookie',
               'req.headers.authorization',
               'req.body.password',
+              'req.body.newPassword',
+              'req.body.token',
               'req.body.code',
               'req.body.passwordHash',
               'req.body.refreshToken',

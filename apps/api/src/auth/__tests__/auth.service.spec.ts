@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
@@ -33,6 +33,7 @@ function makePrismaMock() {
       create: jest.fn(),
     },
     emailVerificationToken: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
@@ -367,8 +368,8 @@ describe('AuthService', () => {
         where: { id: 'user-id' },
         data: { emailVerifiedAt: expect.any(Date) },
       });
-      expect(prisma.emailVerificationToken.update).toHaveBeenCalledWith({
-        where: { id: 'tok-1' },
+      expect(prisma.emailVerificationToken.updateMany).toHaveBeenCalledWith({
+        where: { id: 'tok-1', consumedAt: null, expiresAt: { gt: expect.any(Date) } },
         data: { consumedAt: expect.any(Date) },
       });
     });

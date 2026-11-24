@@ -1,6 +1,5 @@
 import {
   Injectable,
-  ConflictException,
   ForbiddenException,
   NotFoundException,
   UnauthorizedException,
@@ -264,13 +263,15 @@ export class AuthService {
       if (!record || record.consumedAt) return 'invalid';
       if (record.expiresAt < new Date()) return 'expired';
 
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${record.userId}::uuid FOR UPDATE`;
       const user = await tx.user.findUnique({ where: { id: record.userId } });
       if (!user) return 'invalid';
 
-      await tx.emailVerificationToken.update({
-        where: { id: record.id },
+      const consumed = await tx.emailVerificationToken.updateMany({
+        where: { id: record.id, consumedAt: null, expiresAt: { gt: new Date() } },
         data: { consumedAt: new Date() },
       });
+      if (consumed.count !== 1) return 'invalid';
 
       if (user.emailVerifiedAt) return 'already-verified';
 
