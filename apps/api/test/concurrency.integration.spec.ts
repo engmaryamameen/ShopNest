@@ -173,19 +173,23 @@ describe('Concurrent checkout — inventory race protection', () => {
   let user1Cookies: Cookies;
   let user2Cookies: Cookies;
   let productSlug: string;
+  let productId: string;
+  let offerId: string;
 
   beforeAll(async () => {
     const adminCookies = await createAdminSession('chk');
 
     const categoryId = await createCategory(adminCookies, `ChkCat-${run}`, `chk-cat-${run}`);
     productSlug = `race-product-${run}`;
-    const { offerId } = await createProduct(adminCookies, {
+    const product = await createProduct(adminCookies, {
       name: `RaceProduct-${run}`,
       slug: productSlug,
       priceCents: 1000,
       stockQuantity: 1, // exactly 1 unit — only one buyer can win
       categoryId,
     });
+    productId = product.id;
+    offerId = product.offerId;
 
     user1Cookies = await register(`buyer1-${run}@test.local`);
     user2Cookies = await register(`buyer2-${run}@test.local`);
@@ -199,6 +203,23 @@ describe('Concurrent checkout — inventory race protection', () => {
       await api('/cart/items', { method: 'PUT', body: { vendorOfferId: offerId, quantity: 1 }, cookies: user2Cookies }),
       'buyer2 add to cart',
     );
+  });
+
+  it.each(['product', 'vendor', 'offer'] as const)('rejects a cart when its %s becomes unavailable', async (kind) => {
+    const offer = await prisma.vendorOffer.findUniqueOrThrow({ where: { id: offerId } });
+    try {
+      if (kind === 'product') await prisma.product.update({ where: { id: productId }, data: { publishStatus: 'ARCHIVED' } });
+      if (kind === 'vendor') await prisma.vendor.update({ where: { id: offer.vendorId }, data: { status: 'SUSPENDED' } });
+      if (kind === 'offer') await prisma.vendorOffer.update({ where: { id: offerId }, data: { status: 'INACTIVE' } });
+      const response = await api('/orders/checkout', { method: 'POST', body: { idempotencyKey: randomUUID() }, cookies: user1Cookies });
+      expect(response.status).toBe(400);
+      expect((await response.json() as { message: string }).message).toContain('no longer available');
+      expect((await prisma.vendorOffer.findUniqueOrThrow({ where: { id: offerId } })).stockQuantity).toBe(1);
+    } finally {
+      if (kind === 'product') await prisma.product.update({ where: { id: productId }, data: { publishStatus: 'PUBLISHED' } });
+      if (kind === 'vendor') await prisma.vendor.update({ where: { id: offer.vendorId }, data: { status: 'APPROVED' } });
+      if (kind === 'offer') await prisma.vendorOffer.update({ where: { id: offerId }, data: { status: 'ACTIVE' } });
+    }
   });
 
   it('only one of two simultaneous checkouts succeeds when stock = 1', async () => {
@@ -356,6 +377,13 @@ describe('Multi-vendor checkout', () => {
       stockQuantity: 1,
     });
 
+    // IDs are deliberately exchanged to test server-side tenant boundaries.
+    for (const [actor, otherOffer] of [[vendorA.ownerCookies, offerB], [vendorB.ownerCookies, offerA]] as const) {
+      expect((await api(`/vendor/offers/${otherOffer}`, { method: 'PATCH', body: { priceCents: 1 }, cookies: actor })).status).toBe(404);
+      expect((await api(`/vendor/offers/${otherOffer}/inventory`, { method: 'PATCH', body: { delta: 1, reason: 'RESTOCK' }, cookies: actor })).status).toBe(404);
+      expect((await api(`/vendor/offers/${otherOffer}/inventory`, { cookies: actor })).status).toBe(404);
+    }
+
     // One buyer, both vendors' offers in the same cart.
     const buyerCookies = await register(`mv-buyer-${run}@test.local`);
     await assertOk(
@@ -374,10 +402,15 @@ describe('Multi-vendor checkout', () => {
     });
     expect(checkoutRes.status).toBe(201);
     const order = (await checkoutRes.json()) as {
-      data: { vendorOrders: Array<{ vendor: { id: string } }> };
+      data: { vendorOrders: Array<{ id: string; vendor: { id: string } }> };
     };
     const vendorIds = order.data.vendorOrders.map((vo) => vo.vendor.id).sort();
     expect(vendorIds).toEqual([vendorA.vendorId, vendorB.vendorId].sort());
+    for (const [actor, otherVendorId] of [[vendorA.ownerCookies, vendorB.vendorId], [vendorB.ownerCookies, vendorA.vendorId]] as const) {
+      const otherOrder = order.data.vendorOrders.find((entry) => entry.vendor.id === otherVendorId)!;
+      expect((await api(`/vendor/orders/${otherOrder.id}`, { cookies: actor })).status).toBe(404);
+      expect((await api(`/vendor/orders/${otherOrder.id}/status`, { method: 'PATCH', body: { status: 'CONFIRMED' }, cookies: actor })).status).toBe(404);
+    }
 
     // Separately: two more buyers race for a single unit of a fresh
     // vendor-A offer — deterministic lock ordering across vendors (used
