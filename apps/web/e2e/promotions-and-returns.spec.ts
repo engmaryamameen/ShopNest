@@ -31,7 +31,7 @@ test.describe('Promotions and returns', () => {
       headers: { Origin: 'http://localhost:3000' },
       data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
-    expect(loginRes.ok()).toBeTruthy();
+    expect(loginRes.ok(), `Admin login failed (${loginRes.status()}): ${await loginRes.text()}`).toBeTruthy();
 
     const code = uniqueCode('E2ECART');
     const promoRes = await admin.post('/admin/promotions', {
@@ -103,7 +103,7 @@ test.describe('Promotions and returns', () => {
       headers: { Origin: 'http://localhost:3000' },
       data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
     });
-    expect(loginRes.ok()).toBeTruthy();
+    expect(loginRes.ok(), `Admin login failed (${loginRes.status()}): ${await loginRes.text()}`).toBeTruthy();
     for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) {
       const res = await admin.patch(`/admin/orders/${orderId}/status`, {
         headers: { Origin: 'http://localhost:3000' },
