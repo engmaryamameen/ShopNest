@@ -2,11 +2,12 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Image from 'next/image';
+import { AuthShell } from '@/components/auth/auth-shell';
+import styles from '@/components/auth/auth.module.css';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
 
-type Status = 'verifying' | 'verified' | 'already-verified' | 'invalid' | 'expired';
+type Status = 'verifying' | 'verified' | 'already-verified' | 'invalid' | 'expired' | 'unavailable';
 
 function VerifyEmailContent() {
   const params = useSearchParams();
@@ -31,7 +32,7 @@ function VerifyEmailContent() {
         if (err instanceof ApiError && err.status === 400) {
           setStatus(err.message.toLowerCase().includes('expired') ? 'expired' : 'invalid');
         } else {
-          setStatus('invalid');
+          setStatus('unavailable');
         }
       });
 
@@ -52,43 +53,17 @@ function VerifyEmailContent() {
       title: 'This link has expired',
       body: 'Verification links last 24 hours. Request a new one from your account security page.',
     },
+    unavailable: { title: 'We couldn’t verify your email', body: 'Please try opening the link again later.' },
   };
 
   const { title, body } = copy[status];
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-6 py-12">
-      <div className="w-full max-w-md text-center">
-        <Image src="/login.avif" alt="ShopNest logo" width={64} height={64} className="mx-auto mb-6 rounded-xl" />
-
-        {status === 'verifying' ? (
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-        ) : (
-          <div
-            className={`mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full ${
-              status === 'verified' || status === 'already-verified'
-                ? 'bg-green-100 text-green-600'
-                : 'bg-red-100 text-red-600'
-            }`}
-          >
-            {status === 'verified' || status === 'already-verified' ? '✓' : '!'}
-          </div>
-        )}
-
-        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-        <p className="mt-2 text-gray-600">{body}</p>
-
-        {status !== 'verifying' && (
-          <Link
-            href="/shop"
-            className="mt-8 inline-block bg-indigo-600 text-white py-2.5 px-6 rounded-lg font-medium hover:bg-indigo-700 transition-colors"
-          >
-            Continue to ShopNest
-          </Link>
-        )}
-      </div>
+  return <AuthShell title={title} description={body}>
+    <div role="status" aria-live="polite">
+      {(status === 'invalid' || status === 'expired') && <Link href="/account/security" className={styles.link}>Request a new link</Link>}
+      {(status === 'verified' || status === 'already-verified') && <Link href="/shop" className={styles.link}>Continue to ShopNest</Link>}
     </div>
-  );
+  </AuthShell>;
 }
 
 export default function VerifyEmailPage() {

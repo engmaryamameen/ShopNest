@@ -9,6 +9,7 @@ import { expect } from '@playwright/test';
  * (redirect follows) and a validation failure (no redirect, error shown). */
 export async function registerViaUI(page: Page, email: string, password: string): Promise<void> {
   await page.goto('/register');
+  await page.fill('#fullName', 'Alex Morgan');
   await page.fill('#email', email);
   await page.fill('#password', password);
   await page.fill('#confirm', password);

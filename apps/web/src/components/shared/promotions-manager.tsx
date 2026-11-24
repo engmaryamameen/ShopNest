@@ -73,7 +73,7 @@ export function PromotionsManager({ promotions, scope }: PromotionsManagerProps)
       {!showForm && (
         <button
           onClick={() => setShowForm(true)}
-          className="mb-6 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+          className="mb-6 px-4 py-2 shopnest-primary rounded-lg font-medium  transition-colors"
         >
           + New promotion
         </button>
@@ -186,7 +186,7 @@ export function PromotionsManager({ promotions, scope }: PromotionsManagerProps)
           </div>
 
           <div className="col-span-2 flex gap-3">
-            <button type="submit" disabled={isPending} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors">
+            <button type="submit" disabled={isPending} className="px-6 py-2 shopnest-primary rounded-lg font-medium  disabled:opacity-60 transition-colors">
               {isPending ? 'Creating…' : 'Create promotion'}
             </button>
             <button type="button" onClick={() => { setShowForm(false); setError(null); }} className="px-6 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors">

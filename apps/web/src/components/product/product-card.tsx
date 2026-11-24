@@ -142,7 +142,7 @@ export function ProductCard({
             type="button"
             onClick={handleAddToCart}
             disabled={isPending}
-            className="absolute inset-x-0 bottom-0 translate-y-full cursor-pointer bg-black px-4 py-3 text-sm font-medium text-white transition-transform duration-300 group-hover:translate-y-0 group-focus-within:translate-y-0 disabled:cursor-wait disabled:opacity-70"
+            className="absolute inset-x-0 bottom-0 translate-y-full cursor-pointer shopnest-primary px-4 py-3 text-sm font-medium transition-transform duration-300 group-hover:translate-y-0 group-focus-within:translate-y-0 disabled:cursor-wait disabled:opacity-70"
           >
             {isPending ? 'Adding…' : 'Add to cart'}
           </button>

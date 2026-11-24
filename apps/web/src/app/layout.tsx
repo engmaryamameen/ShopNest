@@ -14,6 +14,8 @@ import '@fontsource/lato/300-italic.css';
 import '@fontsource/lato/400-italic.css';
 import '@fontsource/lato/700-italic.css';
 import '@fontsource/lato/900-italic.css';
+import '@fontsource-variable/dm-sans';
+import '@fontsource-variable/playwrite-au-sa';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/nunito';
 import '@fontsource-variable/plus-jakarta-sans';

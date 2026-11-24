@@ -75,7 +75,7 @@ export class AuthService {
     // User and cart are created atomically so the system can never have a user
     // without a cart (which would cause checkout to fail with "Cart not found").
     const user = await this.prisma.$transaction(async (tx) => {
-      const u = await tx.user.create({ data: { email: dto.email, passwordHash } });
+      const u = await tx.user.create({ data: { email: dto.email, passwordHash, fullName: dto.fullName } });
       await tx.cart.create({ data: { userId: u.id } });
       return u;
     });

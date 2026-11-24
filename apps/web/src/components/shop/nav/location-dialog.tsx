@@ -209,7 +209,7 @@ export function LocationDialog({ open, currentLocation, onClose, onSave }: Locat
             type="button"
             onClick={useCurrentLocation}
             disabled={status === 'locating'}
-            className={`flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 active:scale-[.99] disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+            className={`flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl shopnest-primary px-4 text-sm font-semibold transition active:scale-[.99] disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
           >
             <MapPinIcon className="h-[18px] w-[18px]" />
             {status === 'locating'

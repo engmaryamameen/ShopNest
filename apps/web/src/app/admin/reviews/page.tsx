@@ -28,19 +28,19 @@ export default async function AdminReviewsPage({
       <div className="flex gap-2 mb-6 text-sm">
         <a
           href="/admin/reviews"
-          className={`px-3 py-1.5 rounded-lg ${!status ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          className={`px-3 py-1.5 rounded-lg ${!status ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           All
         </a>
         <a
           href="/admin/reviews?status=PUBLISHED"
-          className={`px-3 py-1.5 rounded-lg ${status === 'PUBLISHED' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          className={`px-3 py-1.5 rounded-lg ${status === 'PUBLISHED' ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           Published
         </a>
         <a
           href="/admin/reviews?status=HIDDEN"
-          className={`px-3 py-1.5 rounded-lg ${status === 'HIDDEN' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          className={`px-3 py-1.5 rounded-lg ${status === 'HIDDEN' ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           Hidden
         </a>
@@ -89,7 +89,7 @@ export default async function AdminReviewsPage({
             <a
               key={p}
               href={`/admin/reviews?page=${p}${status ? `&status=${status}` : ''}`}
-              className={`px-3 py-1.5 rounded-lg ${p === page ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              className={`px-3 py-1.5 rounded-lg ${p === page ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
             >
               {p}
             </a>

@@ -1,75 +1,33 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { AuthShell } from '@/components/auth/auth-shell';
+import { AuthField, Feedback, PrimaryButton } from '@/components/auth/auth-fields';
+import styles from '@/components/auth/auth.module.css';
+import { ToastMessage } from '@/components/ui/toast';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState(false);
   const [isPending, startTransition] = useTransition();
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError(false);
     startTransition(async () => {
-      // The API always responds the same way regardless of whether the
-      // email is registered — the UI must too, or the "generic response"
-      // anti-enumeration design on the backend would be undone here.
-      await api.forgotPassword({ email }).catch(() => {});
-      setSubmitted(true);
+      try { await api.forgotPassword({ email }); setSubmitted(true); }
+      catch { setError(true); }
     });
   }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-6 py-12">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <Image src="/login.avif" alt="ShopNest logo" width={64} height={64} className="mx-auto mb-4 rounded-xl" />
-          <h2 className="text-3xl font-bold text-gray-900">Reset your password</h2>
-          <p className="mt-2 text-gray-600">We&apos;ll email you a link to choose a new one</p>
-        </div>
-
-        {submitted ? (
-          <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-4 rounded-lg text-sm text-center">
-            If an account exists for <strong>{email}</strong>, a reset link is on its way. The
-            link expires in 1 hour.
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email address
-              </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                placeholder="you@example.com"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isPending}
-              className="w-full bg-indigo-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-            >
-              {isPending ? 'Sending…' : 'Send reset link'}
-            </button>
-          </form>
-        )}
-
-        <p className="mt-6 text-center text-sm text-gray-600">
-          Remembered it after all?{' '}
-          <Link href="/login" className="text-indigo-600 font-medium hover:text-indigo-700">
-            Sign in
-          </Link>
-        </p>
-      </div>
-    </div>
-  );
+  return <AuthShell title="Forgot your password?" description="Enter the email address registered with your account. We'll send you a link to reset your password.">
+    {submitted ? <Feedback kind="success">If an account exists for this email address, you’ll receive a password reset link.</Feedback> :
+      <form onSubmit={handleSubmit} className={`${styles.form} ${styles.loginForm}`}>
+        {error && <ToastMessage message="We couldn’t send your request. Please try again." />}
+        <AuthField id="email" label="Email address" type="email" autoComplete="email" spellCheck={false} required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email address" />
+        <PrimaryButton disabled={isPending}>{isPending ? 'Sending…' : 'Send reset link'}</PrimaryButton>
+      </form>}
+    <p className={`${styles.secondary} ${styles.recoveryPrompt}`}>Remembered password? <Link href="/login" className={styles.Link} >Login to your account</Link></p>
+  </AuthShell>;
 }

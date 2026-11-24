@@ -107,7 +107,9 @@ describe('AuthService', () => {
       prisma.cart.create.mockResolvedValue({ id: 'cart-id' });
       prisma.refreshTokenFamily.create.mockResolvedValue({ id: 'family-id' });
 
-      const result = await service.register({ email: 'test@example.com', password: 'validpassword123' });
+      const result = await service.register({ fullName: 'Alex Morgan', email: 'test@example.com', password: 'validpassword123' });
+
+      expect(prisma.user.create).toHaveBeenCalledWith({ data: expect.objectContaining({ fullName: 'Alex Morgan' }) });
 
       expect(prisma.cart.create).toHaveBeenCalledWith({ data: { userId: 'user-id' } });
       expect(result.userId).toBe('user-id');

@@ -29,7 +29,7 @@ export default async function AdminVendorsPage({
       <div className="flex gap-2 mb-6 text-sm">
         <a
           href="/admin/vendors"
-          className={`px-3 py-1.5 rounded-lg ${!status ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          className={`px-3 py-1.5 rounded-lg ${!status ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           All
         </a>
@@ -37,7 +37,7 @@ export default async function AdminVendorsPage({
           <a
             key={t}
             href={`/admin/vendors?status=${t}`}
-            className={`px-3 py-1.5 rounded-lg ${status === t ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            className={`px-3 py-1.5 rounded-lg ${status === t ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
           >
             {t[0] + t.slice(1).toLowerCase()}
           </a>

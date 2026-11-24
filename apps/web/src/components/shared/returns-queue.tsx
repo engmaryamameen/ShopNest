@@ -94,7 +94,7 @@ export function ReturnsQueue({ returns, scope, showVendor = false }: ReturnsQueu
                     <button
                       onClick={() => decide('approve', r.id)}
                       disabled={isPending && decidingId === r.id}
-                      className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-60"
+                      className="px-3 py-1.5 shopnest-primary rounded-lg text-xs font-medium  disabled:opacity-60"
                     >
                       Approve
                     </button>
