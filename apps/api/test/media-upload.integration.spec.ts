@@ -11,9 +11,13 @@ const prisma = new PrismaClient();
 let app: INestApplication;
 let base: string;
 let uploadDir: string;
+let testUserId: string | undefined;
 const origin = process.env.WEB_URL ?? 'http://localhost:3000';
 
 beforeAll(async () => {
+  if (process.env.SHOPNEST_DISPOSABLE_DB !== 'true' || process.env.NODE_ENV !== 'test') {
+    throw new Error('Media integration tests require an explicitly designated disposable database.');
+  }
   uploadDir = await mkdtemp(join(tmpdir(), 'shopnest-upload-test-'));
   process.env.MEDIA_UPLOAD_DIR = uploadDir;
   process.env.CATALOG_WORKER_ENABLED = 'false';
@@ -26,6 +30,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
+  if (testUserId) await prisma.user.deleteMany({ where: { id: testUserId } });
   await prisma.$disconnect();
   if (uploadDir) await rm(uploadDir, { recursive: true, force: true });
 });
@@ -43,10 +48,11 @@ it('authorizes multipart uploads and validates their actual contents', async () 
   expect([401, 403]).toContain(unauthenticated.status);
 
   const email = `upload-${randomUUID()}@example.test`;
-  const password = 'SyntheticAccessPassword123!';
+  const password = `Test-${randomUUID()}-aA1!`;
   const headers = { 'content-type': 'application/json', origin };
   const registered = await fetch(`${base}/auth/register`, { method: 'POST', headers, body: JSON.stringify({ email, password }) });
   expect(registered.status).toBe(201);
+  testUserId = (await prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } })).id;
   const customerCookies = registered.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const customer = await fetch(`${base}/admin/media/upload`, {
     method: 'POST', headers: { origin, cookie: customerCookies }, body: uploadBody(pngBuffer(), 'image/png'),
