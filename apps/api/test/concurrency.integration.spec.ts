@@ -15,6 +15,7 @@ import type { INestApplication } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { createApp } from '../src/main';
+import { SYSTEM_VENDOR_NAME, SYSTEM_VENDOR_SLUG } from '../src/catalog/system-vendor.constants';
 
 const WEB_ORIGIN = process.env.WEB_URL ?? 'http://localhost:3000';
 const run = `${Date.now()}`;
@@ -29,6 +30,13 @@ beforeAll(async () => {
   // while assertions run — disabled for this process only.
   process.env.CATALOG_WORKER_ENABLED = 'false';
   process.env.CATALOG_SCHEDULE_ENABLED = 'false';
+
+  // Admin-authored products need a platform vendor even on a fresh test database.
+  await prisma.vendor.upsert({
+    where: { slug: SYSTEM_VENDOR_SLUG },
+    update: {},
+    create: { slug: SYSTEM_VENDOR_SLUG, name: SYSTEM_VENDOR_NAME, status: 'APPROVED', contactEmail: 'platform@example.test' },
+  });
 
   app = await createApp();
   await app.listen(0); // ephemeral port — never collides across parallel runs

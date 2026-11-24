@@ -23,6 +23,7 @@ afterAll(async () => {
 
 function makeConfig(overrides: Record<string, unknown> = {}) {
   const values: Record<string, unknown> = {
+    'app.catalogImportEnabled': true,
     'app.catalogWorkerLeaseSeconds': 300,
     'app.catalogImportBatchSize': 2,
     ...overrides,
@@ -60,6 +61,20 @@ async function createRun(overrides: Partial<{
 }
 
 describe('Catalog import — real-database worker and checkpoint behavior', () => {
+  it('leaves a queued run and its lease untouched when imports are disabled', async () => {
+    const run = await createRun();
+    const disabled = makeConfig({ 'app.catalogImportEnabled': false });
+    const adapter = makeStubAdapter([]);
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), disabled);
+    const worker = new CatalogImportWorker(prisma as never, service, disabled);
+    await worker.poll();
+    const result = await prisma.catalogImportRun.findUniqueOrThrow({ where: { id: run.id } });
+    expect(result.status).toBe(CatalogImportStatus.QUEUED);
+    expect(result.attemptCount).toBe(run.attemptCount);
+    expect(result.lockedAt).toBeNull();
+    await expect(service.executeRun(run.id)).rejects.toThrow('Catalog imports are disabled');
+  });
+
   afterEach(async () => {
     // This runs against the real shared dev database (not an ephemeral
     // per-test one), so cleanup must be scoped to exactly what this suite

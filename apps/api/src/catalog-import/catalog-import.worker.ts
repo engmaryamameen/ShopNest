@@ -19,6 +19,7 @@ export class CatalogImportWorker implements OnApplicationBootstrap, OnApplicatio
   ) {}
 
   onApplicationBootstrap() {
+    if (this.config.get<boolean>('app.catalogImportEnabled') !== true) return;
     if (!this.config.get<boolean>('app.catalogWorkerEnabled', true)) return;
     const intervalMs = this.config.get<number>('app.catalogWorkerPollMs', 2000);
     void this.poll();
@@ -31,6 +32,7 @@ export class CatalogImportWorker implements OnApplicationBootstrap, OnApplicatio
   }
 
   async poll(): Promise<void> {
+    if (this.config.get<boolean>('app.catalogImportEnabled') !== true) return;
     if (this.polling) return;
     this.polling = true;
     try {

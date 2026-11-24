@@ -10,13 +10,16 @@ export default registerAs('app', () => ({
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '30d',
   refreshGracePeriodMs: parseInt(process.env.REFRESH_GRACE_PERIOD_MS ?? '30000', 10),
   cartMaxQuantityPerProduct: parseInt(process.env.CART_MAX_QTY_PER_PRODUCT ?? '10', 10),
+  // Imports can overwrite manual catalog and inventory edits. Keep them
+  // disabled until ownership and conflict handling are implemented.
+  catalogImportEnabled: process.env.NODE_ENV === 'test' && process.env.CATALOG_IMPORT_TEST_ENABLED === 'true',
   catalogImportUrl: process.env.CATALOG_IMPORT_URL ?? 'https://dummyjson.com',
   catalogImportTimeoutMs: parseInt(process.env.CATALOG_IMPORT_TIMEOUT_MS ?? '5000', 10),
-  catalogWorkerEnabled: process.env.CATALOG_WORKER_ENABLED !== 'false',
+  catalogWorkerEnabled: process.env.CATALOG_WORKER_ENABLED === 'true',
   catalogWorkerPollMs: parseInt(process.env.CATALOG_WORKER_POLL_MS ?? '2000', 10),
   catalogWorkerLeaseSeconds: parseInt(process.env.CATALOG_WORKER_LEASE_SECONDS ?? '300', 10),
   catalogImportBatchSize: parseInt(process.env.CATALOG_IMPORT_BATCH_SIZE ?? '25', 10),
-  catalogScheduleEnabled: process.env.CATALOG_SCHEDULE_ENABLED !== 'false',
+  catalogScheduleEnabled: process.env.CATALOG_SCHEDULE_ENABLED === 'true',
   catalogScheduleIntervalMs: parseInt(process.env.CATALOG_SCHEDULE_INTERVAL_MS ?? '21600000', 10),
   // Open Food Facts — open, keyless, real (see OpenFoodFactsAdapter). No
   // pricing data; imports from this source land as DRAFT/offer-less
