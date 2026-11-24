@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { VendorStatusActions } from '@/components/admin/vendor-status-actions';
 
@@ -27,12 +28,12 @@ export default async function AdminVendorsPage({
       <h1 className="text-3xl font-bold text-gray-900 mb-6">Vendors</h1>
 
       <div className="flex gap-2 mb-6 text-sm">
-        <a
+        <Link
           href="/admin/vendors"
           className={`px-3 py-1.5 rounded-lg ${!status ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           All
-        </a>
+        </Link>
         {tabs.map((t) => (
           <a
             key={t}

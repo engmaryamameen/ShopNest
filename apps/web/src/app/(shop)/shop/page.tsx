@@ -32,7 +32,9 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
       <section role="alert" className="mx-auto max-w-xl py-12">
         <h1 className="text-2xl font-semibold text-gray-900">Shop is temporarily unavailable</h1>
         <p className="mt-3 text-gray-600">We couldn’t load products right now. Please try again.</p>
-        <a href="/shop" className="mt-5 inline-block rounded-md bg-sky-700 px-4 py-2 font-medium text-white">Try again</a>
+        <form action="/shop" method="get">
+          <button type="submit" className="mt-5 inline-block rounded-md bg-sky-700 px-4 py-2 font-medium text-white">Try again</button>
+        </form>
       </section>
     );
   }

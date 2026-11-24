@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { ReviewModerationActions } from '@/components/admin/review-moderation-actions';
 
@@ -26,24 +27,24 @@ export default async function AdminReviewsPage({
       <h1 className="text-3xl font-bold text-gray-900 mb-6">Reviews</h1>
 
       <div className="flex gap-2 mb-6 text-sm">
-        <a
+        <Link
           href="/admin/reviews"
           className={`px-3 py-1.5 rounded-lg ${!status ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           All
-        </a>
-        <a
+        </Link>
+        <Link
           href="/admin/reviews?status=PUBLISHED"
           className={`px-3 py-1.5 rounded-lg ${status === 'PUBLISHED' ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           Published
-        </a>
-        <a
+        </Link>
+        <Link
           href="/admin/reviews?status=HIDDEN"
           className={`px-3 py-1.5 rounded-lg ${status === 'HIDDEN' ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
         >
           Hidden
-        </a>
+        </Link>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

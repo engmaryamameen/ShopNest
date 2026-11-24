@@ -2,12 +2,14 @@ import { INestApplication } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { createApp } from '../src/main';
+import { captureSignupCodes, registerTestUser } from './signup-helper';
 
 const prisma = new PrismaClient();
 const originalEnv = { ...process.env };
 let app: INestApplication;
 let base: string;
 let testUserId: string | undefined;
+let signupCodes: Map<string, string>;
 
 beforeAll(async () => {
   if (process.env.NODE_ENV !== 'test' || process.env.SHOPNEST_DISPOSABLE_DB !== 'true') throw new Error('A designated disposable test database is required.');
@@ -16,6 +18,7 @@ beforeAll(async () => {
   process.env.CATALOG_WORKER_ENABLED = 'false';
   process.env.CATALOG_SCHEDULE_ENABLED = 'false';
   app = await createApp();
+  signupCodes = captureSignupCodes(app);
   await app.listen(0);
   const address = app.getHttpServer().address();
   base = `http://127.0.0.1:${address.port}`;
@@ -31,7 +34,7 @@ it('requires authentication and the administrator role on the actual endpoint', 
 
   const email = `demo-access-${randomUUID()}@example.test`;
   const password = `Test-${randomUUID()}-aA1!`;
-  const registered = await fetch(`${base}/auth/register`, { method: 'POST', headers, body: JSON.stringify({ email, password }) });
+  const registered = await registerTestUser(base, origin, email, password, signupCodes);
   expect(registered.status).toBe(201);
   testUserId = (await prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } })).id;
   const customerCookies = registered.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
