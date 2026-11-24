@@ -29,6 +29,18 @@ describe('CreateProductDto — imageUrl origin policy', () => {
     expect(await validate(dto)).toHaveLength(0);
   });
 
+  it('accepts a local upload URL on the configured API origin', async () => {
+    process.env.MEDIA_PUBLIC_BASE_URL = 'http://localhost:3001';
+    jest.resetModules();
+    const { CreateProductDto: LocalProductDto } = await import('../create-product.dto');
+    const dto = plainToInstance(LocalProductDto, { ...BASE, imageUrl: 'http://localhost:3001/uploads/a.png' });
+    try {
+      expect(await validate(dto)).toHaveLength(0);
+    } finally {
+      process.env.MEDIA_PUBLIC_BASE_URL = 'https://media.shopnest.example';
+    }
+  });
+
   it('accepts omitting imageUrl entirely', async () => {
     const dto = plainToInstance(CreateProductDto, { ...BASE });
     expect(await validate(dto)).toHaveLength(0);

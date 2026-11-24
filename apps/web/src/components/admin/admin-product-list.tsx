@@ -72,9 +72,10 @@ export function AdminProductList({ products, categories }: AdminProductListProps
     setFormError(null);
     startTransition(async () => {
       try {
-        const body = { ...form, priceCents: Number(form.priceCents), stockQuantity: Number(form.stockQuantity) };
+        const { isActive, imageUrl, ...fields } = form;
+        const body = { ...fields, ...(imageUrl ? { imageUrl } : {}), priceCents: Number(form.priceCents), stockQuantity: Number(form.stockQuantity) };
         if (editingProduct) {
-          await api.adminUpdateProduct(editingProduct.id, body);
+          await api.adminUpdateProduct(editingProduct.id, { ...body, isActive });
         } else {
           await api.adminCreateProduct(body);
         }
@@ -196,7 +197,7 @@ export function AdminProductList({ products, categories }: AdminProductListProps
               </p>
             )}
             <div className="col-span-2 flex gap-3">
-              <button type="submit" disabled={isPending}
+              <button type="submit" disabled={isPending || isUploading}
                 className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors">
                 {isPending ? 'Saving…' : editingProduct ? 'Save Changes' : 'Create Product'}
               </button>
