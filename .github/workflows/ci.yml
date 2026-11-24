@@ -52,6 +52,9 @@ jobs:
       JWT_REFRESH_SECRET: integration-test-refresh-secret-12345678
       WEB_URL: http://localhost:3000
       NODE_ENV: test
+      SHOPNEST_DISPOSABLE_DB: 'true'
+      CATALOG_WORKER_ENABLED: 'false'
+      CATALOG_SCHEDULE_ENABLED: 'false'
 
     steps:
       - uses: actions/checkout@v4
@@ -83,7 +86,7 @@ jobs:
         run: pnpm exec prisma migrate deploy
 
       - name: Run API integration tests (concurrency suite, ephemeral Postgres)
-        run: pnpm --filter @shopnest/api test:e2e
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand
 
       - name: Verify generated types are committed
         run: test -s packages/api-client/src/types.ts
