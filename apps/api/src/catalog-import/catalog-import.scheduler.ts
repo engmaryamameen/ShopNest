@@ -15,6 +15,7 @@ export class CatalogImportScheduler implements OnApplicationBootstrap, OnApplica
   ) {}
 
   onApplicationBootstrap() {
+    if (this.config.get<boolean>('app.catalogImportEnabled') !== true) return;
     if (!this.config.get<boolean>('app.catalogScheduleEnabled', true)) return;
     const intervalMs = this.config.get<number>('app.catalogScheduleIntervalMs', 21_600_000);
     this.initialTimer = setTimeout(() => void this.enqueue(), 5_000);

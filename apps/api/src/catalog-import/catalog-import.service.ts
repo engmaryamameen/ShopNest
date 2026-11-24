@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CatalogImportStatus, CatalogSource, OfferStatus, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -53,7 +53,14 @@ export class CatalogImportService {
     private readonly config: ConfigService,
   ) {}
 
+  private assertImportEnabled(): void {
+    if (this.config.get<boolean>('app.catalogImportEnabled') !== true) {
+      throw new ServiceUnavailableException('Catalog imports are disabled while ownership safeguards are being completed.');
+    }
+  }
+
   async enqueue(source: CatalogSource, scope: ImportScope = {}) {
+    this.assertImportEnabled();
     try {
       return await this.prisma.catalogImportRun.create({
         data: {
@@ -77,6 +84,7 @@ export class CatalogImportService {
    * because nothing is mutated. Safe to call as often as an admin wants
    * while tuning scope filters before committing to `enqueue`. */
   async preview(source: CatalogSource, scope: ImportScope = {}): Promise<ImportPreview> {
+    this.assertImportEnabled();
     const { products: discovered, skippedCount } = await this.registry.resolve(source).fetchProducts();
     const scoped = this.applyScope(discovered, scope);
 
@@ -123,6 +131,7 @@ export class CatalogImportService {
    * for the whole catalog — bounds lock/connection time per batch, and
    * makes a crash/reclaim/retry resumable via processedCount. */
   async executeRun(runId: string) {
+    this.assertImportEnabled();
     const run = await this.prisma.catalogImportRun.findUniqueOrThrow({ where: { id: runId } });
     const source = run.source;
     const { products: discovered, skippedCount } = await this.registry.resolve(source).fetchProducts();

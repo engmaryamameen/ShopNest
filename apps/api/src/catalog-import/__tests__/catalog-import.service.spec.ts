@@ -121,10 +121,21 @@ function makePrismaMock(runOverrides: Record<string, unknown> = {}) {
  * assertions simple; the dedicated batching/checkpointing suite below
  * overrides it to a small number specifically to force multiple batches. */
 function makeConfigMock(batchSize = 100) {
-  return { get: jest.fn(() => batchSize) } as never;
+  return { get: jest.fn((key: string) => key === 'app.catalogImportEnabled' ? true : batchSize) } as never;
 }
 
 describe('CatalogImportService', () => {
+  it('blocks preview, enqueue and execution before any external or database work when disabled', async () => {
+    const prisma = makePrismaMock();
+    const adapter = { fetchProducts: jest.fn() };
+    const service = new CatalogImportService(prisma as never, makeRegistry(adapter as never), { get: jest.fn().mockReturnValue(false) } as never);
+    await expect(service.preview(CatalogSource.DUMMY_JSON)).rejects.toThrow('Catalog imports are disabled');
+    await expect(service.enqueue(CatalogSource.DUMMY_JSON)).rejects.toThrow('Catalog imports are disabled');
+    await expect(service.executeRun('queued-run')).rejects.toThrow('Catalog imports are disabled');
+    expect(adapter.fetchProducts).not.toHaveBeenCalled();
+    expect(prisma.catalogImportRun.create).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
   it('creates a canonical product, its image, and a system-vendor VendorOffer — never writes Product commercial fields as the source of truth', async () => {
     const prisma = makePrismaMock();
     const adapter: CatalogSourceAdapter = {
