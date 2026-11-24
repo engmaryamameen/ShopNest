@@ -186,6 +186,8 @@ jobs:
 
       - name: Build web
         run: pnpm --filter @shopnest/web build
+        env:
+          NODE_ENV: production
 
       - name: Install Playwright's Chromium
         working-directory: apps/web
