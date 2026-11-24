@@ -27,7 +27,7 @@
       "js-yaml": ">=4.3.0",
       "@redocly/openapi-core>js-yaml": "4.3.0",
       "express>proxy-addr": "2.0.8",
-      "sharp": ">=0.35.0",
+      "sharp": ">=0.35.5",
       "@nestjs/platform-express>multer": "2.5.0"
     },
     "onlyBuiltDependencies": [
