@@ -85,8 +85,14 @@ jobs:
         working-directory: apps/api
         run: pnpm exec prisma migrate deploy
 
-      - name: Run API integration tests (concurrency suite, ephemeral Postgres)
-        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand
+      - name: Run catalog, concurrency and media integration tests
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand catalog-import.integration.spec.ts concurrency.integration.spec.ts media-upload.integration.spec.ts
+
+      - name: Test demo catalog behavior
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand demo-catalog.integration.spec.ts
+
+      - name: Test demo catalog access
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand demo-catalog-access.integration.spec.ts
 
       - name: Verify generated types are committed
         run: test -s packages/api-client/src/types.ts
