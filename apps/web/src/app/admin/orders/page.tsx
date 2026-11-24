@@ -35,6 +35,7 @@ export default async function AdminOrdersPage({
 
   return (
     <div>
+      <p>Current checkout payments are simulated; no money is charged.</p>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
         <div className="flex gap-2">

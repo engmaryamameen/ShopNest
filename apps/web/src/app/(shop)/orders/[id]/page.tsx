@@ -48,6 +48,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Order Details</h1>
+          <p>Current checkout payments are simulated; no money is charged.</p>
           <p className="text-gray-500 mt-1">#{order.id.slice(0, 8).toUpperCase()}</p>
         </div>
         <span className={`px-4 py-1.5 rounded-full text-sm font-medium ${STATUS_COLORS[order.status] ?? 'bg-gray-100'}`}>

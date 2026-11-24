@@ -102,6 +102,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 }
 
 export const api = {
+  addDemoCatalog: () => request<{ result: 'created' | 'already_applied' }>('/admin/demo-catalog', { method: 'POST' }),
   // ── Auth ───────────────────────────────────────────────────────────────────
   // Request bodies and the auth response shape below are the generated
   // OpenAPI types from `@shopnest/api-client` — real types sourced from the

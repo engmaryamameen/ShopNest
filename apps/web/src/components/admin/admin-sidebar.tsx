@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Icon } from '@iconify/react/offline';
@@ -10,7 +10,7 @@ import { api } from '@/lib/api';
 type NavItem = { label: string; href: string; icon: AdminIconName };
 type NavSection = { title: string; items: NavItem[] };
 
-function buildSections(isSuperAdmin: boolean): NavSection[] {
+function buildSections(isSuperAdmin: boolean, demoEnabled: boolean): NavSection[] {
   return [
     { title: 'Main menu', items: [{ label: 'Dashboard', href: '/admin', icon: 'dashboard' }] },
     {
@@ -20,6 +20,7 @@ function buildSections(isSuperAdmin: boolean): NavSection[] {
         { label: 'Categories', href: '/admin/categories', icon: 'categories' },
         { label: 'Reviews', href: '/admin/reviews', icon: 'reviews' },
         { label: 'Imports', href: '/admin/imports', icon: 'imports' },
+        ...(demoEnabled ? [{ label: 'Demo data', href: '/admin/demo-data', icon: 'products' as AdminIconName }] : []),
       ],
     },
     {
@@ -49,12 +50,15 @@ function initialsFor(email: string): string {
   return letters.toUpperCase();
 }
 
-export function AdminSidebar({ email, isSuperAdmin }: { email: string; isSuperAdmin: boolean }) {
+export function AdminSidebar({ email, isSuperAdmin, demoEnabled }: { email: string; isSuperAdmin: boolean; demoEnabled: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 640px)').matches) setCollapsed(true);
+  }, []);
   const [loggingOut, setLoggingOut] = useState(false);
-  const sections = buildSections(isSuperAdmin);
+  const sections = buildSections(isSuperAdmin, demoEnabled);
 
   function isActive(href: string) {
     return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);

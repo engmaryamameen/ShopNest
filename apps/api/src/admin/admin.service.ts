@@ -66,8 +66,7 @@ export class AdminService {
       this.prisma.vendor.groupBy({ by: ['status'], _count: true }),
       this.prisma.product.groupBy({ by: ['publishStatus'], _count: true }),
       this.prisma.order.groupBy({ by: ['status'], _count: true }),
-      // Revenue counts every non-cancelled order — a cancelled order never
-      // took payment, so it isn't revenue by any definition worth showing.
+      // Sum non-cancelled order totals, including pending orders. This is not collected revenue.
       this.prisma.order.aggregate({
         _sum: { totalCents: true },
         where: { status: { not: 'CANCELLED' } },

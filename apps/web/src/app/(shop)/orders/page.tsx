@@ -40,6 +40,7 @@ export default async function OrdersPage() {
   return (
     <div>
       <h1 className="text-3xl font-bold text-gray-900 mb-8">Your Orders</h1>
+          <p>Current checkout payments are simulated; no money is charged.</p>
 
       {orders.length === 0 ? (
         <div className="text-center py-20">

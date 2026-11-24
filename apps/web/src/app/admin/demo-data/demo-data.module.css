@@ -1,0 +1,6 @@
+.panel { max-width: 42rem; padding: 1.5rem; border: 1px solid #d9dee6; border-radius: .75rem; background: #fff; color: #1f2937; }
+.panel h1 { font-size: 1.4rem; font-weight: 700; }
+.panel p { margin-top: 1rem; line-height: 1.55; }
+.button { margin-top: 1.25rem; padding: .7rem 1rem; border: 0; border-radius: .5rem; background: #344d78; color: #fff; font-weight: 600; cursor: pointer; }
+.button:disabled { opacity: .6; cursor: wait; }
+.button:focus-visible { outline: 3px solid #789bd4; outline-offset: 3px; }

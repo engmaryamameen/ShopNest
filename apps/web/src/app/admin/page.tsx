@@ -31,8 +31,9 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
+      <p>Checkout payments are simulated. Order totals include pending orders and are not revenue.</p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <StatCard label="Sales" sublabel="Last 7 days" value={formatPrice(weeklyRevenueCents)} changePercent={summary.revenueChangePercent} />
+        <StatCard label="Order total" sublabel="Last 7 days" value={formatPrice(weeklyRevenueCents)} changePercent={summary.revenueChangePercent} />
         <StatCard label="Orders" sublabel="Last 7 days" value={weeklyOrderCount} changePercent={summary.orderCountChangePercent} />
         <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
           <p className="text-[18px] font-bold text-admin-heading font-lato mb-3">Pending &amp; cancelled</p>
@@ -51,7 +52,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
-        <h2 className="font-bold text-admin-heading font-lato mb-4">Revenue this week</h2>
+        <h2 className="font-bold text-admin-heading font-lato mb-4">Order totals this week</h2>
         <WeeklyAreaChart data={summary.weeklyTrend} />
       </div>
 
@@ -74,7 +75,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
-        <StatCard label="All-time revenue" value={formatPrice(summary.orders.totalRevenueCents)} />
+        <StatCard label="All-time order total" value={formatPrice(summary.orders.totalRevenueCents)} />
         <StatCard label="Users" value={summary.users.total} />
         <StatCard label="Published products" value={summary.products.published} />
         <StatCard label="Pending vendor applications" value={summary.pendingVendorApplications} />
