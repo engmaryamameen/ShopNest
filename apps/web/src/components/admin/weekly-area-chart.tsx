@@ -11,7 +11,7 @@ const HEIGHT = 200;
 const PADDING_X = 12;
 const PADDING_Y = 16;
 
-/** A real, hand-built SVG area chart for the last 7 days of revenue — no
+/** An SVG area chart for the last 7 days of order totals — no
  * charting library, since this is the one chart in the app and a hand-
  * rolled version stays lighter and easier to match to an exact design
  * than pulling in a general-purpose chart dependency for it. Highlights
@@ -37,7 +37,7 @@ export function WeeklyAreaChart({ data }: WeeklyAreaChartProps) {
 
   return (
     <div className="relative w-full">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT + 28}`} className="w-full h-auto" role="img" aria-label="Revenue for the last 7 days">
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT + 28}`} className="w-full h-auto" role="img" aria-label="Order totals for the last 7 days">
         <defs>
           <linearGradient id="weeklyAreaGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4EA674" stopOpacity="0.35" />

@@ -59,7 +59,7 @@ test.describe('Authentication', () => {
 
 test.describe('Shop catalog', () => {
   test('the homepage renders the real storefront (not a redirect to /shop)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
     await expect(page.getByRole('heading', { name: 'Browse By Category' })).toBeVisible();
   });

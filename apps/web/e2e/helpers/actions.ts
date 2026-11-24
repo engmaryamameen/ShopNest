@@ -12,10 +12,11 @@ export async function registerViaUI(page: Page, email: string, password: string)
   await page.fill('#email', email);
   await page.fill('#password', password);
   await page.fill('#confirm', password);
-  await Promise.all([
+  const [response] = await Promise.all([
     page.waitForResponse((res) => res.url().includes('/auth/register') && res.request().method() === 'POST'),
     page.click('button[type="submit"]'),
   ]);
+  expect(response.status(), `Registration failed: ${await response.text()}`).toBe(201);
 }
 
 /** Same race-condition fix as {@link registerViaUI}, for login. Does *not*

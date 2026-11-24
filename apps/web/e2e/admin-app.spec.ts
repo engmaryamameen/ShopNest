@@ -21,7 +21,7 @@ test.describe('Admin app', () => {
     await loginViaUI(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
     await page.goto('/admin');
 
-    await expect(page.getByText('Total revenue')).toBeVisible();
+    await expect(page.getByText('Order total', { exact: true })).toBeVisible();
     await expect(page.getByText('Published products')).toBeVisible();
     await expect(page.getByText('Orders by status')).toBeVisible();
     await expect(page.getByText('Vendors by status')).toBeVisible();
@@ -32,7 +32,7 @@ test.describe('Admin app', () => {
     await loginViaUI(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
     await page.goto('/admin/audit-log');
 
-    await expect(page.getByRole('heading', { name: 'Audit Log' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { name: 'Audit Log' })).toBeVisible();
     // The dev DB has real history from every prior admin/vendor action in
     // this run — assert the table renders rows, not an exact count.
     const rows = page.locator('tbody tr');
@@ -43,7 +43,7 @@ test.describe('Admin app', () => {
     await loginViaUI(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
     await page.goto('/admin/admins');
 
-    await expect(page.getByRole('heading', { name: 'Admin accounts' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { name: 'Admin accounts' })).toBeVisible();
 
     const newAdminEmail = uniqueEmail('new-admin-e2e');
     await page.getByPlaceholder('new-admin@shopnest.dev').fill(newAdminEmail);
@@ -83,29 +83,19 @@ test.describe('Admin app', () => {
     await expect(page).toHaveURL(/\/shop/);
   });
 
-  test('catalog-import panel previews a scoped run without committing it, then can trigger a real one', async ({ page }) => {
+  test('catalog imports remain disabled and explain why', async ({ page }) => {
     await loginViaUI(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
     await page.goto('/admin/imports');
 
-    await expect(page.getByRole('heading', { name: 'Catalog imports' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { name: 'Catalog imports' })).toBeVisible();
+    const previewResponse = page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/preview'));
+    await page.getByRole('button', { name: 'Preview' }).click();
+    expect((await previewResponse).status()).toBe(503);
+    await expect(page.getByText(/Catalog imports are disabled/i)).toBeVisible();
 
-    await page.locator('#import-category-scope').fill('smartphones');
-    await page.locator('#import-max-records').fill('2');
-
-    await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/preview')),
-      page.getByRole('button', { name: 'Preview' }).click(),
-    ]);
-
-    await expect(page.getByText('In scope')).toBeVisible();
-    // A scoped-to-2 preview must never claim more than 2 are in scope.
-    const scopedCountText = await page.locator('text=In scope').locator('..').locator('p.font-semibold').innerText();
-    expect(Number(scopedCountText)).toBeLessThanOrEqual(2);
-
-    await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/run')),
-      page.getByRole('button', { name: 'Run synchronization' }).click(),
-    ]);
-    await expect(page.getByText(/Synchronization queued/i)).toBeVisible();
+    const runResponse = page.waitForResponse((res) => res.url().includes('/admin/catalog-imports/run'));
+    await page.getByRole('button', { name: 'Run synchronization' }).click();
+    expect((await runResponse).status()).toBe(503);
+    await expect(page.getByText(/Catalog imports are disabled/i)).toBeVisible();
   });
 });

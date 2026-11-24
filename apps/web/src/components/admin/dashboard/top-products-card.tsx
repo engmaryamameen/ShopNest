@@ -12,7 +12,7 @@ export function TopProductsCard({ products }: { products: AdminDashboardResponse
           <thead>
             <tr className="text-left text-admin-muted">
               <th className="font-normal pb-2">Product</th>
-              <th className="font-normal pb-2 text-right">Units sold</th>
+              <th className="font-normal pb-2 text-right">Units ordered</th>
               <th className="font-normal pb-2 text-right">Price</th>
             </tr>
           </thead>
