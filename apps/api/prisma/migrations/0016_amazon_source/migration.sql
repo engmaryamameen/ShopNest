@@ -3,4 +3,4 @@
 -- multiple real images and often no price, same "may be commercial-data-
 -- free" shape as Open Food Facts — see AmazonAdapter and the shared
 -- price-optional handling in CatalogImportService.
-ALTER TYPE "CatalogSource" ADD VALUE 'AMAZON';
+ALTER TYPE "CatalogSource" ADD VALUE IF NOT EXISTS 'AMAZON';

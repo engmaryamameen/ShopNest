@@ -48,8 +48,8 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://shopnest:shopnest@localhost:5432/shopnest_test
-      JWT_ACCESS_SECRET: test-access-secret-placeholder
-      JWT_REFRESH_SECRET: test-refresh-secret-placeholder
+      JWT_ACCESS_SECRET: integration-test-access-secret-1234567890
+      JWT_REFRESH_SECRET: integration-test-refresh-secret-12345678
       WEB_URL: http://localhost:3000
       NODE_ENV: test
 
@@ -63,6 +63,7 @@ jobs:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shopnest/media-origins build
 
       - name: Generate Prisma client
         working-directory: apps/api
@@ -101,6 +102,7 @@ jobs:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shopnest/media-origins build
 
       - name: Type-check web
         run: pnpm --filter @shopnest/web type-check
@@ -157,6 +159,7 @@ jobs:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shopnest/media-origins build
 
       - name: Generate Prisma client
         working-directory: apps/api
@@ -209,6 +212,7 @@ jobs:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shopnest/media-origins build
 
       - name: Generate Prisma client
         working-directory: apps/api
