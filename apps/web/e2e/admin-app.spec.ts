@@ -68,6 +68,7 @@ test.describe('Admin app', () => {
     const email = uniqueEmail('non-super-admin-e2e');
     const password = 'Str0ngPassw0rd!23';
     await page.goto('/register');
+    await page.fill('#fullName', 'Alex Morgan');
     await page.fill('#email', email);
     await page.fill('#password', password);
     await page.fill('#confirm', password);

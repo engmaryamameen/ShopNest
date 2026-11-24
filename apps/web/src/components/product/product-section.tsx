@@ -308,7 +308,7 @@ function ViewAllAction({
           min-h-[44px]
           items-center justify-center
           rounded-[4px]
-          bg-[#DB4444]
+          shopnest-primary
           px-8
           text-[13px]
           font-medium
@@ -316,13 +316,12 @@ function ViewAllAction({
           transition-all
           duration-200
 
-          hover:bg-[#C93D3D]
 
           active:scale-[0.98]
 
           focus-visible:outline-none
           focus-visible:ring-2
-          focus-visible:ring-[#DB4444]/40
+          focus-visible:ring-[#0077B6]/40
           focus-visible:ring-offset-2
 
           sm:min-w-[190px]

@@ -30,7 +30,7 @@ export function AcceptInviteAction({ token }: { token: string }) {
       <button
         onClick={accept}
         disabled={isPending}
-        className="px-6 py-2 bg-emerald-700 text-white rounded-lg font-medium hover:bg-emerald-800 disabled:opacity-60 transition-colors"
+        className="px-6 py-2 shopnest-primary rounded-lg font-medium  disabled:opacity-60 transition-colors"
       >
         {isPending ? 'Joining…' : 'Accept invite'}
       </button>

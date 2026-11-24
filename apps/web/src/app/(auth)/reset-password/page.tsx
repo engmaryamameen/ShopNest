@@ -2,8 +2,12 @@
 
 import { Suspense, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Image from 'next/image';
+import { AuthShell } from '@/components/auth/auth-shell';
+import { PasswordField, Feedback, PrimaryButton } from '@/components/auth/auth-fields';
+import styles from '@/components/auth/auth.module.css';
+import { ToastMessage } from '@/components/ui/toast';
 import Link from 'next/link';
+import { passwordError, confirmationError } from '@/components/auth/password-validation';
 import { api, ApiError } from '@/lib/api';
 
 function ResetPasswordForm() {
@@ -14,6 +18,8 @@ function ResetPasswordForm() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const [touched, setTouched] = useState({ password: false, confirm: false });
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
@@ -24,14 +30,9 @@ function ResetPasswordForm() {
       setError('This reset link is missing its token — request a new one.');
       return;
     }
-    if (password !== confirm) {
-      setError('Passwords do not match');
-      return;
-    }
-    if (password.length < 12) {
-      setError('Password must be at least 12 characters');
-      return;
-    }
+    setAttempted(true);
+    if (passwordError(password, true)) { document.getElementById('password')?.focus(); return; }
+    if (confirmationError(confirm, password, true)) { document.getElementById('confirm')?.focus(); return; }
 
     startTransition(async () => {
       try {
@@ -47,83 +48,18 @@ function ResetPasswordForm() {
     });
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-6 py-12">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <Image src="/login.avif" alt="ShopNest logo" width={64} height={64} className="mx-auto mb-4 rounded-xl" />
-          <h2 className="text-3xl font-bold text-gray-900">Choose a new password</h2>
-          <p className="mt-2 text-gray-600">
-            This resets your password everywhere — every device will be signed out.
-          </p>
-        </div>
-
-        {!token && (
-          <div className="mb-5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-            This link is missing its reset token.{' '}
-            <Link href="/forgot-password" className="font-medium underline">
-              Request a new one
-            </Link>
-            .
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              New password <span className="text-gray-400 font-normal">(min 12 characters)</span>
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              placeholder="••••••••••••"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="confirm" className="block text-sm font-medium text-gray-700 mb-1">
-              Confirm new password
-            </label>
-            <input
-              id="confirm"
-              type="password"
-              autoComplete="new-password"
-              required
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              placeholder="••••••••••••"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isPending || !token}
-            className="w-full bg-indigo-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          >
-            {isPending ? 'Resetting…' : 'Reset password'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
+  return <AuthShell title="Choose a new password" description="Changing your password signs you out on every device.">
+    {!token && <Feedback kind="error">This link is missing its reset token. <Link href="/forgot-password" className={styles.link}>Request a new one</Link>.</Feedback>}
+    <form onSubmit={handleSubmit} className={`${styles.form} ${styles.loginForm}`} noValidate>
+      {error && <ToastMessage message={error} />}
+      <PasswordField id="password" label="New password" error={(attempted || touched.password) ? passwordError(password, attempted) : undefined} onBlur={() => setTouched((t) => ({ ...t, password: !!password }))} autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Create a password" />
+      <PasswordField id="confirm" label="Confirm new password" error={(attempted || touched.confirm) ? confirmationError(confirm, password, attempted) : undefined} onBlur={() => setTouched((t) => ({ ...t, confirm: !!confirm }))} autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter your password" />
+      <PrimaryButton disabled={isPending || !token}>{isPending ? 'Resetting…' : 'Reset password'}</PrimaryButton>
+    </form>
+    <p className={styles.secondary}><Link href="/login" className={styles.link}>Back to sign in</Link></p>
+  </AuthShell>;
 }
 
 export default function ResetPasswordPage() {
-  return (
-    <Suspense>
-      <ResetPasswordForm />
-    </Suspense>
-  );
+  return <Suspense fallback={<p role="status">Loading…</p>}><ResetPasswordForm /></Suspense>;
 }

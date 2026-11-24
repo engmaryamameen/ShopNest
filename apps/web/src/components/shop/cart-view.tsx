@@ -202,7 +202,7 @@ export function CartView({ initialCart }: CartViewProps) {
           <button
             onClick={handleCheckout}
             disabled={isCheckingOut}
-            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            className="w-full py-3 shopnest-primary rounded-xl font-medium  disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {isCheckingOut ? 'Processing…' : 'Place Order'}
           </button>

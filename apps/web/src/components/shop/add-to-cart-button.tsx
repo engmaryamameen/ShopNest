@@ -93,7 +93,7 @@ export function AddToCartButton({ offerId, stockQuantity }: AddToCartButtonProps
         <button
           onClick={handleAdd}
           disabled={isPending}
-          className="flex-1 py-3 px-6 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          className="flex-1 py-3 px-6 shopnest-primary rounded-xl  font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
         >
           {isPending ? 'Adding…' : 'Add to Cart'}
         </button>

@@ -108,6 +108,7 @@ enum CatalogImportStatus {
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   email           String     @unique
+  fullName        String?
   passwordHash    String
   role            Role       @default(CUSTOMER)
   status          UserStatus @default(ACTIVE)
@@ -115,6 +116,7 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
+  googleIdentity          GoogleIdentity?
   tokenFamilies           RefreshTokenFamily[]
   cart                    Cart?
   orders                  Order[]
@@ -133,6 +135,13 @@ model User {
   promotionRedemptions    PromotionRedemption[]
 
   @@index([status])
+}
+
+model GoogleIdentity {
+  subject   String   @id
+  userId    String   @unique @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 }
 
 model RefreshTokenFamily {
@@ -871,4 +880,21 @@ model PromotionRedemption {
   createdAt     DateTime     @default(now())
 
   @@index([promotionId, userId])
+}
+
+// Holds signup details only until the email challenge is completed.
+model PendingSignup {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
+  fullName      String?
+  passwordHash  String
+  challengeHash String   @unique
+  codeHash      String
+  expiresAt     DateTime
+  lastSentAt    DateTime @default(now())
+  attempts      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([expiresAt])
 }

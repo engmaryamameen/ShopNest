@@ -25,7 +25,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <main className="mx-auto max-w-xl p-8">
         <h1 className="text-2xl font-bold">Admin temporarily unavailable</h1>
         <p className="mt-3">We could not connect to the service. Check your connection and try again.</p>
-        <a className="mt-4 inline-block underline" href="/admin">Try again</a>
+        <form action="/admin" method="get">
+          <button type="submit" className="mt-4 inline-block underline">Try again</button>
+        </form>
       </main>
     );
   }

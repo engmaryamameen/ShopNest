@@ -33,8 +33,7 @@ docker compose start db
 
 **Recovery drill**: periodically restore the latest backup into a scratch database (`shopnest_restored`
 above) and run `prisma migrate status` against it — confirms the backup is actually usable, not just
-that the command exited zero. This is the same "verify before trusting" discipline applied to every
-migration in this project.
+that the command exited zero. Do this before relying on the backup.
 
 ## Security headers
 
@@ -47,9 +46,7 @@ default. CORS stays a separate, already-existing mechanism (`app.enableCors`, or
 
 ## Dependency scanning
 
-Already continuous, not a Phase 8 addition: `.github/workflows/ci.yml`'s `audit` job runs
-`pnpm audit --audit-level=high` on every push and pull request against `main`. A high-or-critical
-advisory fails the build before it can merge.
+The GitHub Actions audit jobs for `main` and `develop` run `pnpm audit --audit-level=high`. Review the findings and their dependency paths before deployment.
 
 ## Media storage
 
@@ -61,22 +58,16 @@ a real bucket later means writing one more class implementing `MediaStorageProvi
 `MEDIA_PROVIDER` at it — the controller, the upload endpoint, and every caller of `uploadMedia()` on
 the frontend stay unchanged.
 
-## Monitoring — scoped honestly, not fabricated
+## Monitoring
 
-This environment has no real alerting/metrics infrastructure (no Prometheus, no PagerDuty) to wire
-up, and standing up fake integrations nobody can receive an alert from would be worse than not
-claiming the capability. What's real today:
+No alerting or metrics service is configured. Available diagnostics:
 
-- Structured, redacted request/response logging via `nestjs-pino` (already existed) — every request
+- Structured, redacted request/response logging via `nestjs-pino` — every request
   gets a correlation-friendly structured log line, sensitive fields redacted.
-- `GET /health` — liveness/readiness for orchestrators (already existed; used by `docker-compose.yml`'s
-  healthcheck and would back a Kubernetes probe identically).
-- Catalog import job health is already durable and queryable, not just logged: `CatalogImportRun` rows
+- `GET /health` — checks API availability and database connectivity.
+- Catalog import job status is stored in the database: `CatalogImportRun` rows
   carry `status`/`attemptCount`/`errorMessage`/timestamps, exposed at `GET /admin/catalog-imports` —
   an actual metrics/alerting pipeline would poll or subscribe to this table rather than needing new
   instrumentation.
 
-If real alerting is needed later, the natural next step is shipping the existing Pino JSON logs to
-whatever log platform is available (Datadog, CloudWatch, Loki — all ingest structured JSON directly,
-no application change required) and alerting on log patterns, rather than adding a bespoke metrics
-system now that nothing in this environment can consume.
+Configure a log destination and alerts for the target deployment environment before relying on them.

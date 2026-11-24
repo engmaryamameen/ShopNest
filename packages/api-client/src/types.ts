@@ -1453,6 +1453,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         RegisterDto: {
+            fullName?: string;
             /**
              * Format: email
              * @example user@example.com

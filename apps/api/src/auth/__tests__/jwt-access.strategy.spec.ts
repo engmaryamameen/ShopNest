@@ -29,7 +29,12 @@ const BASE_PAYLOAD: JwtPayload = {
 
 describe('JwtAccessStrategy', () => {
   it('rejects a revoked token family', async () => {
-    const strategy = new JwtAccessStrategy(makeConfig(), makePrisma({ isRevoked: true, user: { status: 'ACTIVE', role: 'CUSTOMER' } }));
+    const strategy = new JwtAccessStrategy(makeConfig(), makePrisma({ userId: 'user-1', isRevoked: true, user: { status: 'ACTIVE', role: 'CUSTOMER' } }));
+    await expect(strategy.validate(BASE_PAYLOAD)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('rejects a session belonging to a different user', async () => {
+    const strategy = new JwtAccessStrategy(makeConfig(), makePrisma({ userId: 'another-user', isRevoked: false, user: { status: 'ACTIVE', role: 'ADMIN' } }));
     await expect(strategy.validate(BASE_PAYLOAD)).rejects.toThrow(UnauthorizedException);
   });
 
@@ -41,7 +46,7 @@ describe('JwtAccessStrategy', () => {
   it('rejects a suspended account even with a still-valid token', async () => {
     const strategy = new JwtAccessStrategy(
       makeConfig(),
-      makePrisma({ isRevoked: false, user: { status: 'SUSPENDED', role: 'CUSTOMER' } }),
+      makePrisma({ userId: 'user-1', isRevoked: false, user: { status: 'SUSPENDED', role: 'CUSTOMER' } }),
     );
     await expect(strategy.validate(BASE_PAYLOAD)).rejects.toThrow(UnauthorizedException);
   });
@@ -55,7 +60,7 @@ describe('JwtAccessStrategy', () => {
   it('returns the LIVE role from the database, not the stale role embedded in the token', async () => {
     const strategy = new JwtAccessStrategy(
       makeConfig(),
-      makePrisma({ isRevoked: false, user: { status: 'ACTIVE', role: 'VENDOR' } }),
+      makePrisma({ userId: 'user-1', isRevoked: false, user: { status: 'ACTIVE', role: 'VENDOR' } }),
     );
     const result = await strategy.validate(BASE_PAYLOAD); // payload still says CUSTOMER
     expect(result.role).toBe('VENDOR');
@@ -64,20 +69,20 @@ describe('JwtAccessStrategy', () => {
   it('preserves the rest of the payload unchanged', async () => {
     const strategy = new JwtAccessStrategy(
       makeConfig(),
-      makePrisma({ isRevoked: false, user: { status: 'ACTIVE', role: 'CUSTOMER' } }),
+      makePrisma({ userId: 'user-1', isRevoked: false, user: { status: 'ACTIVE', role: 'CUSTOMER' } }),
     );
     const result = await strategy.validate(BASE_PAYLOAD);
     expect(result).toEqual({ ...BASE_PAYLOAD, role: 'CUSTOMER' });
   });
 
   it('selects only status and role from the user — no email, password hash, or other PII on the hot authentication path', async () => {
-    const prisma = makePrisma({ isRevoked: false, user: { status: 'ACTIVE', role: 'CUSTOMER' } });
+    const prisma = makePrisma({ userId: 'user-1', isRevoked: false, user: { status: 'ACTIVE', role: 'CUSTOMER' } });
     const strategy = new JwtAccessStrategy(makeConfig(), prisma);
     await strategy.validate(BASE_PAYLOAD);
 
     const call = (prisma.refreshTokenFamily.findUnique as jest.Mock).mock.calls[0][0];
     expect(call.where).toEqual({ id: BASE_PAYLOAD.familyId }); // RefreshTokenFamily's primary key — always indexed
-    expect(call.select).toEqual({ isRevoked: true, user: { select: { status: true, role: true } } });
+    expect(call.select).toEqual({ userId: true, isRevoked: true, user: { select: { status: true, role: true } } });
   });
 
   // Item 6: a database outage during this per-request live check must

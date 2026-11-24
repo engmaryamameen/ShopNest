@@ -6,12 +6,14 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { createApp } from '../src/main';
 import { pngBuffer, svgBuffer } from '../src/media/__tests__/fixtures';
+import { captureSignupCodes, registerTestUser } from './signup-helper';
 
 const prisma = new PrismaClient();
 let app: INestApplication;
 let base: string;
 let uploadDir: string;
 let testUserId: string | undefined;
+let signupCodes: Map<string, string>;
 const origin = process.env.WEB_URL ?? 'http://localhost:3000';
 
 beforeAll(async () => {
@@ -23,6 +25,7 @@ beforeAll(async () => {
   process.env.CATALOG_WORKER_ENABLED = 'false';
   process.env.CATALOG_SCHEDULE_ENABLED = 'false';
   app = await createApp();
+  signupCodes = captureSignupCodes(app);
   await app.listen(0);
   const address = app.getHttpServer().address();
   base = `http://127.0.0.1:${address.port}`;
@@ -50,7 +53,7 @@ it('authorizes multipart uploads and validates their actual contents', async () 
   const email = `upload-${randomUUID()}@example.test`;
   const password = `Test-${randomUUID()}-aA1!`;
   const headers = { 'content-type': 'application/json', origin };
-  const registered = await fetch(`${base}/auth/register`, { method: 'POST', headers, body: JSON.stringify({ email, password }) });
+  const registered = await registerTestUser(base, origin, email, password, signupCodes);
   expect(registered.status).toBe(201);
   testUserId = (await prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } })).id;
   const customerCookies = registered.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');

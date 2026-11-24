@@ -39,9 +39,10 @@ cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env.local
 
 # Run migrations
-cd apps/api && pnpm exec prisma migrate dev --name init
+cd apps/api && pnpm exec prisma migrate deploy
 cd ../..
-pnpm --filter @shopnest/api db:seed   # creates admin, 3 vendors, products, reviews, promotions
+# Only run the seed against a disposable development database.
+pnpm --filter @shopnest/api db:seed
 
 # Start dev servers
 pnpm dev
@@ -51,7 +52,12 @@ pnpm dev
 - Web: http://localhost:3000
 - Swagger: http://localhost:3001/api
 
+Before migrating an existing database, review [migration 0016 recovery](docs/migrations/0016-recovery.md). Do not reset a database to resolve migration errors.
+
 ### Demo accounts
+
+The seed script can promote an existing user to administrator and uses predictable default passwords. Run it only against a disposable local database, never against production or a shared database.
+
 
 `db:seed` prints the full list on every run. All seeded accounts (other than the admin) share one
 password, overridable via `DEMO_PASSWORD`:
@@ -67,6 +73,8 @@ password, overridable via `DEMO_PASSWORD`:
 
 Passwords: admin's is `Admin@ShopNest2025!` (override with `ADMIN_PASSWORD`); everyone else's is
 `Demo@ShopNest2025!` (override with `DEMO_PASSWORD`).
+
+For authentication setup, tests and known limitations, see [Authentication](docs/authentication.md). For Google account linking, see [Google sign-in](docs/google-sign-in.md).
 
 ## Docker
 

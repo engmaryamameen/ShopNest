@@ -8,6 +8,7 @@ import {
   Req,
   Get,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -18,6 +19,9 @@ import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiCookieAuth } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
+import { SignupService } from './signup.service';
+import { GoogleAuthService } from './google-auth.service';
+import { SignupCodeDto } from './dto/signup-code.dto';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
@@ -32,6 +36,7 @@ import { ConfigService } from '@nestjs/config';
 
 const ACCESS_COOKIE = 'access_token';
 const REFRESH_COOKIE = 'refresh_token';
+const SIGNUP_COOKIE = 'signup_challenge';
 
 function deviceContext(req: Request): { userAgent?: string; ipAddress?: string } {
   return {
@@ -45,6 +50,8 @@ function deviceContext(req: Request): { userAgent?: string; ipAddress?: string }
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
+    private readonly signupService: SignupService,
+    private readonly googleAuth: GoogleAuthService,
     private readonly config: ConfigService,
   ) {}
 
@@ -55,26 +62,94 @@ export class AuthController {
   // class-definition time, so these are fixed values rather than sourced
   // from injected config (which only exists per-instance, after DI runs).
 
-  @Post('register')
-  @Throttle({ default: { ttl: 60_000, limit: 20 } })
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Register a new customer account' })
-  async register(
-    @Body() dto: RegisterDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<AuthResponseDto> {
-    const { userId, familyId, rawToken } = await this.authService.register(dto, deviceContext(req));
-    const user = (await this.authService.getUserById(userId))!;
-    const accessToken = this.authService.signAccessToken({
-      sub: userId,
-      email: user.email,
-      role: user.role,
-      familyId,
-    });
+  @Get('google')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  googleStart(@Query('returnTo') returnTo: string | undefined, @Res() res: Response): void {
+    try {
+      const flow = this.googleAuth.begin(returnTo);
+      res.cookie('google_auth_flow', flow.cookie, { httpOnly: true, sameSite: 'lax', secure: this.config.get<string>('app.nodeEnv') === 'production', path: '/auth/google', maxAge: 10 * 60 * 1000 });
+      res.redirect(flow.url);
+    } catch {
+      res.redirect(new URL('/login?google=unavailable', this.config.get<string>('app.webUrl', 'http://localhost:3000')).toString());
+    }
+  }
 
+  @Get('google/callback')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async googleCallback(@Query('code') code: string | undefined, @Query('state') state: string | undefined, @Req() req: Request, @Res() res: Response): Promise<void> {
+    const webUrl = this.config.get<string>('app.webUrl', 'http://localhost:3000');
+    const cookie = req.cookies?.google_auth_flow as string | undefined;
+    res.clearCookie('google_auth_flow', { httpOnly: true, sameSite: 'lax', secure: this.config.get<string>('app.nodeEnv') === 'production', path: '/auth/google' });
+    try {
+      const result = await this.googleAuth.complete(cookie, state, code);
+      if (result.kind === 'link') {
+        res.cookie('google_link_proof', result.proof, { httpOnly: true, sameSite: 'lax', secure: this.config.get<string>('app.nodeEnv') === 'production', path: '/', maxAge: 10 * 60 * 1000 });
+        res.redirect(new URL('/login?google=link', webUrl).toString());
+        return;
+      }
+      const user = await this.authService.getUserById(result.userId);
+      if (!user) throw new UnauthorizedException();
+      const { familyId, rawToken } = await this.authService.createVerifiedSignupSession(user.id, deviceContext(req));
+      this.setCookies(res, this.authService.signAccessToken({ sub: user.id, email: user.email, role: user.role, familyId }), rawToken);
+      res.redirect(new URL(result.returnTo, webUrl).toString());
+    } catch (error) {
+      const reason = error instanceof ConflictException ? 'existing_account' : 'failed';
+      res.redirect(new URL(`/login?google=${reason}`, webUrl).toString());
+    }
+  }
+
+  @Post('google/link-confirm')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async googleLinkConfirm(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<{ status: 'linked' | 'requires_signin'; returnTo?: string }> {
+    const result = await this.googleAuth.confirmDirectLink(req.cookies?.google_link_proof);
+    if (result.kind === 'requires-signin') return { status: 'requires_signin' };
+    const user = await this.authService.getUserById(result.userId);
+    if (!user) throw new UnauthorizedException();
+    const { familyId, rawToken } = await this.authService.createVerifiedSignupSession(user.id, deviceContext(req));
+    this.setCookies(res, this.authService.signAccessToken({ sub: user.id, email: user.email, role: user.role, familyId }), rawToken);
+    res.clearCookie('google_link_proof', { httpOnly: true, sameSite: 'lax', secure: this.config.get<string>('app.nodeEnv') === 'production', path: '/' });
+    return { status: 'linked', returnTo: result.returnTo };
+  }
+
+  @Post('google/link')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async googleLink(@CurrentUser() user: JwtPayload, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<{ returnTo: string }> {
+    const returnTo = await this.googleAuth.link(req.cookies?.google_link_proof, user.sub);
+    res.clearCookie('google_link_proof', { httpOnly: true, sameSite: 'lax', secure: this.config.get<string>('app.nodeEnv') === 'production', path: '/' });
+    return { returnTo };
+  }
+
+  @Post('register')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Send an email code to start signup' })
+  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response): Promise<{ status: 'code_sent' }> {
+    const challenge = await this.signupService.begin(dto);
+    res.cookie(SIGNUP_COOKIE, challenge, {
+      httpOnly: true, sameSite: 'lax', secure: this.config.get<string>('app.nodeEnv') === 'production', path: '/', maxAge: 30 * 60 * 1000,
+    });
+    return { status: 'code_sent' };
+  }
+
+  @Post('signup/verify')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({ summary: 'Verify the signup code and create an account' })
+  async verifySignup(@Body() dto: SignupCodeDto, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<AuthResponseDto> {
+    const userId = await this.signupService.verify(req.cookies?.[SIGNUP_COOKIE], dto.code);
+    const user = (await this.authService.getUserById(userId))!;
+    const { familyId, rawToken } = await this.authService.createVerifiedSignupSession(userId, deviceContext(req));
+    const accessToken = this.authService.signAccessToken({ sub: user.id, email: user.email, role: user.role, familyId });
     this.setCookies(res, accessToken, rawToken);
+    res.clearCookie(SIGNUP_COOKIE, { httpOnly: true, sameSite: 'lax', secure: this.config.get<string>('app.nodeEnv') === 'production', path: '/' });
     return { user };
+  }
+
+  @Post('signup/resend')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  async resendSignup(@Req() req: Request): Promise<void> {
+    await this.signupService.resend(req.cookies?.[SIGNUP_COOKIE]);
   }
 
   @Post('login')

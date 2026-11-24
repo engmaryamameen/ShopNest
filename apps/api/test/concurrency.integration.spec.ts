@@ -16,6 +16,8 @@ import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { createApp } from '../src/main';
 import { SYSTEM_VENDOR_NAME, SYSTEM_VENDOR_SLUG } from '../src/catalog/system-vendor.constants';
+import * as argon2 from 'argon2';
+import { AuthService } from '../src/auth/auth.service';
 
 const WEB_ORIGIN = process.env.WEB_URL ?? 'http://localhost:3000';
 const run = `${Date.now()}`;
@@ -25,6 +27,9 @@ let API: string;
 const prisma = new PrismaClient();
 
 beforeAll(async () => {
+  if (process.env.NODE_ENV !== 'test' || process.env.SHOPNEST_DISPOSABLE_DB !== 'true') {
+    throw new Error('Concurrency integration tests require an explicitly designated disposable database.');
+  }
   // The catalog-import scheduler/worker are irrelevant to these tests and
   // would otherwise make live outbound HTTP calls / DB writes on a timer
   // while assertions run — disabled for this process only.
@@ -103,15 +108,13 @@ async function assertOk(res: Response, label: string): Promise<unknown> {
 }
 
 async function register(email: string): Promise<Cookies> {
-  const res = await api('/auth/register', {
-    method: 'POST',
-    body: { email, password: 'TestPass123!' },
+  const user = await prisma.user.create({
+    data: { email, passwordHash: await argon2.hash('TestPass123!'), emailVerifiedAt: new Date(), cart: { create: {} } },
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`register(${email}) failed ${res.status}: ${text}`);
-  }
-  return parseCookies(res);
+  const auth = app.get(AuthService);
+  const session = await auth.createVerifiedSignupSession(user.id, {});
+  const access = auth.signAccessToken({ sub: user.id, email: user.email, role: user.role, familyId: session.familyId });
+  return { access_token: access, refresh_token: session.rawToken };
 }
 
 async function login(email: string): Promise<Cookies> {

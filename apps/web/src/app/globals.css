@@ -8,18 +8,7 @@
   --danger: #dc2626;
 }
 
-/*
- * ShopNest brand system — scoped as additive design tokens so existing
- * screens (auth, admin, cart) that still use Tailwind's stock indigo/slate
- * palette are unaffected. New storefront chrome (header, drawer, menus)
- * should draw its colors exclusively from these tokens.
- *
- * brand  — deep teal-green: trust + marketplace growth, distinct from the
- *          generic indigo/violet used by most SaaS-flavored AI UIs.
- * accent — warm copper/gold: reserved for deals, badges and highlights.
- * ink    — a warm near-black (not blue-leaning slate) for high-contrast
- *          chrome such as the utility bar and drawer scrim.
- */
+/* Storefront, accent and admin color tokens. */
 @theme {
   /* Fonts */
   --font-poppins: var(--font-poppins);
@@ -140,9 +129,32 @@ button:not(:disabled),
 }
 
 :root {
+  --font-dm-sans: 'DM Sans Variable';
+  --font-playwrite-guides: 'Playwrite AU SA Variable';
   --font-poppins: 'Poppins';
   --font-plus-jakarta: 'Plus Jakarta Sans Variable';
   --font-lato: 'Lato';
   --font-inter: 'Inter Variable';
   --font-nunito: 'Nunito Variable';
 }
+/* Shared action colors. Brand accents remain independent of button states. */
+.shopnest-primary {
+  background: #0077b6;
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: none;
+  transition: background-color 160ms ease;
+}
+@media (hover: hover) {
+  .shopnest-primary:hover:not(:disabled) { background: #006a9b; }
+}
+.shopnest-primary:active:not(:disabled) { background: #005b85; }
+.shopnest-primary:disabled { background: #e2e8f0; color: #64748b; opacity: 1; cursor: not-allowed; }
+.shopnest-secondary {
+  background: #fff;
+  color: #006a9b;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  transition: background-color 160ms ease;
+}
+@media (hover: hover) { .shopnest-secondary:hover:not(:disabled) { background: #f1f5f9; } }

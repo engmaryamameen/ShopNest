@@ -69,14 +69,14 @@ export function RequestReturnButton({ orderItemId }: { orderItemId: string }) {
         <button
           type="submit"
           disabled={isPending}
-          className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-60"
+          className="px-3 py-1.5 shopnest-primary text-sm rounded-lg font-medium  disabled:opacity-60"
         >
           {isPending ? 'Submitting…' : 'Submit request'}
         </button>
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="px-3 py-1.5 border border-gray-300 text-sm rounded-lg hover:bg-gray-50"
+          className="px-3 py-1.5 shopnest-secondary text-sm"
         >
           Cancel
         </button>

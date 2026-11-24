@@ -85,7 +85,7 @@ export function AdminCategoryList({ categories }: AdminCategoryListProps) {
       {!showCreate && (
         <button
           onClick={() => { setShowCreate(true); cancelEdit(); }}
-          className="mb-6 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+          className="mb-6 px-4 py-2 shopnest-primary rounded-lg font-medium  transition-colors"
         >
           + Add Category
         </button>
@@ -110,7 +110,7 @@ export function AdminCategoryList({ categories }: AdminCategoryListProps) {
             <button
               type="submit"
               disabled={isPending}
-              className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+              className="px-6 py-2 shopnest-primary rounded-lg font-medium  disabled:opacity-60 transition-colors"
             >
               {isPending ? 'Creating…' : 'Create'}
             </button>

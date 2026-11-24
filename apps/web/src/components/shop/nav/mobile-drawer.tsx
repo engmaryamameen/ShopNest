@@ -90,7 +90,7 @@ export function MobileDrawer({ open, onClose, categories, currentUser, onSignOut
             <Link
               href="/login"
               onClick={onClose}
-              className={`flex-1 rounded-lg bg-brand-600 px-3 py-2.5 text-center text-sm font-bold text-white transition-colors hover:bg-brand-700 ${FOCUS_RING}`}
+              className={`flex-1 rounded-lg shopnest-primary px-3 py-2.5 text-center text-sm font-bold transition-colors ${FOCUS_RING}`}
             >
               Sign in
             </Link>

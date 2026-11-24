@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import * as nodemailer from 'nodemailer';
+import { join } from 'node:path';
 import type { MailMessage, MailProvider } from './mail.types';
 
 /**
@@ -53,6 +54,10 @@ export class SmtpMailAdapter implements MailProvider, OnModuleInit {
       to: message.to,
       subject: message.subject,
       text: message.text,
+      html: message.html,
+      attachments: message.html?.includes('cid:shopnest-wordmark')
+        ? [{ filename: 'shopnest-wordmark.png', path: join(__dirname, 'assets', 'wordmark.png'), cid: 'shopnest-wordmark', contentDisposition: 'inline' }]
+        : undefined,
     });
 
     this.logger.log({ to: message.to, subject: message.subject }, 'Email sent via SMTP');

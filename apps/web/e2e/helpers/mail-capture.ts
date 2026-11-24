@@ -48,3 +48,15 @@ async function readCapturedMail(): Promise<CapturedMail[]> {
     return []; // file doesn't exist yet — no mail captured so far
   }
 }
+
+export async function waitForSignupCode(to: string, timeoutMs = 5000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const mail = await readCapturedMail();
+    const message = [...mail].reverse().find((item) => item.to === to && item.subject === 'Your ShopNest verification code');
+    const code = message?.text.match(/verification code is (\d{6})/)?.[1];
+    if (code) return code;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error(`No verification code captured for ${to}`);
+}

@@ -45,7 +45,7 @@ export default async function AdminOrdersPage({
               href={s ? `?status=${s}` : '/admin/orders'}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 (params.status ?? '') === s
-                  ? 'bg-indigo-600 text-white'
+                  ? 'shopnest-primary'
                   : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
               }`}
             >

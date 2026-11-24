@@ -89,7 +89,7 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
       {!showCreate && (
         <button
           onClick={() => setShowCreate(true)}
-          className="mb-6 px-4 py-2 bg-emerald-700 text-white rounded-lg font-medium hover:bg-emerald-800 transition-colors"
+          className="mb-6 px-4 py-2 shopnest-primary rounded-lg font-medium  transition-colors"
         >
           + New offer
         </button>
@@ -153,7 +153,7 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
               <button
                 type="submit"
                 disabled={isPending || !form.productId}
-                className="px-6 py-2 bg-emerald-700 text-white rounded-lg font-medium hover:bg-emerald-800 disabled:opacity-60 transition-colors"
+                className="px-6 py-2 shopnest-primary rounded-lg font-medium  disabled:opacity-60 transition-colors"
               >
                 {isPending ? 'Creating…' : 'Create offer'}
               </button>

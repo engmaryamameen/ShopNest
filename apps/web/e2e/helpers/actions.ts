@@ -1,14 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { waitForSignupCode } from './mail-capture';
 
-/** Registers via the real form and waits for the register call to actually
- * resolve before returning — `page.click()` only waits for the click event
- * itself, not for the async request/redirect it triggers, so a caller that
- * navigates immediately afterward (e.g. straight to a protected page) can
- * easily race the cookie actually being set. Works for both the happy path
- * (redirect follows) and a validation failure (no redirect, error shown). */
-export async function registerViaUI(page: Page, email: string, password: string): Promise<void> {
+export async function startSignupViaUI(page: Page, email: string, password: string): Promise<void> {
   await page.goto('/register');
+  await page.fill('#fullName', 'Alex Morgan');
   await page.fill('#email', email);
   await page.fill('#password', password);
   await page.fill('#confirm', password);
@@ -16,14 +12,28 @@ export async function registerViaUI(page: Page, email: string, password: string)
     page.waitForResponse((res) => res.url().includes('/auth/register') && res.request().method() === 'POST'),
     page.click('button[type="submit"]'),
   ]);
-  expect(response.status(), `Registration failed: ${await response.text()}`).toBe(201);
+  expect(response.status(), `Registration failed: ${await response.text()}`).toBe(202);
+  await expect(page.getByRole('heading', { name: 'Please verify your email address' })).toBeVisible();
 }
 
-/** Same race-condition fix as {@link registerViaUI}, for login. Does *not*
- * navigate to a bare `/login` if the page is already sitting on some
- * `/login?...` URL — a caller that got there via a protected-route redirect
- * (carrying `?returnTo=...`) needs that query string preserved, not
- * clobbered by a fresh navigation. */
+export async function completeSignupViaUI(page: Page, email: string): Promise<void> {
+  const code = await waitForSignupCode(email);
+  for (let i = 0; i < code.length; i++) {
+    await page.getByLabel(`Digit ${i + 1} of 6`).fill(code[i]);
+  }
+  const [response] = await Promise.all([
+    page.waitForResponse((res) => res.url().includes('/auth/signup/verify') && res.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Create account' }).click(),
+  ]);
+  expect(response.ok(), `Verification failed: ${await response.text()}`).toBeTruthy();
+  await expect(page).toHaveURL(/\/shop/);
+}
+
+export async function registerViaUI(page: Page, email: string, password: string): Promise<void> {
+  await startSignupViaUI(page, email, password);
+  await completeSignupViaUI(page, email);
+}
+
 export async function loginViaUI(page: Page, email: string, password: string): Promise<void> {
   if (!page.url().includes('/login')) {
     await page.goto('/login');
@@ -36,23 +46,10 @@ export async function loginViaUI(page: Page, email: string, password: string): P
   ]);
 }
 
-/** Accepts the next `window.confirm()` dialog — several account-management
- * buttons (revoke session, suspend/reactivate user, cancel order) use the
- * native `confirm()` for a lightweight "are you sure" prompt. */
 export function acceptNextConfirm(page: Page): void {
   page.once('dialog', (dialog) => dialog.accept());
 }
 
-/** Opens the desktop account dropdown (the "Welcome back / {email}" trigger
- * in the header) — used by the desktop journey only; the mobile spec drives
- * its own hamburger drawer instead rather than assuming this trigger's text
- * is present at a narrow viewport.
- *
- * Scoped to `header` and to a `button` role specifically — the same
- * "Welcome back" copy also appears as static (non-interactive) text inside
- * the mobile drawer's account panel, which stays present in the DOM (off
- * canvas, not unmounted) even at a desktop viewport, so an unscoped text
- * locator matches both and Playwright correctly refuses to guess which one. */
 export async function openAccountMenu(page: Page): Promise<void> {
   await page.locator('header').getByRole('button', { name: /Welcome back/ }).click();
 }

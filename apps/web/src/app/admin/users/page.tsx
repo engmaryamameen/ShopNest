@@ -84,7 +84,7 @@ export default async function AdminUsersPage({
               key={p}
               href={`/admin/users?page=${p}`}
               className={`px-3 py-1.5 rounded-lg ${
-                p === page ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                p === page ? 'shopnest-primary' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
             >
               {p}

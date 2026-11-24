@@ -79,7 +79,7 @@ export function VendorApplyForm() {
         <button
           type="submit"
           disabled={isPending}
-          className="w-full py-3 bg-emerald-700 text-white rounded-lg font-medium hover:bg-emerald-800 disabled:opacity-60 transition-colors"
+          className="w-full py-3 shopnest-primary rounded-lg font-medium  disabled:opacity-60 transition-colors"
         >
           {isPending ? 'Submitting…' : 'Submit application'}
         </button>
