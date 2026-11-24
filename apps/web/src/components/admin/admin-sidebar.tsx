@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Icon } from '@iconify/react/offline';
 import { ADMIN_ICONS, AdminIconName } from './icons/admin-icons';
 import { api } from '@/lib/api';
+import styles from './admin-sidebar.module.css';
 
 type NavItem = { label: string; href: string; icon: AdminIconName };
 type NavSection = { title: string; items: NavItem[] };
@@ -56,6 +57,10 @@ export function AdminSidebar({ email, isSuperAdmin }: { email: string; isSuperAd
   const [loggingOut, setLoggingOut] = useState(false);
   const sections = buildSections(isSuperAdmin);
 
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 700px)').matches) setCollapsed(true);
+  }, []);
+
   function isActive(href: string) {
     return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
   }
@@ -72,91 +77,44 @@ export function AdminSidebar({ email, isSuperAdmin }: { email: string; isSuperAd
   }
 
   return (
-    <aside
-      className={`shrink-0 bg-white shadow-[0_3px_4px_rgba(0,0,0,0.12)] flex flex-col h-screen sticky top-0 transition-[width] duration-200 ${
-        collapsed ? 'w-[76px]' : 'w-[260px]'
-      }`}
-    >
-      <div className="flex items-center justify-between px-5 py-5 h-16 shrink-0">
-        {!collapsed && (
-          <Link href="/admin" className="font-lato font-bold text-lg text-admin-ink tracking-tight">
-            ShopNest
-          </Link>
-        )}
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          className="text-admin-muted hover:text-admin-ink transition-colors shrink-0"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <Icon icon={collapsed ? ADMIN_ICONS.sidebarExpand : ADMIN_ICONS.sidebarCollapse} width={24} height={24} />
+    <aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
+      <div className={styles.header}>
+        {!collapsed && <Link href="/admin" className={styles.brand}>ShopNest <span>Admin</span></Link>}
+        <button type="button" onClick={() => setCollapsed((c) => !c)} className={styles.iconButton}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed}>
+          <Icon icon={collapsed ? ADMIN_ICONS.sidebarExpand : ADMIN_ICONS.sidebarCollapse} width={20} height={20} />
         </button>
       </div>
-
-      <nav className="flex-1 overflow-y-auto px-3.5 pb-4 space-y-6">
+      <nav className={styles.navigation} aria-label="Admin navigation">
         {sections.map((section) => (
-          <div key={section.title}>
-            {!collapsed && (
-              <p className="px-3 mb-2 text-[15px] text-admin-muted font-lato">{section.title}</p>
-            )}
-            <ul className="space-y-1">
+          <section key={section.title} className={styles.section} aria-label={section.title}>
+            {!collapsed && <p className={styles.sectionTitle}>{section.title}</p>}
+            <ul className={styles.list}>
               {section.items.map((item) => {
                 const active = isActive(item.href);
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      title={collapsed ? item.label : undefined}
-                      className={`flex items-center gap-2 rounded-md px-4 py-2.5 text-[16px] font-lato transition-colors ${
-                        active ? 'bg-admin-primary text-white font-bold' : 'text-admin-muted hover:bg-gray-50'
-                      } ${collapsed ? 'justify-center' : ''}`}
-                    >
-                      <Icon
-                        icon={ADMIN_ICONS[item.icon]}
-                        width={22}
-                        height={22}
-                        color={active ? '#ffffff' : '#6A717F'}
-                      />
-                      {!collapsed && <span className="flex-1">{item.label}</span>}
-                    </Link>
-                  </li>
-                );
+                return <li key={item.href}>
+                  <Link href={item.href} title={collapsed ? item.label : undefined}
+                    aria-label={collapsed ? item.label : undefined} aria-current={active ? 'page' : undefined}
+                    className={`${styles.navLink} ${active ? styles.active : ''}`}>
+                    <Icon icon={ADMIN_ICONS[item.icon]} width={20} height={20} />
+                    {!collapsed && <span>{item.label}</span>}
+                  </Link>
+                </li>;
               })}
             </ul>
-          </div>
+          </section>
         ))}
       </nav>
-
-      <div className="p-3 space-y-3 shrink-0">
-        <div className="flex items-center gap-3 bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] px-3 py-3">
-          <div className="h-10 w-10 shrink-0 rounded-full bg-admin-primary-soft text-admin-primary font-inter font-semibold text-sm flex items-center justify-center">
-            {initialsFor(email)}
-          </div>
-          {!collapsed && (
-            <>
-              <div className="min-w-0 flex-1">
-                <p className="font-inter font-semibold text-sm text-gray-800 truncate">Admin</p>
-                <p className="font-inter text-sm text-neutral-500 truncate">{email}</p>
-              </div>
-              <button
-                onClick={handleLogout}
-                disabled={loggingOut}
-                className="text-admin-muted hover:text-admin-danger transition-colors shrink-0 disabled:opacity-50"
-                aria-label="Log out"
-              >
-                <Icon icon={ADMIN_ICONS.logout} width={20} height={20} />
-              </button>
-            </>
-          )}
+      <div className={styles.footer}>
+        <div className={styles.account}>
+          <span className={styles.avatar} aria-hidden="true">{initialsFor(email)}</span>
+          {!collapsed && <div className={styles.accountDetails}><strong>Admin</strong><span>{email}</span></div>}
+          <button type="button" onClick={handleLogout} disabled={loggingOut} className={styles.iconButton} aria-label="Log out">
+            <Icon icon={ADMIN_ICONS.logout} width={20} height={20} />
+          </button>
         </div>
-
-        <Link
-          href="/shop"
-          className={`flex items-center gap-2 rounded-md px-5 py-3 text-[15px] font-medium text-admin-ink bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] hover:shadow-md transition-shadow ${
-            collapsed ? 'justify-center' : ''
-          }`}
-        >
-          {!collapsed && <span className="flex-1">Your Shop</span>}
-          <Icon icon={ADMIN_ICONS.externalLink} width={16} height={16} />
+        <Link href="/shop" className={styles.shopLink} aria-label={collapsed ? 'Your shop' : undefined} title={collapsed ? 'Your shop' : undefined}>
+          <Icon icon={ADMIN_ICONS.externalLink} width={18} height={18} />{!collapsed && <span>Your shop</span>}
         </Link>
       </div>
     </aside>

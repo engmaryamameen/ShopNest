@@ -1,0 +1,24 @@
+.sidebar { width: 236px; height: 100vh; position: sticky; top: 0; flex: none; display: flex; flex-direction: column; padding: 18px 14px; background: #fff; border-right: 1px solid #e8eaed; color: #222730; transition: width 180ms ease; }
+.collapsed { width: 76px; }
+.header { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 6px; }
+.brand { display: flex; align-items: baseline; gap: 7px; color: inherit; font-size: 17px; font-weight: 700; text-decoration: none; }
+.brand span { color: #818894; font-size: 11px; font-weight: 500; }
+.iconButton { border: 0; background: transparent; color: #69717d; display: grid; place-items: center; padding: 8px; border-radius: 9px; cursor: pointer; flex: none; }
+.iconButton:hover { background: #f3f4f6; color: #20242a; }
+.iconButton:disabled { opacity: .5; cursor: wait; }
+.navigation { min-height: 0; overflow-y: auto; flex: 1; padding: 16px 0; }
+.section + .section { margin-top: 22px; }
+.sectionTitle { color: #858c97; margin: 0 8px 8px; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.list { padding: 0; margin: 0; list-style: none; display: grid; gap: 3px; }
+.navLink, .shopLink { display: flex; align-items: center; gap: 11px; min-height: 40px; padding: 9px 11px; border-radius: 10px; color: #515966; font-size: 14px; line-height: 20px; text-decoration: none; }
+.navLink:hover, .shopLink:hover { background: #f5f6f7; color: #171a1f; }
+.active { background: #eff1f3; color: #171a1f; font-weight: 600; }
+.collapsed .navLink, .collapsed .shopLink { justify-content: center; padding-inline: 8px; }
+.footer { border-top: 1px solid #eceef1; padding-top: 12px; display: grid; gap: 6px; }
+.account { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: #e9edf1; color: #394454; display: grid; place-items: center; font-size: 12px; font-weight: 700; flex: none; }
+.accountDetails { min-width: 0; flex: 1; display: grid; font-size: 12px; }
+.accountDetails span { color: #7b8390; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.collapsed .account { flex-direction: column; }
+.sidebar a:focus-visible, .sidebar button:focus-visible { outline: 2px solid #455c91; outline-offset: 2px; }
+@media (max-width: 700px) { .sidebar:not(.collapsed) { width: 190px; } }
