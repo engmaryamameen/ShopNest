@@ -156,6 +156,7 @@ jobs:
       API_URL: http://localhost:3001
       NEXT_PUBLIC_API_URL: http://localhost:3001
       INTERNAL_API_URL: http://localhost:3001
+      MAIL_CAPTURE_FILE_PATH: /tmp/shopnest-e2e-${{ github.run_id }}-${{ github.run_attempt }}.jsonl
       NODE_ENV: development # not `test` or `production` — production refuses the local mail adapter (env.validation.ts), and this job needs it to read verification/reset links back out.
 
     steps:
