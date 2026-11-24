@@ -6,7 +6,8 @@
 .iconButton { border: 0; background: transparent; color: #69717d; display: grid; place-items: center; padding: 8px; border-radius: 9px; cursor: pointer; flex: none; }
 .iconButton:hover { background: #f3f4f6; color: #20242a; }
 .iconButton:disabled { opacity: .5; cursor: wait; }
-.navigation { min-height: 0; overflow-y: auto; flex: 1; padding: 16px 0; }
+.navigation { min-height: 0; overflow-y: auto; flex: 1; margin-right: -14px; padding: 16px 0; scrollbar-width: none; }
+.navigation::-webkit-scrollbar { display: none; }
 .section + .section { margin-top: 22px; }
 .sectionTitle { color: #858c97; margin: 0 8px 8px; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
 .list { padding: 0; margin: 0; list-style: none; display: grid; gap: 3px; }
