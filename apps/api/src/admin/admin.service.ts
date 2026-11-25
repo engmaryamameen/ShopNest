@@ -44,7 +44,7 @@ export class AdminService {
     private readonly auth: AuthService,
   ) {}
 
-  async getDashboardSummary(days = 7, range?: string): Promise<DashboardSummary> {
+  async getDashboardSummary(days = 7, range?: string, timezone = 'UTC'): Promise<DashboardSummary> {
     // UTC throughout, deliberately — day-key strings below are also
     // UTC-derived (toISOString()), and mixing a server-local midnight with
     // UTC day keys would misbucket every order near a day boundary on any
@@ -56,7 +56,7 @@ export class AdminService {
     const thirtyDaysAgo = new Date(startOfToday);
     thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - (days - 1));
 
-    const period = range === undefined ? { start: thirtyDaysAgo, end: new Date(startOfToday.getTime() + 86400000) } : dashboardPeriod(range, now);
+    const period = range === undefined ? { start: thirtyDaysAgo, end: new Date(startOfToday.getTime() + 86400000) } : dashboardPeriod(range, now, timezone);
     const periodDates = { ...(period.start ? { gte: period.start } : {}), lt: period.end };
 
     const [

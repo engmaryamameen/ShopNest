@@ -49,8 +49,8 @@ export class AdminController {
   @Get('dashboard')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: '[Admin] Platform-wide aggregate counts and recent activity' })
-  getDashboard(@Query('range') range?: string) {
-    return this.admin.getDashboardSummary(30, range);
+  getDashboard(@Query('range') range?: string, @Query('timezone') timezone?: string) {
+    return this.admin.getDashboardSummary(30, range, timezone);
   }
 
   @Get('audit-logs')

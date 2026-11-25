@@ -26,13 +26,16 @@ const QUICK_LINKS = [
 export default async function AdminDashboardPage() {
   const cookieStore = await cookies();
   const selected = cookieStore.get('shopnest_dashboard_range')?.value ?? '30';
+  const requestedTimezone = cookieStore.get('shopnest_dashboard_timezone')?.value ?? 'UTC';
+  let timezone = requestedTimezone;
+  try { new Intl.DateTimeFormat('en', { timeZone: timezone }); } catch { timezone = 'UTC'; }
   const cookieHeader = cookieStore.toString();
-  const summary = await api.adminDashboard(cookieHeader, selected);
+  const summary = await api.adminDashboard(cookieHeader, selected, timezone);
 
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4"><h2 className="font-[Inter,sans-serif] text-sm leading-5 font-semibold text-black">Overview</h2><DashboardRangeSelect selected={selected} /></div>
+      <div className="flex items-center justify-between gap-4"><h2 className="font-[Inter,sans-serif] text-sm leading-5 font-semibold text-black">Overview</h2><DashboardRangeSelect selected={selected} timezone={timezone} /></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
         <StatCard label="Total Sales" sublabel="Gross merchandise value, excluding cancelled orders" value={typeof summary.periodMerchandiseCents === 'number' && Number.isFinite(summary.periodMerchandiseCents) ? formatPrice(summary.periodMerchandiseCents) : '—'} />
         <StatCard label="Platform Revenue" sublabel="Revenue tracking is not yet available." value="—" />
@@ -57,7 +60,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
-        <h2 className="font-bold text-admin-heading font-lato mb-4">Simulated order totals · last 30 days</h2>
+        <h2 className="font-bold text-admin-heading font-lato mb-4">Simulated order totals · last 30 days (UTC)</h2>
         <WeeklyAreaChart data={summary.weeklyTrend} />
       </div>
 

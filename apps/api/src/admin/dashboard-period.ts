@@ -1,18 +1,25 @@
-export function dashboardPeriod(value: string | undefined, now = new Date()): { start?: Date; end: Date } {
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const nextDay = new Date(today.getTime() + 86400000);
+import { Temporal } from '@js-temporal/polyfill';
+
+export function dashboardPeriod(value: string | undefined, now = new Date(), zone = 'UTC'): { start?: Date; end: Date } {
+  let timeZone = zone;
+  try { new Intl.DateTimeFormat('en', { timeZone }).format(now); } catch { timeZone = 'UTC'; }
+  const today = Temporal.Instant.fromEpochMilliseconds(now.getTime()).toZonedDateTimeISO(timeZone).toPlainDate();
+  const boundary = (date: Temporal.PlainDate) => new Date(date.toZonedDateTime(timeZone).epochMilliseconds);
+  const nextDay = boundary(today.add({ days: 1 }));
   const period = value ?? '30';
   if (period === 'all') return { end: nextDay };
-  if (period === 'yesterday') return { start: new Date(today.getTime() - 86400000), end: today };
-  if (period === 'month') return { start: new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)), end: nextDay };
-  if (period === 'last-month') return { start: new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1)), end: new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)) };
-  if (period === 'year') return { start: new Date(Date.UTC(today.getUTCFullYear(), 0, 1)), end: nextDay };
+  if (period === 'yesterday') return { start: boundary(today.subtract({ days: 1 })), end: boundary(today) };
+  if (period === 'month') return { start: boundary(today.with({ day: 1 })), end: nextDay };
+  if (period === 'last-month') return { start: boundary(today.with({ day: 1 }).subtract({ months: 1 })), end: boundary(today.with({ day: 1 })) };
+  if (period === 'year') return { start: boundary(today.with({ month: 1, day: 1 })), end: nextDay };
   const custom = /^custom:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/.exec(period);
   if (custom) {
-    const start = new Date(`${custom[1]}T00:00:00.000Z`);
-    const last = new Date(`${custom[2]}T00:00:00.000Z`);
-    if (!Number.isNaN(start.valueOf()) && !Number.isNaN(last.valueOf()) && start.toISOString().slice(0, 10) === custom[1] && last.toISOString().slice(0, 10) === custom[2] && start <= last && last <= today) return { start, end: new Date(last.getTime() + 86400000) };
+    try {
+      const start = Temporal.PlainDate.from(custom[1]);
+      const last = Temporal.PlainDate.from(custom[2]);
+      if (Temporal.PlainDate.compare(start, last) <= 0 && Temporal.PlainDate.compare(last, today) <= 0) return { start: boundary(start), end: boundary(last.add({ days: 1 })) };
+    } catch { /* Invalid input falls back to the default period. */ }
   }
   const days = ['1', '7', '30', '90'].includes(period) ? Number(period) : 30;
-  return { start: new Date(today.getTime() - (days - 1) * 86400000), end: nextDay };
+  return { start: boundary(today.subtract({ days: days - 1 })), end: nextDay };
 }

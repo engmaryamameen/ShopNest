@@ -388,7 +388,7 @@ export const api = {
 
   // ── Admin – Dashboard / audit log / admin accounts ──────────────────────────
 
-  adminDashboard: (cookies?: string, range?: string) => request<AdminDashboardResponse>(`/admin/dashboard${range ? `?range=${encodeURIComponent(range)}` : ''}`, { cookies }),
+  adminDashboard: (cookies?: string, range?: string, timezone?: string) => request<AdminDashboardResponse>(`/admin/dashboard?${new URLSearchParams({ ...(range ? { range } : {}), ...(timezone ? { timezone } : {}) })}`, { cookies }),
 
   adminAuditLogs: (
     params: { page?: number; limit?: number; action?: string; targetType?: string } = {},

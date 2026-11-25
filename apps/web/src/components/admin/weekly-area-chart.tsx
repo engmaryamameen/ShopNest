@@ -38,7 +38,7 @@ export function WeeklyAreaChart({ data }: WeeklyAreaChartProps) {
 
   return (
     <div className="relative w-full">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT + 28}`} className="w-full h-auto" role="img" aria-label="Simulated order totals for the selected period (UTC)">
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT + 28}`} className="w-full h-auto" role="img" aria-label="Simulated order totals for the last 30 days (UTC)">
         <defs>
           <linearGradient id="weeklyAreaGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4EA674" stopOpacity="0.35" />

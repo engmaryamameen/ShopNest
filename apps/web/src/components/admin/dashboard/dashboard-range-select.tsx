@@ -12,7 +12,7 @@ const ranges = [
   { value: 'custom', label: 'Custom range' },
 ];
 
-export function DashboardRangeSelect({ selected = '30' }: { selected?: string }) {
+export function DashboardRangeSelect({ selected = '30', timezone = 'UTC' }: { selected?: string; timezone?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
@@ -33,7 +33,8 @@ export function DashboardRangeSelect({ selected = '30' }: { selected?: string })
     return () => document.removeEventListener('pointerdown', dismiss);
   }, [open]);
 
-  function changeRange(value: string) {
+  function changeRange(value: string, zone = timezone) {
+    document.cookie = `shopnest_dashboard_timezone=${encodeURIComponent(zone)}; Path=/admin; Max-Age=31536000; SameSite=Lax`;
     document.cookie = `shopnest_dashboard_range=${value}; Path=/admin; Max-Age=31536000; SameSite=Lax`;
     const url = new URL(window.location.href);
     url.searchParams.delete('range');
@@ -61,7 +62,7 @@ export function DashboardRangeSelect({ selected = '30' }: { selected?: string })
 
   return (
     <div ref={container} className="relative font-['Inter_Variable',sans-serif] [font-feature-settings:'ss01'_on,'cv01'_on]" onKeyDown={onKeyDown}>
-      <button ref={trigger} type="button" aria-label="Order reporting period (UTC)" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="inline-flex h-8 items-center gap-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs leading-4 font-normal text-black hover:bg-black/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#8a9aaa]">
+      <button ref={trigger} type="button" aria-label={`Order reporting period (${timezone})`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="inline-flex h-8 items-center gap-1 rounded-lg border-0 bg-transparent px-2 text-center text-xs leading-4 font-normal text-black hover:bg-black/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#8a9aaa]">
         {selectedLabel}
         <svg className={`text-black/40 transition-transform duration-200 motion-reduce:transition-none ${open ? "rotate-180" : ""}`} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
@@ -71,7 +72,7 @@ export function DashboardRangeSelect({ selected = '30' }: { selected?: string })
         </button>)}
 
       </div>
-      {customOpen && <CustomRangeDialog initial={selected} onClose={() => { setCustomOpen(false); trigger.current?.focus(); }} onApply={(range) => { setCustomOpen(false); changeRange(range); }} />}
+      {customOpen && <CustomRangeDialog initial={selected} initialTimezone={timezone} onClose={() => { setCustomOpen(false); trigger.current?.focus(); }} onApply={(range, zone) => { setCustomOpen(false); changeRange(range, zone); }} />}
     </div>
   );
 }
