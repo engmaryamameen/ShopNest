@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { startTransition, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { CustomRangeDialog } from './custom-range-dialog';
 
@@ -40,8 +40,8 @@ export function DashboardRangeSelect({ selected = '30', timezone = 'UTC' }: { se
     url.searchParams.delete('range');
     window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
     setOpen(false);
-    trigger.current?.focus();
-    router.refresh();
+    trigger.current?.focus({ preventScroll: true });
+    startTransition(() => router.refresh());
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -72,7 +72,7 @@ export function DashboardRangeSelect({ selected = '30', timezone = 'UTC' }: { se
         </button>)}
 
       </div>
-      {customOpen && <CustomRangeDialog initial={selected} initialTimezone={timezone} onClose={() => { setCustomOpen(false); requestAnimationFrame(() => trigger.current?.focus()); }} onApply={(range, zone) => { setCustomOpen(false); requestAnimationFrame(() => changeRange(range, zone)); }} />}
+      {customOpen && <CustomRangeDialog initial={selected} initialTimezone={timezone} onClose={() => { setCustomOpen(false); requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true })); }} onApply={(range, zone) => { setCustomOpen(false); requestAnimationFrame(() => changeRange(range, zone)); }} />}
     </div>
   );
 }

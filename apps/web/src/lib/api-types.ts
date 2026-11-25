@@ -332,6 +332,7 @@ export interface AdminDashboardResponse {
   products: { draft: number; published: number; archived: number };
   orders: { byStatus: Partial<Record<OrderStatus, number>>; totalRevenueCents: number };
   periodOrderStatuses: Partial<Record<OrderStatus, number>>;
+  periodNewCustomers: number;
   periodOrders: number;
   periodMerchandiseCents: number;
   pendingVendorApplications: number;

@@ -40,10 +40,10 @@ export default async function AdminDashboardPage() {
       <div className="flex items-center justify-between gap-4"><h2 className="font-[Inter,sans-serif] text-sm leading-5 font-semibold text-black">Overview</h2><DashboardRangeSelect selected={selected} timezone={timezone} /></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
         <StatCard label="Total Sales" sublabel={period} value={typeof summary.periodMerchandiseCents === 'number' && Number.isFinite(summary.periodMerchandiseCents) ? formatPrice(summary.periodMerchandiseCents) : '—'} />
-        <StatCard label="Platform Revenue" sublabel={`${period} · Revenue tracking unavailable`} value="—" />
+        <StatCard label="Platform Revenue" sublabel={period} value="—" />
         <StatCard label="Total Orders" sublabel={period} value={typeof summary.periodOrders === 'number' && Number.isFinite(summary.periodOrders) ? summary.periodOrders.toLocaleString('en-US') : '—'} />
-        <StatCard label="Active Vendors" sublabel="Current" value={summary.vendors.approved.toLocaleString('en-US')} />
-        <StatCard label="Total Customers" sublabel="Current" value={summary.users.customers.toLocaleString('en-US')} />
+        <StatCard label="Active Vendors" sublabel="Currently active vendors" value={summary.vendors.approved.toLocaleString('en-US')} secondary="New approvals unavailable · selected period" />
+        <StatCard label="Total Customers" sublabel="Total registered customers" value={summary.users.customers.toLocaleString('en-US')} secondary={typeof summary.periodNewCustomers === 'number' ? `+${summary.periodNewCustomers.toLocaleString('en-US')} new customers · ${period}` : `New customers unavailable · ${period}`} />
         <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
           <p className="mb-3 font-['Inter_Variable',sans-serif] text-sm leading-5 font-semibold text-black [font-feature-settings:'ss01'_on,'cv01'_on]">Pending &amp; Cancelled Orders</p>
           <p className="mb-3 font-['Inter_Variable',sans-serif] text-xs leading-[18px] text-admin-muted">{period}</p>

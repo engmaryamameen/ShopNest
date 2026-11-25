@@ -6,6 +6,7 @@ import { AuthService } from '../../auth/auth.service';
 function makePrismaMock() {
   return {
     user: {
+      count: jest.fn().mockResolvedValue(3),
       groupBy: jest.fn().mockResolvedValue([
         { role: 'CUSTOMER', _count: 10 },
         { role: 'VENDOR', _count: 3 },
@@ -84,6 +85,12 @@ describe('AdminService', () => {
       expect(summary.orders.byStatus).toEqual({ DELIVERED: 12, CANCELLED: 2 });
       expect(summary.orders.totalRevenueCents).toBe(500000);
       expect(summary.pendingVendorApplications).toBe(2);
+    });
+
+    it('counts customers registered in the selected reporting interval', async () => {
+      const summary = await service.getDashboardSummary(30, 'custom:2026-03-08:2026-03-08', 'America/New_York');
+      expect(summary.periodNewCustomers).toBe(3);
+      expect(prisma.user.count).toHaveBeenCalledWith({ where: { role: 'CUSTOMER', createdAt: { gte: new Date('2026-03-08T05:00:00Z'), lt: new Date('2026-03-09T04:00:00Z') } } });
     });
 
     it('calculates merchandise value from order item snapshots', async () => {

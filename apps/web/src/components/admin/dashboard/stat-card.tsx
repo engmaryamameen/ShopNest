@@ -5,11 +5,13 @@ export function StatCard({
   sublabel,
   value,
   changePercent,
+  secondary,
 }: {
   label: string;
   sublabel?: string;
   value: string | number;
   changePercent?: number | null;
+  secondary?: string;
 }) {
   return (
     <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
@@ -19,6 +21,7 @@ export function StatCard({
         <p className="font-[family-name:var(--font-stat-value)] text-[24px] leading-[36px] font-[600] text-[#1c1c1c]">{value}</p>
         {changePercent !== undefined && <TrendBadge percent={changePercent} />}
       </div>
+      {secondary && <p className="mt-1 font-['Inter_Variable',sans-serif] text-xs leading-[18px] text-admin-muted">{secondary}</p>}
     </div>
   );
 }

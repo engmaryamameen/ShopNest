@@ -12,6 +12,7 @@ export interface DashboardSummary {
   products: { draft: number; published: number; archived: number };
   orders: { byStatus: Partial<Record<string, number>>; totalRevenueCents: number };
   periodOrderStatuses: Partial<Record<string, number>>;
+  periodNewCustomers: number;
   periodOrders: number;
   periodMerchandiseCents: number;
   pendingVendorApplications: number;
@@ -61,6 +62,7 @@ export class AdminService {
 
     const [
       userCounts,
+      periodNewCustomers,
       vendorCounts,
       productCounts,
       orderCounts,
@@ -73,6 +75,7 @@ export class AdminService {
       topProductRows,
     ] = await Promise.all([
       this.prisma.user.groupBy({ by: ['role'], _count: true }),
+      this.prisma.user.count({ where: { role: Role.CUSTOMER, createdAt: periodDates } }),
       this.prisma.vendor.groupBy({ by: ['status'], _count: true }),
       this.prisma.product.groupBy({ by: ['publishStatus'], _count: true }),
       this.prisma.order.groupBy({ by: ['status'], _count: true }),
@@ -150,6 +153,7 @@ export class AdminService {
         totalRevenueCents: revenue._sum.totalCents ?? 0,
       },
       periodOrderStatuses: Object.fromEntries(periodStatuses.map((row) => [row.status, row._count])),
+      periodNewCustomers,
       periodOrders: periodOrderCount,
       periodMerchandiseCents: merchandiseItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0),
       pendingVendorApplications: vendorsByStatus['PENDING'] ?? 0,
