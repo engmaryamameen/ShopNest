@@ -159,3 +159,8 @@ button:not(:disabled),
   transition: background-color 160ms ease;
 }
 @media (hover: hover) { .shopnest-secondary:hover:not(:disabled) { background: #f1f5f9; } }
+
+@keyframes range-dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes range-dialog-out { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(8px) scale(.98); } }
+@keyframes range-sheet-in { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
+@keyframes range-sheet-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(100%); } }
