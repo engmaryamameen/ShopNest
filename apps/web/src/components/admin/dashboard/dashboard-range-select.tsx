@@ -72,7 +72,7 @@ export function DashboardRangeSelect({ selected = '30', timezone = 'UTC' }: { se
         </button>)}
 
       </div>
-      {customOpen && <CustomRangeDialog initial={selected} initialTimezone={timezone} rangeLabel={selected.startsWith('custom:') ? selected.slice(7).replace(':', ' – ') : selectedLabel} onClose={() => { setCustomOpen(false); trigger.current?.focus(); }} onApply={(range, zone) => { setCustomOpen(false); changeRange(range, zone); }} />}
+      {customOpen && <CustomRangeDialog initial={selected} initialTimezone={timezone} onClose={() => { setCustomOpen(false); requestAnimationFrame(() => trigger.current?.focus()); }} onApply={(range, zone) => { setCustomOpen(false); requestAnimationFrame(() => changeRange(range, zone)); }} />}
     </div>
   );
 }

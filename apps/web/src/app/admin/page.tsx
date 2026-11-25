@@ -26,6 +26,8 @@ const QUICK_LINKS = [
 export default async function AdminDashboardPage() {
   const cookieStore = await cookies();
   const selected = cookieStore.get('shopnest_dashboard_range')?.value ?? '30';
+  const periodLabels: Record<string, string> = { '1': 'Today', '7': 'Last 7 days', '30': 'Last 30 days', '90': 'Last 90 days', yesterday: 'Yesterday', month: 'This month', 'last-month': 'Last month', year: 'This year', all: 'All time' };
+  const period = selected.startsWith('custom:') ? selected.slice(7).replace(':', ' – ') : periodLabels[selected] ?? 'Last 30 days';
   const requestedTimezone = cookieStore.get('shopnest_dashboard_timezone')?.value ?? 'UTC';
   let timezone = requestedTimezone;
   try { new Intl.DateTimeFormat('en', { timeZone: timezone }); } catch { timezone = 'UTC'; }
@@ -37,14 +39,14 @@ export default async function AdminDashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4"><h2 className="font-[Inter,sans-serif] text-sm leading-5 font-semibold text-black">Overview</h2><DashboardRangeSelect selected={selected} timezone={timezone} /></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-        <StatCard label="Total Sales" sublabel="Gross merchandise value, excluding cancelled orders" value={typeof summary.periodMerchandiseCents === 'number' && Number.isFinite(summary.periodMerchandiseCents) ? formatPrice(summary.periodMerchandiseCents) : '—'} />
-        <StatCard label="Platform Revenue" sublabel="Revenue tracking is not yet available." value="—" />
-        <StatCard label="Total Orders" sublabel="All orders placed during the selected period" value={typeof summary.periodOrders === 'number' && Number.isFinite(summary.periodOrders) ? summary.periodOrders.toLocaleString('en-US') : '—'} />
-        <StatCard label="Active Vendors" sublabel="Currently approved and active vendors" value={summary.vendors.approved.toLocaleString('en-US')} />
-        <StatCard label="Total Customers" sublabel="Total registered customer accounts" value={summary.users.customers.toLocaleString('en-US')} />
+        <StatCard label="Total Sales" sublabel={period} value={typeof summary.periodMerchandiseCents === 'number' && Number.isFinite(summary.periodMerchandiseCents) ? formatPrice(summary.periodMerchandiseCents) : '—'} />
+        <StatCard label="Platform Revenue" sublabel={`${period} · Revenue tracking unavailable`} value="—" />
+        <StatCard label="Total Orders" sublabel={period} value={typeof summary.periodOrders === 'number' && Number.isFinite(summary.periodOrders) ? summary.periodOrders.toLocaleString('en-US') : '—'} />
+        <StatCard label="Active Vendors" sublabel="Current" value={summary.vendors.approved.toLocaleString('en-US')} />
+        <StatCard label="Total Customers" sublabel="Current" value={summary.users.customers.toLocaleString('en-US')} />
         <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
           <p className="mb-3 font-['Inter_Variable',sans-serif] text-sm leading-5 font-semibold text-black [font-feature-settings:'ss01'_on,'cv01'_on]">Pending &amp; Cancelled Orders</p>
-          <p className="mb-3 font-['Inter_Variable',sans-serif] text-xs leading-[18px] text-admin-muted">Order status during the selected period</p>
+          <p className="mb-3 font-['Inter_Variable',sans-serif] text-xs leading-[18px] text-admin-muted">{period}</p>
           <div className="flex items-center gap-6">
             <div>
               <p className="text-sm text-admin-muted font-lato">Pending</p>

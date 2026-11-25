@@ -7,7 +7,7 @@ const dayMs = 86_400_000;
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 const todayIn = (zone: string) => new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
-export function CustomRangeDialog({ initial, initialTimezone, rangeLabel, onApply, onClose }: { initial: string; initialTimezone: string; rangeLabel: string; onApply: (range: string, timezone: string) => void; onClose: () => void }) {
+export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }: { initial: string; initialTimezone: string; onApply: (range: string, timezone: string) => void; onClose: () => void }) {
   const existing = /^custom:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/.exec(initial);
   const [timezone, setTimezone] = useState(initialTimezone);
   const [start, setStart] = useState(existing?.[1] ?? '');
@@ -15,6 +15,7 @@ export function CustomRangeDialog({ initial, initialTimezone, rangeLabel, onAppl
   const [preview, setPreview] = useState('');
   const [closing, setClosing] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeAction = useRef<(() => void) | null>(null);
   const currentDay = todayIn(timezone);
   const initialMonth = (value: string) => { const date = new Date(`${value}T00:00:00Z`); return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)); };
   const [months, setMonths] = useState(() => {
@@ -37,11 +38,19 @@ export function CustomRangeDialog({ initial, initialTimezone, rangeLabel, onAppl
       root.style.scrollbarGutter = previousGutter;
     };
   }, []);
+  function finishClosing() {
+    if (!closeAction.current) return;
+    const action = closeAction.current;
+    closeAction.current = null;
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    action();
+  }
   function close(action: () => void) {
-    if (closing) return;
+    if (closeAction.current) return;
+    closeAction.current = action;
     setClosing(true);
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    closeTimer.current = setTimeout(action, reducedMotion ? 0 : 200);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) finishClosing();
+    else closeTimer.current = setTimeout(finishClosing, 400);
   }
   function select(date: string) {
     if (!start || end) { setStart(date); setEnd(''); setPreview(''); }
@@ -59,8 +68,8 @@ export function CustomRangeDialog({ initial, initialTimezone, rangeLabel, onAppl
     });
   }
 
-  return <dialog ref={dialog} aria-labelledby="range-title" onCancel={(event) => { event.preventDefault(); close(onClose); }} onClick={(event) => { if (event.target === event.currentTarget) close(onClose); }} data-range-dialog data-closing={closing || undefined} className="fixed inset-0 m-auto animate-[range-dialog-in_200ms_ease-out] data-[closing]:animate-[range-dialog-out_200ms_ease-in_forwards] motion-reduce:animate-none motion-reduce:data-[closing]:animate-none max-sm:animate-[range-sheet-in_200ms_ease-out] max-sm:data-[closing]:animate-[range-sheet-out_200ms_ease-in_forwards] m-auto max-h-[100dvh] w-full max-w-[720px] overflow-y-auto rounded-2xl border-0 bg-white p-5 text-[#1c1c1c] shadow-xl backdrop:bg-slate-950/45 max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none max-sm:rounded-t-2xl">
-    <div className="flex items-start justify-between gap-3"><div><h2 id="range-title" className="text-base font-semibold">Custom date range</h2><p className="mt-1 font-lato text-sm leading-[17px] tracking-[-0.02em] text-[#6a717f]">{rangeLabel}</p></div><button type="button" onClick={() => close(onClose)} aria-label="Close date range" className="grid size-9 place-items-center rounded-lg text-xl text-slate-600 hover:text-[#0077b6] focus-visible:outline-2 focus-visible:outline-[#0077b6]">×</button></div>
+  return <dialog ref={dialog} aria-labelledby="range-title" onCancel={(event) => { event.preventDefault(); close(onClose); }} onClick={(event) => { if (event.target === event.currentTarget) close(onClose); }} onAnimationEnd={(event) => { if (event.target === event.currentTarget && closing) finishClosing(); }} data-range-dialog data-closing={closing || undefined} className="fixed inset-0 m-auto animate-[range-dialog-in_200ms_ease-out] data-[closing]:animate-[range-dialog-out_200ms_ease-in_forwards] motion-reduce:animate-none motion-reduce:data-[closing]:animate-none max-sm:animate-[range-sheet-in_200ms_ease-out] max-sm:data-[closing]:animate-[range-sheet-out_200ms_ease-in_forwards] m-auto max-h-[100dvh] w-full max-w-[720px] overflow-y-auto rounded-2xl border-0 bg-white p-5 text-[#1c1c1c] shadow-xl backdrop:bg-slate-950/45 max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none max-sm:rounded-t-2xl">
+    <div className="flex items-center justify-between gap-3"><h2 id="range-title" className="text-base font-semibold">Select custom date range</h2><button type="button" onClick={() => close(onClose)} aria-label="Close date range" className="grid size-9 place-items-center rounded-lg text-xl text-slate-600 hover:text-[#0077b6] focus-visible:outline-2 focus-visible:outline-[#0077b6]">×</button></div>
     <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
       {months.map((visibleMonth, monthIndex) => {
         const title = visibleMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
