@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
 import { useUserStore } from '@/store/user.store';
 import { validateReturnTo } from '@/lib/validate-return-to';
+import { authDestination } from '@/lib/auth-destination';
 
 /** Inner form — isolated so useSearchParams() gets its own Suspense boundary. */
 function LoginForm() {
@@ -50,7 +51,7 @@ function LoginForm() {
         const returnTo = params.get('google') === 'link'
           ? validateReturnTo((await api.linkGoogle()).returnTo)
           : validateReturnTo(params.get('returnTo') ?? modal?.returnTo);
-        router.push(returnTo);
+        router.push(authDestination(result.user.role, returnTo));
         router.refresh();
       } catch (err) {
         if (err instanceof ApiError) {

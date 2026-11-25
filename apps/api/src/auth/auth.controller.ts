@@ -20,6 +20,7 @@ import { ApiTags, ApiOperation, ApiCookieAuth } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { SignupService } from './signup.service';
+import { authDestination } from './auth-destination';
 import { GoogleAuthService } from './google-auth.service';
 import { SignupCodeDto } from './dto/signup-code.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -91,7 +92,8 @@ export class AuthController {
       if (!user) throw new UnauthorizedException();
       const { familyId, rawToken } = await this.authService.createVerifiedSignupSession(user.id, deviceContext(req));
       this.setCookies(res, this.authService.signAccessToken({ sub: user.id, email: user.email, role: user.role, familyId }), rawToken);
-      res.redirect(new URL(result.returnTo, webUrl).toString());
+      const destination = authDestination(user.role, result.returnTo);
+      res.redirect(new URL(destination, webUrl).toString());
     } catch (error) {
       const reason = error instanceof ConflictException ? 'existing_account' : 'failed';
       res.redirect(new URL(`/login?google=${reason}`, webUrl).toString());
@@ -108,7 +110,8 @@ export class AuthController {
     const { familyId, rawToken } = await this.authService.createVerifiedSignupSession(user.id, deviceContext(req));
     this.setCookies(res, this.authService.signAccessToken({ sub: user.id, email: user.email, role: user.role, familyId }), rawToken);
     res.clearCookie('google_link_proof', { httpOnly: true, sameSite: 'lax', secure: this.config.get<string>('app.nodeEnv') === 'production', path: '/' });
-    return { status: 'linked', returnTo: result.returnTo };
+    const returnTo = authDestination(user.role, result.returnTo);
+    return { status: 'linked', returnTo };
   }
 
   @Post('google/link')
