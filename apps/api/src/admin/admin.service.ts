@@ -4,13 +4,14 @@ import * as crypto from 'node:crypto';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
-import { dashboardPeriod } from './dashboard-period';
+import { dashboardPeriod, previousDashboardPeriod } from './dashboard-period';
 
 export interface DashboardSummary {
   users: { total: number; customers: number; vendorsRole: number; admins: number };
   vendors: { pending: number; approved: number; suspended: number; rejected: number };
   products: { draft: number; published: number; archived: number };
   orders: { byStatus: Partial<Record<string, number>>; totalRevenueCents: number };
+  comparison: { start: Date; end: Date; currentStart: Date; currentEnd: Date; salesCents: number; orders: number; pending: number; cancelled: number } | null;
   periodOrderStatuses: Partial<Record<string, number>>;
   periodNewCustomers: number;
   periodOrders: number;
@@ -58,6 +59,7 @@ export class AdminService {
     thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - (days - 1));
 
     const period = range === undefined ? { start: thirtyDaysAgo, end: new Date(startOfToday.getTime() + 86400000) } : dashboardPeriod(range, now, timezone);
+    const previous = previousDashboardPeriod(period, timezone);
     const periodDates = { ...(period.start ? { gte: period.start } : {}), lt: period.end };
 
     const [
@@ -73,6 +75,9 @@ export class AdminService {
       periodStatuses,
       merchandiseItems,
       topProductRows,
+      previousOrders,
+      previousStatuses,
+      previousItems,
     ] = await Promise.all([
       this.prisma.user.groupBy({ by: ['role'], _count: true }),
       this.prisma.user.count({ where: { role: Role.CUSTOMER, createdAt: periodDates } }),
@@ -111,6 +116,9 @@ export class AdminService {
         orderBy: { _sum: { quantity: 'desc' } },
         take: 5,
       }),
+      previous ? this.prisma.order.count({ where: { createdAt: { gte: previous.start, lt: previous.end } } }) : null,
+      previous ? this.prisma.order.groupBy({ by: ['status'], _count: true, where: { createdAt: { gte: previous.start, lt: previous.end } } }) : [],
+      previous ? this.prisma.orderItem.findMany({ where: { order: { createdAt: { gte: previous.start, lt: previous.end }, status: { not: 'CANCELLED' } } }, select: { quantity: true, unitPriceCents: true } }) : [],
     ]);
 
     const { weeklyTrend, revenueChangePercent, orderCountChangePercent } = this.buildWeeklyTrend(
@@ -152,6 +160,7 @@ export class AdminService {
         byStatus: ordersByStatus,
         totalRevenueCents: revenue._sum.totalCents ?? 0,
       },
+      comparison: previous && period.start && previousOrders !== null ? { start: previous.start, end: previous.end, currentStart: period.start, currentEnd: period.end, salesCents: previousItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0), orders: previousOrders, pending: previousStatuses.find((row) => row.status === 'PENDING')?._count ?? 0, cancelled: previousStatuses.find((row) => row.status === 'CANCELLED')?._count ?? 0 } : null,
       periodOrderStatuses: Object.fromEntries(periodStatuses.map((row) => [row.status, row._count])),
       periodNewCustomers,
       periodOrders: periodOrderCount,

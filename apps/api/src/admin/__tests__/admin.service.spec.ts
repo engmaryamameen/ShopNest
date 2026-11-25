@@ -87,6 +87,19 @@ describe('AdminService', () => {
       expect(summary.pendingVendorApplications).toBe(2);
     });
 
+    it('returns prior-period order and merchandise totals', async () => {
+      prisma.order.count.mockResolvedValueOnce(5).mockResolvedValueOnce(3);
+      prisma.order.groupBy.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ status: 'PENDING', _count: 2 }, { status: 'CANCELLED', _count: 1 }]);
+      prisma.orderItem.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ quantity: 2, unitPriceCents: 1200 }]);
+      const summary = await service.getDashboardSummary(30, 'custom:2026-03-08:2026-03-08', 'America/New_York');
+      expect(summary.comparison).toEqual(expect.objectContaining({ salesCents: 2400, orders: 3, pending: 2, cancelled: 1, start: new Date('2026-03-07T05:00:00Z'), end: new Date('2026-03-08T05:00:00Z') }));
+    });
+
+    it('omits comparisons for all time', async () => {
+      const summary = await service.getDashboardSummary(30, 'all');
+      expect(summary.comparison).toBeNull();
+    });
+
     it('counts customers registered in the selected reporting interval', async () => {
       const summary = await service.getDashboardSummary(30, 'custom:2026-03-08:2026-03-08', 'America/New_York');
       expect(summary.periodNewCustomers).toBe(3);

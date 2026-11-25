@@ -331,6 +331,7 @@ export interface AdminDashboardResponse {
   vendors: { pending: number; approved: number; suspended: number; rejected: number };
   products: { draft: number; published: number; archived: number };
   orders: { byStatus: Partial<Record<OrderStatus, number>>; totalRevenueCents: number };
+  comparison: { start: string; end: string; currentStart: string; currentEnd: string; salesCents: number; orders: number; pending: number; cancelled: number } | null;
   periodOrderStatuses: Partial<Record<OrderStatus, number>>;
   periodNewCustomers: number;
   periodOrders: number;

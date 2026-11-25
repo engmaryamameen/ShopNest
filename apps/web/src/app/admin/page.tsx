@@ -8,6 +8,7 @@ import { TopProductsCard } from '@/components/admin/dashboard/top-products-card'
 import { RecentActivityCard } from '@/components/admin/dashboard/recent-activity-card';
 import { WeeklyAreaChart } from '@/components/admin/weekly-area-chart';
 import { DashboardRangeSelect } from '@/components/admin/dashboard/dashboard-range-select';
+import { MetricComparison } from '@/components/admin/dashboard/metric-comparison';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,29 +34,31 @@ export default async function AdminDashboardPage() {
   try { new Intl.DateTimeFormat('en', { timeZone: timezone }); } catch { timezone = 'UTC'; }
   const cookieHeader = cookieStore.toString();
   const summary = await api.adminDashboard(cookieHeader, selected, timezone);
+  const prior = summary.comparison?.currentStart && summary.comparison.currentEnd ? summary.comparison : null;
+  const compare = (current: number | undefined, previous: number | null | undefined, currency = false, lowerIsBetter = false) => prior ? <MetricComparison current={typeof current === 'number' ? current : null} previous={typeof previous === 'number' ? previous : null} start={prior.start} end={prior.end} currentStart={prior.currentStart} currentEnd={prior.currentEnd} timezone={timezone} currency={currency} lowerIsBetter={lowerIsBetter} /> : null;
 
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4"><h2 className="font-[Inter,sans-serif] text-sm leading-5 font-semibold text-black">Overview</h2><DashboardRangeSelect selected={selected} timezone={timezone} /></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-        <StatCard label="Total Sales" sublabel={period} value={typeof summary.periodMerchandiseCents === 'number' && Number.isFinite(summary.periodMerchandiseCents) ? formatPrice(summary.periodMerchandiseCents) : '—'} />
-        <StatCard label="Platform Revenue" sublabel={period} value="—" />
-        <StatCard label="Total Orders" sublabel={period} value={typeof summary.periodOrders === 'number' && Number.isFinite(summary.periodOrders) ? summary.periodOrders.toLocaleString('en-US') : '—'} />
-        <StatCard label="Active Vendors" sublabel="Currently active vendors" value={summary.vendors.approved.toLocaleString('en-US')} secondary="New approvals unavailable · selected period" />
-        <StatCard label="Total Customers" sublabel="Total registered customers" value={summary.users.customers.toLocaleString('en-US')} secondary={typeof summary.periodNewCustomers === 'number' ? `+${summary.periodNewCustomers.toLocaleString('en-US')} new customers · ${period}` : `New customers unavailable · ${period}`} />
+        <StatCard label="Total Sales" sublabel={period} value={typeof summary.periodMerchandiseCents === 'number' && Number.isFinite(summary.periodMerchandiseCents) ? formatPrice(summary.periodMerchandiseCents) : '—'} comparison={compare(summary.periodMerchandiseCents, prior?.salesCents, true)} />
+        <StatCard label="Platform Revenue" sublabel={period} value="—" comparison={compare(undefined, null, true)} />
+        <StatCard label="Total Orders" sublabel={period} value={typeof summary.periodOrders === 'number' && Number.isFinite(summary.periodOrders) ? summary.periodOrders.toLocaleString('en-US') : '—'} comparison={compare(summary.periodOrders, prior?.orders)} />
+        <StatCard label="Active Vendors" sublabel="Currently active vendors" value={summary.vendors.approved.toLocaleString('en-US')} secondary="New approvals: —" comparison={compare(undefined, null)} />
+        <StatCard label="Total Customers" sublabel="Total registered customers" value={summary.users.customers.toLocaleString('en-US')} comparison={compare(undefined, null)} secondary={typeof summary.periodNewCustomers === 'number' ? `+${summary.periodNewCustomers.toLocaleString('en-US')} new customers · ${period}` : `New customers unavailable · ${period}`} />
         <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
           <p className="mb-3 font-['Inter_Variable',sans-serif] text-sm leading-5 font-semibold text-black [font-feature-settings:'ss01'_on,'cv01'_on]">Pending &amp; Cancelled Orders</p>
           <p className="mb-3 font-['Inter_Variable',sans-serif] text-xs leading-[18px] text-admin-muted">{period}</p>
           <div className="flex items-center gap-6">
             <div>
               <p className="text-sm text-admin-muted font-lato">Pending</p>
-              <p className="font-[family-name:var(--font-stat-value)] text-[24px] leading-[36px] font-[600] text-[#1c1c1c]">{summary.periodOrderStatuses ? (summary.periodOrderStatuses.PENDING ?? 0).toLocaleString('en-US') : '—'}</p>
+              <div className="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1"><p className="font-[family-name:var(--font-stat-value)] text-[24px] leading-[36px] font-[600] text-[#1c1c1c]">{summary.periodOrderStatuses ? (summary.periodOrderStatuses.PENDING ?? 0).toLocaleString('en-US') : '—'}</p>{compare(summary.periodOrderStatuses ? summary.periodOrderStatuses.PENDING ?? 0 : undefined, prior?.pending, false, true)}</div>
             </div>
             <div className="w-px h-8 bg-gray-200" />
             <div>
               <p className="text-sm text-admin-muted font-lato">Cancelled</p>
-              <p className="font-[family-name:var(--font-stat-value)] text-[24px] leading-[36px] font-[600] text-admin-danger">{summary.periodOrderStatuses ? (summary.periodOrderStatuses.CANCELLED ?? 0).toLocaleString('en-US') : '—'}</p>
+              <div className="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1"><p className="font-[family-name:var(--font-stat-value)] text-[24px] leading-[36px] font-[600] text-admin-danger">{summary.periodOrderStatuses ? (summary.periodOrderStatuses.CANCELLED ?? 0).toLocaleString('en-US') : '—'}</p>{compare(summary.periodOrderStatuses ? summary.periodOrderStatuses.CANCELLED ?? 0 : undefined, prior?.cancelled, false, true)}</div>
             </div>
           </div>
         </div>

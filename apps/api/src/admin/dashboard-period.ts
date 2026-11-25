@@ -23,3 +23,14 @@ export function dashboardPeriod(value: string | undefined, now = new Date(), zon
   const days = ['1', '7', '30', '90'].includes(period) ? Number(period) : 30;
   return range(today.subtract({ days: days - 1 }));
 }
+
+export function previousDashboardPeriod(current: { start?: Date; end: Date }, zone = 'UTC'): { start: Date; end: Date } | null {
+  if (!current.start) return null;
+  let timeZone = zone;
+  try { new Intl.DateTimeFormat('en', { timeZone }).format(current.start); } catch { timeZone = 'UTC'; }
+  const localDay = (date: Date) => Temporal.Instant.fromEpochMilliseconds(date.getTime()).toZonedDateTimeISO(timeZone).toPlainDate();
+  const startDay = localDay(current.start);
+  const endDay = localDay(current.end);
+  const count = startDay.until(endDay, { largestUnit: 'days' }).days;
+  return dateRange(startDay.subtract({ days: count }), startDay.subtract({ days: 1 }), timeZone) as { start: Date; end: Date };
+}

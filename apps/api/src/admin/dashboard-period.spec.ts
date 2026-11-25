@@ -1,4 +1,4 @@
-import { dashboardPeriod } from './dashboard-period';
+import { dashboardPeriod, previousDashboardPeriod } from './dashboard-period';
 
 describe('dashboardPeriod', () => {
   const now = new Date('2026-03-15T10:30:00Z');
@@ -16,6 +16,11 @@ describe('dashboardPeriod', () => {
   });
   it('falls back to UTC for an invalid time zone', () => {
     expect(dashboardPeriod('1', now, 'Invalid/Zone')).toEqual(dashboardPeriod('1', now));
+  });
+  it('compares equal calendar days across daylight-saving changes', () => {
+    const selected = dashboardPeriod('custom:2026-03-08:2026-03-08', now, 'America/New_York');
+    expect(previousDashboardPeriod(selected, 'America/New_York')).toEqual({ start: new Date('2026-03-07T05:00:00Z'), end: new Date('2026-03-08T05:00:00Z') });
+    expect(previousDashboardPeriod(dashboardPeriod('all', now))).toBeNull();
   });
   it('uses all records through today for all time', () => {
     expect(dashboardPeriod('all', now)).toEqual({ end: new Date('2026-03-16T00:00:00Z') });
