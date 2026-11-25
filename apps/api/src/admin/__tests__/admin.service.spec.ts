@@ -28,6 +28,7 @@ function makePrismaMock() {
       ]),
     },
     order: {
+      count: jest.fn().mockResolvedValue(14),
       groupBy: jest.fn().mockResolvedValue([
         { status: 'DELIVERED', _count: 12 },
         { status: 'CANCELLED', _count: 2 },
@@ -36,6 +37,7 @@ function makePrismaMock() {
       findMany: jest.fn().mockResolvedValue([]),
     },
     orderItem: {
+      findMany: jest.fn().mockResolvedValue([]),
       groupBy: jest.fn().mockResolvedValue([]),
     },
     auditLog: {
@@ -65,6 +67,13 @@ describe('AdminService', () => {
   });
 
   describe('getDashboardSummary', () => {
+    it.each([1, 7, 30, 365])('returns %i days of order totals', async (days) => {
+      prisma.order.findMany.mockResolvedValue([{ createdAt: new Date(), totalCents: 1250 }]);
+      const summary = await service.getDashboardSummary(days);
+      expect(summary.weeklyTrend).toHaveLength(days);
+      expect(summary.weeklyTrend.at(-1)).toEqual(expect.objectContaining({ orderCount: 1, revenueCents: 1250 }));
+    });
+
     it('aggregates user/vendor/product/order counts and revenue from real groupBy queries', async () => {
       const summary = await service.getDashboardSummary();
 
@@ -75,6 +84,14 @@ describe('AdminService', () => {
       expect(summary.orders.byStatus).toEqual({ DELIVERED: 12, CANCELLED: 2 });
       expect(summary.orders.totalRevenueCents).toBe(500000);
       expect(summary.pendingVendorApplications).toBe(2);
+    });
+
+    it('calculates merchandise value from order item snapshots', async () => {
+      prisma.orderItem.findMany.mockResolvedValue([{ quantity: 2, unitPriceCents: 1200 }, { quantity: 1, unitPriceCents: 500 }]);
+      const summary = await service.getDashboardSummary();
+      expect(summary.periodMerchandiseCents).toBe(2900);
+      expect(summary.periodOrders).toBe(14);
+      expect(prisma.orderItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { order: expect.objectContaining({ status: { not: 'CANCELLED' } }) } }));
     });
 
     it('excludes cancelled orders from the revenue aggregate query', async () => {

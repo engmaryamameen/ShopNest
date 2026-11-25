@@ -1,8 +1,8 @@
+import '@fontsource-variable/manrope';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
-import { AdminSidebar } from '@/components/admin/admin-sidebar';
-import { AdminTopbar } from '@/components/admin/admin-topbar';
+import { AdminShell } from '@/components/admin/admin-shell';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
@@ -33,12 +33,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div className="min-h-screen flex bg-[#F9FAFB] font-lato">
-      <AdminSidebar email={email} isSuperAdmin={isSuperAdmin} demoEnabled={process.env.NODE_ENV === 'development' && process.env.DEMO_CATALOG_ENABLED === 'true'} />
-      <div className="flex-1 min-w-0 flex flex-col">
-        <AdminTopbar />
-        <main className="flex-1 px-8 py-8">{children}</main>
-      </div>
-    </div>
+    <AdminShell email={email} isSuperAdmin={isSuperAdmin} demoEnabled={process.env.NODE_ENV === 'development' && process.env.DEMO_CATALOG_ENABLED === 'true'}>{children}</AdminShell>
   );
 }

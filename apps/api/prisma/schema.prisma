@@ -133,8 +133,18 @@ model User {
   decidedReturnRequests   ReturnRequest[]          @relation("returnDecider")
   createdPromotions       Promotion[]
   promotionRedemptions    PromotionRedemption[]
+  adminFavorites          AdminFavorite[]
 
   @@index([status])
+}
+
+model AdminFavorite {
+  userId    String   @db.Uuid
+  path      String   @db.VarChar(255)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, path])
 }
 
 model GoogleIdentity {

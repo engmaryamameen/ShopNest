@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -7,13 +7,37 @@ import { Audit } from '../audit/audit.decorator';
 import { AdminService } from './admin.service';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { DemoCatalogService } from './demo-catalog.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
+import { AdminFavoriteDto } from './dto/admin-favorite.dto';
 
 @ApiTags('admin')
 @ApiCookieAuth('access_token')
 @Controller('admin')
 @UseGuards(JwtAuthGuard)
 export class AdminController {
-  constructor(private readonly admin: AdminService, private readonly demoCatalog: DemoCatalogService) {}
+  constructor(private readonly admin: AdminService, private readonly demoCatalog: DemoCatalogService, private readonly prisma: PrismaService) {}
+
+  @Get('favorites')
+  @Roles(Role.ADMIN)
+  async listFavorites(@CurrentUser() user: JwtPayload): Promise<string[]> {
+    const favorites = await this.prisma.adminFavorite.findMany({ where: { userId: user.sub }, orderBy: { createdAt: 'asc' }, select: { path: true } });
+    return favorites.map((favorite) => favorite.path);
+  }
+
+  @Put('favorites')
+  @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async addFavorite(@CurrentUser() user: JwtPayload, @Body() dto: AdminFavoriteDto): Promise<void> {
+    await this.prisma.adminFavorite.upsert({ where: { userId_path: { userId: user.sub, path: dto.path } }, create: { userId: user.sub, path: dto.path }, update: {} });
+  }
+
+  @Delete('favorites')
+  @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeFavorite(@CurrentUser() user: JwtPayload, @Body() dto: AdminFavoriteDto): Promise<void> {
+    await this.prisma.adminFavorite.deleteMany({ where: { userId: user.sub, path: dto.path } });
+  }
 
   @Post('demo-catalog')
   @Roles(Role.ADMIN)
@@ -25,8 +49,8 @@ export class AdminController {
   @Get('dashboard')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: '[Admin] Platform-wide aggregate counts and recent activity' })
-  getDashboard() {
-    return this.admin.getDashboardSummary();
+  getDashboard(@Query('range') range?: string) {
+    return this.admin.getDashboardSummary(30, range);
   }
 
   @Get('audit-logs')

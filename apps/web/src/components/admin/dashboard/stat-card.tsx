@@ -13,10 +13,10 @@ export function StatCard({
 }) {
   return (
     <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
-      <p className="text-[18px] font-bold text-admin-heading font-lato">{label}</p>
-      {sublabel && <p className="text-sm text-admin-muted font-lato mt-1">{sublabel}</p>}
+      <p className="font-['Inter_Variable',sans-serif] text-sm leading-5 font-semibold text-black [font-feature-settings:'ss01'_on,'cv01'_on]">{label}</p>
+      {sublabel && <p className="mt-1 font-['Inter_Variable',sans-serif] text-xs leading-[18px] font-normal text-admin-muted">{sublabel}</p>}
       <div className="flex items-center gap-4 mt-3">
-        <p className="text-[32px] font-bold text-admin-ink font-lato leading-none">{value}</p>
+        <p className="font-[family-name:var(--font-stat-value)] text-[24px] leading-[36px] font-[600] text-[#1c1c1c]">{value}</p>
         {changePercent !== undefined && <TrendBadge percent={changePercent} />}
       </div>
     </div>

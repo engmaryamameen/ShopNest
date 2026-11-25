@@ -1,12 +1,12 @@
 import { formatPrice } from '@/lib/format-price';
 import type { AdminDashboardResponse } from '@/lib/api-types';
 
-export function TopProductsCard({ products }: { products: AdminDashboardResponse['topProducts'] }) {
+export function TopProductsCard({ products, period = 'Last 30 days' }: { products: AdminDashboardResponse['topProducts']; period?: string }) {
   return (
     <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
-      <h2 className="font-bold text-admin-heading font-lato mb-3">Top products (last 30 days)</h2>
+      <h2 className="font-bold text-admin-heading font-lato mb-3">Top products ({period.toLowerCase()})</h2>
       {products.length === 0 ? (
-        <p className="text-sm text-admin-muted font-lato">No orders in the last 30 days</p>
+        <p className="text-sm text-admin-muted font-lato">No orders in this period</p>
       ) : (
         <table className="w-full text-sm font-lato">
           <thead>

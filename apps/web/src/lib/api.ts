@@ -102,6 +102,9 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 }
 
 export const api = {
+  adminFavorites: () => request<string[]>('/admin/favorites'),
+  addAdminFavorite: (path: string) => request<void>('/admin/favorites', { method: 'PUT', body: { path } }),
+  removeAdminFavorite: (path: string) => request<void>('/admin/favorites', { method: 'DELETE', body: { path } }),
   confirmGoogleLink: () => request<{ status: 'linked' | 'requires_signin'; returnTo?: string }>('/auth/google/link-confirm', { method: 'POST' }),
   linkGoogle: () => request<{ returnTo: string }>('/auth/google/link', { method: 'POST' }),
   addDemoCatalog: () => request<{ result: 'created' | 'already_applied' }>('/admin/demo-catalog', { method: 'POST' }),
@@ -385,7 +388,7 @@ export const api = {
 
   // ── Admin – Dashboard / audit log / admin accounts ──────────────────────────
 
-  adminDashboard: (cookies?: string) => request<AdminDashboardResponse>('/admin/dashboard', { cookies }),
+  adminDashboard: (cookies?: string, range?: string) => request<AdminDashboardResponse>(`/admin/dashboard${range ? `?range=${encodeURIComponent(range)}` : ''}`, { cookies }),
 
   adminAuditLogs: (
     params: { page?: number; limit?: number; action?: string; targetType?: string } = {},

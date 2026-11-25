@@ -1,19 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Icon } from '@iconify/react/offline';
 import { ADMIN_ICONS, AdminIconName } from './icons/admin-icons';
 import { api } from '@/lib/api';
 import styles from './admin-sidebar.module.css';
+import { adminPageTitle } from './admin-pages';
 
 type NavItem = { label: string; href: string; icon: AdminIconName };
 type NavSection = { title: string; items: NavItem[] };
 
 function buildSections(isSuperAdmin: boolean, demoEnabled: boolean): NavSection[] {
   return [
-    { title: 'Main menu', items: [{ label: 'Dashboard', href: '/admin', icon: 'dashboard' }] },
+    { title: 'Main menu', items: [
+      { label: 'Dashboard', href: '/admin', icon: 'dashboard' },
+      { label: 'Your shop', href: '/shop', icon: 'externalLink' },
+    ] },
     {
       title: 'Catalog',
       items: [
@@ -51,45 +55,48 @@ function initialsFor(email: string): string {
   return letters.toUpperCase();
 }
 
-export function AdminSidebar({ email, isSuperAdmin, demoEnabled }: { email: string; isSuperAdmin: boolean; demoEnabled: boolean }) {
+export function AdminSidebar({ email, isSuperAdmin, demoEnabled, collapsed, favorites }: { email: string; isSuperAdmin: boolean; demoEnabled: boolean; collapsed: boolean; favorites: string[] }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    if (window.matchMedia('(max-width: 640px)').matches) setCollapsed(true);
-  }, []);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
   const sections = buildSections(isSuperAdmin, demoEnabled);
-
-  useEffect(() => {
-    if (window.matchMedia('(max-width: 700px)').matches) setCollapsed(true);
-  }, []);
 
   function isActive(href: string) {
     return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
   }
 
-  function handleLogout() {
+  async function handleLogout() {
     setLoggingOut(true);
-    api
-      .logout()
-      .catch(() => undefined)
-      .finally(() => {
-        router.push('/login');
-        router.refresh();
-      });
+    setLogoutError(false);
+    try {
+      await api.logout();
+      router.push('/login');
+      router.refresh();
+    } catch {
+      setLogoutError(true);
+      setLoggingOut(false);
+    }
   }
 
   return (
-    <aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
+    <aside id="admin-sidebar" className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
       <div className={styles.header}>
-        {!collapsed && <Link href="/admin" className={styles.brand}>ShopNest <span>Admin</span></Link>}
-        <button type="button" onClick={() => setCollapsed((c) => !c)} className={styles.iconButton}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed}>
-          <Icon icon={collapsed ? ADMIN_ICONS.sidebarExpand : ADMIN_ICONS.sidebarCollapse} width={20} height={20} />
-        </button>
+        <div className={styles.account} title={collapsed ? email : undefined}>
+          <span className={styles.avatar} aria-hidden="true">{initialsFor(email)}</span>
+          {!collapsed && <div className={styles.accountDetails}><strong>Admin</strong><span>{email}</span></div>}
+          {collapsed && <span className={styles.srOnly}>{email}</span>}
+        </div>
       </div>
       <nav className={styles.navigation} aria-label="Admin navigation">
+        {favorites.length > 0 && <section className={styles.section} aria-label="Favorites">
+          {!collapsed && <p className={styles.sectionTitle}>Favorites</p>}
+          <ul className={styles.list}>{favorites.map((href) => <li key={href}>
+            <Link href={href} className={`${styles.navLink} ${pathname === href ? styles.active : ''}`} title={adminPageTitle(href)} aria-label={collapsed ? adminPageTitle(href) : undefined}>
+              <span className={styles.favoriteStar} aria-hidden="true">★</span>{!collapsed && <span>{adminPageTitle(href)}</span>}
+            </Link>
+          </li>)}</ul>
+        </section>}
         {sections.map((section) => (
           <section key={section.title} className={styles.section} aria-label={section.title}>
             {!collapsed && <p className={styles.sectionTitle}>{section.title}</p>}
@@ -108,19 +115,15 @@ export function AdminSidebar({ email, isSuperAdmin, demoEnabled }: { email: stri
             </ul>
           </section>
         ))}
-      </nav>
-      <div className={styles.footer}>
-        <div className={styles.account}>
-          <span className={styles.avatar} aria-hidden="true">{initialsFor(email)}</span>
-          {!collapsed && <div className={styles.accountDetails}><strong>Admin</strong><span>{email}</span></div>}
-          <button type="button" onClick={handleLogout} disabled={loggingOut} className={styles.iconButton} aria-label="Log out">
+        <div className={styles.signOut}>
+          <button type="button" onClick={handleLogout} disabled={loggingOut} className={styles.navButton}
+            aria-label={loggingOut ? 'Signing out' : 'Log out'} title={collapsed ? 'Log out' : undefined}>
             <Icon icon={ADMIN_ICONS.logout} width={20} height={20} />
+            {!collapsed && <span>{loggingOut ? 'Signing out…' : 'Log out'}</span>}
           </button>
+          {logoutError && <p className={styles.logoutError} role="alert">Couldn’t sign out. Try again.</p>}
         </div>
-        <Link href="/shop" className={styles.shopLink} aria-label={collapsed ? 'Your shop' : undefined} title={collapsed ? 'Your shop' : undefined}>
-          <Icon icon={ADMIN_ICONS.externalLink} width={18} height={18} />{!collapsed && <span>Your shop</span>}
-        </Link>
-      </div>
+      </nav>
     </aside>
   );
 }

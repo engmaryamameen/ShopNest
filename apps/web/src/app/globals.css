@@ -135,6 +135,7 @@ button:not(:disabled),
   --font-plus-jakarta: 'Plus Jakarta Sans Variable';
   --font-lato: 'Lato';
   --font-inter: 'Inter Variable';
+  --font-stat-value: 'Manrope Variable';
   --font-nunito: 'Nunito Variable';
 }
 /* Shared action colors. Brand accents remain independent of button states. */

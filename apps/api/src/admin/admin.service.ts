@@ -4,12 +4,16 @@ import * as crypto from 'node:crypto';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
+import { dashboardPeriod } from './dashboard-period';
 
 export interface DashboardSummary {
   users: { total: number; customers: number; vendorsRole: number; admins: number };
   vendors: { pending: number; approved: number; suspended: number; rejected: number };
   products: { draft: number; published: number; archived: number };
   orders: { byStatus: Partial<Record<string, number>>; totalRevenueCents: number };
+  periodOrderStatuses: Partial<Record<string, number>>;
+  periodOrders: number;
+  periodMerchandiseCents: number;
   pendingVendorApplications: number;
   recentAuditLogs: Array<{
     id: string;
@@ -40,7 +44,7 @@ export class AdminService {
     private readonly auth: AuthService,
   ) {}
 
-  async getDashboardSummary(): Promise<DashboardSummary> {
+  async getDashboardSummary(days = 7, range?: string): Promise<DashboardSummary> {
     // UTC throughout, deliberately — day-key strings below are also
     // UTC-derived (toISOString()), and mixing a server-local midnight with
     // UTC day keys would misbucket every order near a day boundary on any
@@ -48,9 +52,12 @@ export class AdminService {
     const now = new Date();
     const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     const fourteenDaysAgo = new Date(startOfToday);
-    fourteenDaysAgo.setUTCDate(fourteenDaysAgo.getUTCDate() - 13);
+    fourteenDaysAgo.setUTCDate(fourteenDaysAgo.getUTCDate() - (days * 2 - 1));
     const thirtyDaysAgo = new Date(startOfToday);
-    thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 29);
+    thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - (days - 1));
+
+    const period = range === undefined ? { start: thirtyDaysAgo, end: new Date(startOfToday.getTime() + 86400000) } : dashboardPeriod(range, now);
+    const periodDates = { ...(period.start ? { gte: period.start } : {}), lt: period.end };
 
     const [
       userCounts,
@@ -60,6 +67,9 @@ export class AdminService {
       revenue,
       recentAuditLogs,
       recentOrders,
+      periodOrderCount,
+      periodStatuses,
+      merchandiseItems,
       topProductRows,
     ] = await Promise.all([
       this.prisma.user.groupBy({ by: ['role'], _count: true }),
@@ -84,9 +94,15 @@ export class AdminService {
         where: { createdAt: { gte: fourteenDaysAgo }, status: { not: 'CANCELLED' } },
         select: { createdAt: true, totalCents: true },
       }),
+      this.prisma.order.count({ where: { createdAt: periodDates } }),
+      this.prisma.order.groupBy({ by: ['status'], _count: true, where: { createdAt: periodDates } }),
+      this.prisma.orderItem.findMany({
+        where: { order: { createdAt: periodDates, status: { not: 'CANCELLED' } } },
+        select: { quantity: true, unitPriceCents: true },
+      }),
       this.prisma.orderItem.groupBy({
         by: ['productSlug', 'productName'],
-        where: { order: { createdAt: { gte: thirtyDaysAgo }, status: { not: 'CANCELLED' } } },
+        where: { order: { createdAt: periodDates, status: { not: 'CANCELLED' } } },
         _sum: { quantity: true },
         _avg: { unitPriceCents: true },
         orderBy: { _sum: { quantity: 'desc' } },
@@ -97,6 +113,7 @@ export class AdminService {
     const { weeklyTrend, revenueChangePercent, orderCountChangePercent } = this.buildWeeklyTrend(
       recentOrders,
       startOfToday,
+      days,
     );
     const topProducts = topProductRows.map((row) => ({
       productSlug: row.productSlug,
@@ -132,6 +149,9 @@ export class AdminService {
         byStatus: ordersByStatus,
         totalRevenueCents: revenue._sum.totalCents ?? 0,
       },
+      periodOrderStatuses: Object.fromEntries(periodStatuses.map((row) => [row.status, row._count])),
+      periodOrders: periodOrderCount,
+      periodMerchandiseCents: merchandiseItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0),
       pendingVendorApplications: vendorsByStatus['PENDING'] ?? 0,
       recentAuditLogs: recentAuditLogs.map((log) => ({
         id: log.id,
@@ -154,6 +174,7 @@ export class AdminService {
   private buildWeeklyTrend(
     orders: Array<{ createdAt: Date; totalCents: number }>,
     startOfToday: Date,
+    days: number,
   ): {
     weeklyTrend: DashboardSummary['weeklyTrend'];
     revenueChangePercent: number | null;
@@ -177,11 +198,11 @@ export class AdminService {
       // timeZone: 'UTC' — d is already a UTC-midnight instant; formatting
       // it in the server's local zone could shift the weekday label across
       // a day boundary depending on where the process happens to run.
-      return { date: key, label: d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }), ...entry };
+      return { date: key, label: d.toLocaleDateString('en-US', days <= 7 ? { weekday: 'short', timeZone: 'UTC' } : { month: 'short', day: 'numeric', timeZone: 'UTC' }), ...entry };
     };
 
-    const weeklyTrend = Array.from({ length: 7 }, (_, i) => bucketFor(6 - i));
-    const priorWeek = Array.from({ length: 7 }, (_, i) => bucketFor(13 - i));
+    const weeklyTrend = Array.from({ length: days }, (_, i) => bucketFor(days - 1 - i));
+    const priorWeek = Array.from({ length: days }, (_, i) => bucketFor(days * 2 - 1 - i));
 
     const sum = (rows: Array<{ orderCount: number; revenueCents: number }>, key: 'orderCount' | 'revenueCents') =>
       rows.reduce((total, row) => total + row[key], 0);

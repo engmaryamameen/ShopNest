@@ -18,6 +18,7 @@ const PADDING_Y = 16;
  * the real peak day; renders no callout at all when every day is $0
  * rather than pointing at an arbitrary "peak" of nothing. */
 export function WeeklyAreaChart({ data }: WeeklyAreaChartProps) {
+  if (data.length === 0) return <p>No order totals are available yet.</p>;
   const values = data.map((d) => d.revenueCents);
   const max = Math.max(...values);
   const hasActivity = max > 0;
@@ -37,7 +38,7 @@ export function WeeklyAreaChart({ data }: WeeklyAreaChartProps) {
 
   return (
     <div className="relative w-full">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT + 28}`} className="w-full h-auto" role="img" aria-label="Order totals for the last 7 days">
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT + 28}`} className="w-full h-auto" role="img" aria-label="Simulated order totals for the selected period (UTC)">
         <defs>
           <linearGradient id="weeklyAreaGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4EA674" stopOpacity="0.35" />
@@ -48,19 +49,19 @@ export function WeeklyAreaChart({ data }: WeeklyAreaChartProps) {
         <path d={areaPath} fill="url(#weeklyAreaGradient)" />
         <path d={linePath} fill="none" stroke="#4EA674" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
 
-        {points.map((p, i) => (
+        {points.filter((_, i) => data.length <= 31 || i % Math.ceil(data.length / 30) === 0 || i === data.length - 1).map((p) => (
           <circle
             key={p.date}
             cx={p.x}
             cy={p.y}
-            r={i === peakIndex ? 5 : 3}
-            fill={i === peakIndex ? '#4EA674' : '#ffffff'}
+            r={p.date === peak?.date ? 5 : 3}
+            fill={p.date === peak?.date ? '#4EA674' : '#ffffff'}
             stroke="#4EA674"
-            strokeWidth={i === peakIndex ? 0 : 2}
+            strokeWidth={p.date === peak?.date ? 0 : 2}
           />
         ))}
 
-        {points.map((p) => (
+        {points.filter((_, i) => data.length <= 7 || i % Math.ceil(data.length / 8) === 0 || i === data.length - 1).map((p) => (
           <text key={p.date} x={p.x} y={HEIGHT + 20} textAnchor="middle" fontFamily="Nunito" fontSize="12" fill="#023337" fillOpacity={0.5}>
             {p.label}
           </text>

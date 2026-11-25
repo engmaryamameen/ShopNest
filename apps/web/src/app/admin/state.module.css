@@ -1,0 +1,11 @@
+.state { max-width: 34rem; padding: 2rem; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; color: #172b3a; }
+.state h2 { margin: 0; font-size: 1.25rem; font-weight: 700; }
+.state p { margin: 0.75rem 0 0; color: #526577; line-height: 1.5; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 1.5rem; }
+.actions button { min-height: 44px; padding: 0.6rem 1rem; border: 0; border-radius: 8px; background: #0077b6; color: #fff; cursor: pointer; }
+.actions button:hover { background: #006a9b; }
+.actions a { color: #006a9b; }
+.actions :focus-visible { outline: 2px solid #0077b6; outline-offset: 3px; }
+.loading { padding: 1rem 0; color: #526577; }
+.content { flex: 1; min-width: 0; padding: 2rem; }
+@media (max-width: 700px) { .content { padding: 1rem; } }
