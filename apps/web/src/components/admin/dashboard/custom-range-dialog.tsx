@@ -15,10 +15,13 @@ export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }
   const [closing, setClosing] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentDay = todayIn(timezone);
-  const initialMonth = new Date(`${existing?.[1] ?? currentDay}T00:00:00Z`);
-  const [month, setMonth] = useState(() => new Date(Date.UTC(initialMonth.getUTCFullYear(), initialMonth.getUTCMonth(), 1)));
+  const initialMonth = (value: string) => { const date = new Date(`${value}T00:00:00Z`); return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)); };
+  const [months, setMonths] = useState(() => {
+    const right = initialMonth(existing?.[2] ?? currentDay);
+    const left = existing ? initialMonth(existing[1]) : new Date(Date.UTC(right.getUTCFullYear(), right.getUTCMonth() - 1, 1));
+    return [left, right];
+  });
   const dialog = useRef<HTMLDialogElement>(null);
-  const previousMonth = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() - 1, 1));
 
   useEffect(() => {
     const root = document.documentElement;
@@ -44,22 +47,30 @@ export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }
     else if (date < start) { setEnd(start); setStart(date); setPreview(''); }
     else { setEnd(date); setPreview(''); }
   }
-  function moveMonth(delta: number) { setMonth((current) => new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + delta, 1))); }
+  function moveMonth(index: number, delta: number) {
+    setMonths((current) => {
+      const changed = new Date(Date.UTC(current[index].getUTCFullYear(), current[index].getUTCMonth() + delta, 1));
+      const next = [...current];
+      next[index] = changed;
+      if (index === 0 && changed > next[1]) next[1] = changed;
+      if (index === 1 && changed < next[0]) next[0] = changed;
+      return next;
+    });
+  }
 
   return <dialog ref={dialog} aria-labelledby="range-title" onCancel={(event) => { event.preventDefault(); close(onClose); }} onClick={(event) => { if (event.target === event.currentTarget) close(onClose); }} data-range-dialog data-closing={closing || undefined} className="fixed inset-0 m-auto animate-[range-dialog-in_200ms_ease-out] data-[closing]:animate-[range-dialog-out_200ms_ease-in_forwards] motion-reduce:animate-none motion-reduce:data-[closing]:animate-none max-sm:animate-[range-sheet-in_200ms_ease-out] max-sm:data-[closing]:animate-[range-sheet-out_200ms_ease-in_forwards] m-auto max-h-[100dvh] w-full max-w-[720px] overflow-y-auto rounded-2xl border-0 bg-white p-5 text-[#1c1c1c] shadow-xl backdrop:bg-slate-950/45 max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none max-sm:rounded-t-2xl">
     <div className="flex items-start justify-between gap-3"><div><h2 id="range-title" className="text-base font-semibold">Custom date range</h2><p className="mt-1 text-xs text-slate-600">Select a start and end date. Dates use the selected time zone.</p></div><button type="button" onClick={() => close(onClose)} aria-label="Close date range" className="grid size-9 place-items-center rounded-lg text-xl text-slate-600 hover:text-[#0077b6] focus-visible:outline-2 focus-visible:outline-[#0077b6]">×</button></div>
-    <div className="mt-4 flex items-center justify-between">
-      <button type="button" onClick={() => moveMonth(-1)} aria-label="Previous month" className="grid size-10 place-items-center rounded-lg text-[#494e50] hover:text-[#0077b6] focus-visible:outline-2 focus-visible:outline-[#0077b6]"><svg width="21" height="21" viewBox="0 0 21 21" fill="currentColor" aria-hidden="true"><path d="M13.4881 6.48812 12.25 5.25 7 10.5l5.25 5.25 1.2381-1.2381L9.47625 10.5z" /></svg></button>
-      <span className="text-xs text-slate-500">Select a date range</span>
-      <button type="button" onClick={() => moveMonth(1)} aria-label="Next month" disabled={iso(month).slice(0, 7) >= currentDay.slice(0, 7)} className="grid size-10 place-items-center rounded-lg text-[#494e50] hover:text-[#0077b6] disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-[#0077b6]"><svg width="21" height="21" viewBox="0 0 21 21" fill="currentColor" aria-hidden="true"><path d="m8.74997 5.25-1.23813 1.23813L11.5237 10.5l-4.01186 4.0119 1.23813 1.2381L14 10.5z" /></svg></button>
-    </div>
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-      {[previousMonth, month].map((visibleMonth, monthIndex) => {
+    <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+      {months.map((visibleMonth, monthIndex) => {
         const title = visibleMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
         const firstDay = new Date(visibleMonth.getTime() - visibleMonth.getUTCDay() * dayMs);
         const dates = Array.from({ length: 42 }, (_, index) => new Date(firstDay.getTime() + index * dayMs));
-        return <section key={iso(visibleMonth)} aria-label={title} className={monthIndex === 0 ? 'hidden sm:block' : ''}>
-          <h3 className="mb-3 text-center text-sm font-medium" aria-live="polite">{title}</h3>
+        return <section key={monthIndex} aria-label={title} className={monthIndex === 0 ? 'hidden sm:block' : ''}>
+          <div className="mb-3 flex items-center justify-between">
+            <button type="button" onClick={() => moveMonth(monthIndex, -1)} aria-label={`Previous month for ${monthIndex === 0 ? 'start' : 'end'} calendar`} className="grid size-10 place-items-center rounded-lg text-[#494e50] hover:text-[#0077b6] focus-visible:outline-2 focus-visible:outline-[#0077b6]"><svg width="21" height="21" viewBox="0 0 21 21" fill="currentColor" aria-hidden="true"><path d="M13.4881 6.48812 12.25 5.25 7 10.5l5.25 5.25 1.2381-1.2381L9.47625 10.5z" /></svg></button>
+            <h3 className="text-center text-sm font-medium" aria-live="polite">{title}</h3>
+            <button type="button" onClick={() => moveMonth(monthIndex, 1)} aria-label={`Next month for ${monthIndex === 0 ? 'start' : 'end'} calendar`} disabled={iso(visibleMonth).slice(0, 7) >= currentDay.slice(0, 7)} className="grid size-10 place-items-center rounded-lg text-[#494e50] hover:text-[#0077b6] disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-[#0077b6]"><svg width="21" height="21" viewBox="0 0 21 21" fill="currentColor" aria-hidden="true"><path d="m8.74997 5.25-1.23813 1.23813L11.5237 10.5l-4.01186 4.0119 1.23813 1.2381L14 10.5z" /></svg></button>
+          </div>
           <div className="grid grid-cols-7 rounded bg-[#f5f7fa] text-center text-xs text-slate-600">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day) => <span key={day} className="py-3">{day}</span>)}</div>
           <div className="grid grid-cols-7">{dates.map((date) => {
             const value = iso(date);
