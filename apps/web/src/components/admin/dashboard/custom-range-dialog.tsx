@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { TimezoneSelect } from './timezone-select';
 
 const dayMs = 86_400_000;
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 const todayIn = (zone: string) => new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
-export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }: { initial: string; initialTimezone: string; onApply: (range: string, timezone: string) => void; onClose: () => void }) {
+export function CustomRangeDialog({ initial, initialTimezone, rangeLabel, onApply, onClose }: { initial: string; initialTimezone: string; rangeLabel: string; onApply: (range: string, timezone: string) => void; onClose: () => void }) {
   const existing = /^custom:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/.exec(initial);
   const [timezone, setTimezone] = useState(initialTimezone);
   const [start, setStart] = useState(existing?.[1] ?? '');
@@ -59,7 +60,7 @@ export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }
   }
 
   return <dialog ref={dialog} aria-labelledby="range-title" onCancel={(event) => { event.preventDefault(); close(onClose); }} onClick={(event) => { if (event.target === event.currentTarget) close(onClose); }} data-range-dialog data-closing={closing || undefined} className="fixed inset-0 m-auto animate-[range-dialog-in_200ms_ease-out] data-[closing]:animate-[range-dialog-out_200ms_ease-in_forwards] motion-reduce:animate-none motion-reduce:data-[closing]:animate-none max-sm:animate-[range-sheet-in_200ms_ease-out] max-sm:data-[closing]:animate-[range-sheet-out_200ms_ease-in_forwards] m-auto max-h-[100dvh] w-full max-w-[720px] overflow-y-auto rounded-2xl border-0 bg-white p-5 text-[#1c1c1c] shadow-xl backdrop:bg-slate-950/45 max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none max-sm:rounded-t-2xl">
-    <div className="flex items-start justify-between gap-3"><div><h2 id="range-title" className="text-base font-semibold">Custom date range</h2><p className="mt-1 text-xs text-slate-600">Select a start and end date. Dates use the selected time zone.</p></div><button type="button" onClick={() => close(onClose)} aria-label="Close date range" className="grid size-9 place-items-center rounded-lg text-xl text-slate-600 hover:text-[#0077b6] focus-visible:outline-2 focus-visible:outline-[#0077b6]">×</button></div>
+    <div className="flex items-start justify-between gap-3"><div><h2 id="range-title" className="text-base font-semibold">Custom date range</h2><p className="mt-1 font-lato text-sm leading-[17px] tracking-[-0.02em] text-[#6a717f]">{rangeLabel}</p></div><button type="button" onClick={() => close(onClose)} aria-label="Close date range" className="grid size-9 place-items-center rounded-lg text-xl text-slate-600 hover:text-[#0077b6] focus-visible:outline-2 focus-visible:outline-[#0077b6]">×</button></div>
     <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
       {months.map((visibleMonth, monthIndex) => {
         const title = visibleMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -86,10 +87,7 @@ export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }
       })}
     </div>
     <div className="mt-4 flex justify-end">
-      <label className="sr-only" htmlFor="reporting-timezone">Reporting time zone</label>
-      <select id="reporting-timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)} className="max-w-full rounded border border-[#e5e7f0] bg-[#f5f7fa] px-2 py-1.5 font-['Inter_Variable',sans-serif] text-sm text-[#494e50] focus-visible:outline-2 focus-visible:outline-[#0077b6]">
-        {Array.from(new Set(['UTC', initialTimezone, ...(typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : ['Asia/Karachi', 'America/New_York', 'Europe/London'])])).map((zone) => <option key={zone} value={zone}>{zone.replaceAll('_', ' ')}</option>)}
-      </select>
+      <TimezoneSelect value={timezone} onChange={setTimezone} />
     </div>
     <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-[#e5e7f0] pt-3 font-['Inter_Variable',sans-serif] text-sm">
       <p className="mr-auto text-[#494e50]" aria-live="polite">{start ? `${start} – ${end || 'Select an end date'}` : 'Select a start date'}</p>
