@@ -19,7 +19,7 @@ export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }
   const [months, setMonths] = useState(() => {
     const right = initialMonth(existing?.[2] ?? currentDay);
     const left = existing ? initialMonth(existing[1]) : new Date(Date.UTC(right.getUTCFullYear(), right.getUTCMonth() - 1, 1));
-    return [left, right];
+    return [left >= right ? new Date(Date.UTC(right.getUTCFullYear(), right.getUTCMonth() - 1, 1)) : left, right];
   });
   const dialog = useRef<HTMLDialogElement>(null);
 
@@ -52,8 +52,8 @@ export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }
       const changed = new Date(Date.UTC(current[index].getUTCFullYear(), current[index].getUTCMonth() + delta, 1));
       const next = [...current];
       next[index] = changed;
-      if (index === 0 && changed > next[1]) next[1] = changed;
-      if (index === 1 && changed < next[0]) next[0] = changed;
+      if (index === 0 && changed >= next[1]) next[1] = new Date(Date.UTC(changed.getUTCFullYear(), changed.getUTCMonth() + 1, 1));
+      if (index === 1 && changed <= next[0]) next[0] = new Date(Date.UTC(changed.getUTCFullYear(), changed.getUTCMonth() - 1, 1));
       return next;
     });
   }
@@ -69,7 +69,7 @@ export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }
           <div className="mb-3 flex items-center justify-between">
             <button type="button" onClick={() => moveMonth(monthIndex, -1)} aria-label={`Previous month for ${monthIndex === 0 ? 'start' : 'end'} calendar`} className="grid size-10 place-items-center rounded-lg text-[#494e50] hover:text-[#0077b6] focus-visible:outline-2 focus-visible:outline-[#0077b6]"><svg width="21" height="21" viewBox="0 0 21 21" fill="currentColor" aria-hidden="true"><path d="M13.4881 6.48812 12.25 5.25 7 10.5l5.25 5.25 1.2381-1.2381L9.47625 10.5z" /></svg></button>
             <h3 className="text-center text-sm font-medium" aria-live="polite">{title}</h3>
-            <button type="button" onClick={() => moveMonth(monthIndex, 1)} aria-label={`Next month for ${monthIndex === 0 ? 'start' : 'end'} calendar`} disabled={iso(visibleMonth).slice(0, 7) >= currentDay.slice(0, 7)} className="grid size-10 place-items-center rounded-lg text-[#494e50] hover:text-[#0077b6] disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-[#0077b6]"><svg width="21" height="21" viewBox="0 0 21 21" fill="currentColor" aria-hidden="true"><path d="m8.74997 5.25-1.23813 1.23813L11.5237 10.5l-4.01186 4.0119 1.23813 1.2381L14 10.5z" /></svg></button>
+            <button type="button" onClick={() => moveMonth(monthIndex, 1)} aria-label={`Next month for ${monthIndex === 0 ? 'start' : 'end'} calendar`} disabled={iso(new Date(Date.UTC(visibleMonth.getUTCFullYear(), visibleMonth.getUTCMonth() + (monthIndex === 0 ? 1 : 0), 1))).slice(0, 7) >= currentDay.slice(0, 7)} className="grid size-10 place-items-center rounded-lg text-[#494e50] hover:text-[#0077b6] disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-[#0077b6]"><svg width="21" height="21" viewBox="0 0 21 21" fill="currentColor" aria-hidden="true"><path d="m8.74997 5.25-1.23813 1.23813L11.5237 10.5l-4.01186 4.0119 1.23813 1.2381L14 10.5z" /></svg></button>
           </div>
           <div className="grid grid-cols-7 rounded bg-[#f5f7fa] text-center text-xs text-slate-600">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day) => <span key={day} className="py-3">{day}</span>)}</div>
           <div className="grid grid-cols-7">{dates.map((date) => {
