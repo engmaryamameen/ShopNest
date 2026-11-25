@@ -10,6 +10,7 @@ const todayIn = (zone: string) => new Intl.DateTimeFormat('en-CA', { timeZone: z
 export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }: { initial: string; initialTimezone: string; onApply: (range: string, timezone: string) => void; onClose: () => void }) {
   const existing = /^custom:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/.exec(initial);
   const [timezone, setTimezone] = useState(initialTimezone);
+  const [clock, setClock] = useState<Date | null>(null);
   const [start, setStart] = useState(existing?.[1] ?? '');
   const [end, setEnd] = useState(existing?.[2] ?? '');
   const [preview, setPreview] = useState('');
@@ -24,6 +25,12 @@ export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }
     return [left >= right ? new Date(Date.UTC(right.getUTCFullYear(), right.getUTCMonth() - 1, 1)) : left, right];
   });
   const dialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    setClock(new Date());
+    const timer = setInterval(() => setClock(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -96,10 +103,12 @@ export function CustomRangeDialog({ initial, initialTimezone, onApply, onClose }
       })}
     </div>
     <div className="mt-4 flex justify-end">
-      <TimezoneSelect value={timezone} onChange={setTimezone} />
+      <div className="w-full max-w-56"><TimezoneSelect value={timezone} onChange={setTimezone} />
+        {clock && <p className="mt-1 text-xs text-slate-500">Local time: {new Intl.DateTimeFormat('en-US', { timeZone: timezone, dateStyle: 'medium', timeStyle: 'short' }).format(clock)}</p>}
+      </div>
     </div>
     <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-[#e5e7f0] pt-3 font-['Inter_Variable',sans-serif] text-sm">
-      <p className="mr-auto text-[#494e50]" aria-live="polite">{start ? `${start} – ${end || 'Select an end date'}` : 'Select a start date'}</p>
+      <div className="mr-auto text-[#494e50]" aria-live="polite"><p>{start ? `${start} – ${end || 'Select an end date'}` : 'Select a start date'}</p>{start && end && <p className="mt-1 text-xs text-slate-500">Full days in {timezone.replaceAll('_', ' ')}, including both dates</p>}</div>
       <button type="button" onClick={() => close(onClose)} className="rounded bg-[#f5f7fa] px-3 py-1.5 text-[#494e50] hover:bg-slate-200">Cancel</button>
       <button type="button" disabled={!start || !end || end > currentDay} onClick={() => close(() => onApply(`custom:${start}:${end}`, timezone))} className="rounded bg-[#0077b6] px-3 py-1.5 text-white hover:bg-[#006a9b] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">Apply</button>
     </div>
