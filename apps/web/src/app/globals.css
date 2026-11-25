@@ -6,6 +6,9 @@
   --primary: #4f46e5;
   --primary-hover: #4338ca;
   --danger: #dc2626;
+  --shopnest-action: #0077b6;
+  --overview-surface-blue: color-mix(in srgb, var(--shopnest-action) 7%, white);
+  --overview-surface-indigo: color-mix(in srgb, var(--primary) 6%, white);
 }
 
 /* Storefront, accent and admin color tokens. */
@@ -140,7 +143,7 @@ button:not(:disabled),
 }
 /* Shared action colors. Brand accents remain independent of button states. */
 .shopnest-primary {
-  background: #0077b6;
+  background: var(--shopnest-action);
   color: #fff;
   border-radius: 12px;
   box-shadow: none;

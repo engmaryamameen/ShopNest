@@ -42,12 +42,12 @@ export default async function AdminDashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4"><h2 className="font-[Inter,sans-serif] text-sm leading-5 font-semibold text-black">Overview</h2><DashboardRangeSelect selected={selected} timezone={timezone} /></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-        <StatCard label="Total Sales" sublabel={period} value={typeof summary.periodMerchandiseCents === 'number' && Number.isFinite(summary.periodMerchandiseCents) ? formatPrice(summary.periodMerchandiseCents) : '—'} comparison={compare(summary.periodMerchandiseCents, prior?.salesCents, true)} />
-        <StatCard label="Platform Revenue" sublabel={period} value="—" comparison={compare(undefined, null, true)} />
-        <StatCard label="Total Orders" sublabel={period} value={typeof summary.periodOrders === 'number' && Number.isFinite(summary.periodOrders) ? summary.periodOrders.toLocaleString('en-US') : '—'} comparison={compare(summary.periodOrders, prior?.orders)} />
-        <StatCard label="Active Vendors" sublabel="Currently active vendors" value={summary.vendors.approved.toLocaleString('en-US')} secondary="New approvals: —" comparison={compare(undefined, null)} />
-        <StatCard label="Total Customers" sublabel="Total registered customers" value={summary.users.customers.toLocaleString('en-US')} comparison={compare(undefined, null)} secondary={typeof summary.periodNewCustomers === 'number' ? `+${summary.periodNewCustomers.toLocaleString('en-US')} new customers · ${period}` : `New customers unavailable · ${period}`} />
-        <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
+        <StatCard surface="blue" label="Total Sales" sublabel={period} value={typeof summary.periodMerchandiseCents === 'number' && Number.isFinite(summary.periodMerchandiseCents) ? formatPrice(summary.periodMerchandiseCents) : '—'} comparison={compare(summary.periodMerchandiseCents, prior?.salesCents, true)} />
+        <StatCard surface="indigo" label="Platform Revenue" sublabel={period} value="—" comparison={compare(undefined, null, true)} />
+        <StatCard surface="blue" label="Total Orders" sublabel={period} value={typeof summary.periodOrders === 'number' && Number.isFinite(summary.periodOrders) ? summary.periodOrders.toLocaleString('en-US') : '—'} comparison={compare(summary.periodOrders, prior?.orders)} />
+        <StatCard surface="indigo" label="Active Vendors" sublabel="Currently active vendors" value={summary.vendors.approved.toLocaleString('en-US')} secondary="New approvals: —" comparison={compare(undefined, null)} />
+        <StatCard surface="blue" label="Total Customers" sublabel="Total registered customers" value={summary.users.customers.toLocaleString('en-US')} comparison={compare(undefined, null)} secondary={typeof summary.periodNewCustomers === 'number' ? `+${summary.periodNewCustomers.toLocaleString('en-US')} new customers · ${period}` : `New customers unavailable · ${period}`} />
+        <div className="rounded-lg bg-[var(--overview-surface-indigo)] p-5">
           <p className="mb-3 font-['Inter_Variable',sans-serif] text-sm leading-5 font-semibold text-black [font-feature-settings:'ss01'_on,'cv01'_on]">Pending &amp; Cancelled Orders</p>
           <p className="mb-3 font-['Inter_Variable',sans-serif] text-xs leading-[18px] text-admin-muted">{period}</p>
           <div className="flex items-center gap-6">

@@ -8,6 +8,7 @@ export function StatCard({
   changePercent,
   secondary,
   comparison,
+  surface,
 }: {
   label: string;
   sublabel?: string;
@@ -15,9 +16,10 @@ export function StatCard({
   changePercent?: number | null;
   secondary?: string;
   comparison?: ReactNode;
+  surface?: 'blue' | 'indigo';
 }) {
   return (
-    <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
+    <div className={`rounded-lg p-5 ${surface === 'blue' ? 'bg-[var(--overview-surface-blue)]' : surface === 'indigo' ? 'bg-[var(--overview-surface-indigo)]' : 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)]'}`}>
       <p className="font-['Inter_Variable',sans-serif] text-sm leading-5 font-semibold text-black [font-feature-settings:'ss01'_on,'cv01'_on]">{label}</p>
       {sublabel && <p className="mt-1 font-['Inter_Variable',sans-serif] text-xs leading-[18px] font-normal text-admin-muted">{sublabel}</p>}
       <div className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1">
