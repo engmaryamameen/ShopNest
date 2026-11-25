@@ -88,6 +88,9 @@ jobs:
       - name: Run catalog, concurrency and media integration tests
         run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand catalog-import.integration.spec.ts concurrency.integration.spec.ts media-upload.integration.spec.ts
 
+      - name: Test admin favorites
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand admin-favorites.integration.spec.ts
+
       - name: Test demo catalog behavior
         run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand demo-catalog.integration.spec.ts
 

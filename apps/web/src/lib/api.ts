@@ -108,11 +108,8 @@ export const api = {
   confirmGoogleLink: () => request<{ status: 'linked' | 'requires_signin'; returnTo?: string }>('/auth/google/link-confirm', { method: 'POST' }),
   linkGoogle: () => request<{ returnTo: string }>('/auth/google/link', { method: 'POST' }),
   addDemoCatalog: () => request<{ result: 'created' | 'already_applied' }>('/admin/demo-catalog', { method: 'POST' }),
-  // ── Auth ───────────────────────────────────────────────────────────────────
-  // Request bodies and the auth response shape below are the generated
-  // OpenAPI types from `@shopnest/api-client` — real types sourced from the
-  // committed, CI-verified spec instead of hand-typed duplicates.
 
+  //  Auth
   register: (body: Schemas['RegisterDto']) =>
     request<{ status: 'code_sent' }>('/auth/register', { method: 'POST', body }),
 
@@ -152,10 +149,7 @@ export const api = {
   revokeSession: (id: string, cookies?: string) =>
     request<void>(`/auth/sessions/${id}`, { method: 'DELETE', cookies }),
 
-  // ── Catalog ────────────────────────────────────────────────────────────────
-  // Response shapes come from `./api-types` (see that file's header comment
-  // for why — the API doesn't yet describe these response bodies in its
-  // OpenAPI spec, so the generated client has nothing to type them with).
+  //  Catalog
 
   listCategories: (cookies?: string) => request<CategoryResponse[]>('/categories', { cookies }),
 
@@ -184,8 +178,8 @@ export const api = {
       `/location/suggestions?${new URLSearchParams({ query })}`,
     ),
 
-  // ── Cart ───────────────────────────────────────────────────────────────────
 
+  //  Cart
   getCart: (cookies?: string) => request<CartResponse>('/cart', { cookies }),
 
   upsertCartItem: (body: Schemas['UpsertCartItemDto'], cookies?: string) =>
@@ -201,7 +195,7 @@ export const api = {
 
   removePromotion: (cookies?: string) => request<CartResponse>('/cart/promotion', { method: 'DELETE', cookies }),
 
-  // ── Orders ─────────────────────────────────────────────────────────────────
+  // Orders
 
   checkout: (body: Schemas['CheckoutDto'], cookies?: string) =>
     request<OrderResponse>('/orders/checkout', { method: 'POST', body, cookies }),
@@ -216,7 +210,7 @@ export const api = {
   requestReturn: (orderItemId: string, body: Schemas['CreateReturnRequestDto'], cookies?: string) =>
     request<ReturnRequestResponse>(`/orders/items/${orderItemId}/returns`, { method: 'POST', body, cookies }),
 
-  // ── Admin – Orders ─────────────────────────────────────────────────────────
+  // Admin – Orders
 
   adminListOrders: (status?: string, cookies?: string) => {
     const qs = status ? `?status=${status}` : '';
@@ -229,7 +223,7 @@ export const api = {
   adminUpdateOrderStatus: (id: string, body: Schemas['UpdateOrderStatusDto'], cookies?: string) =>
     request<OrderResponse>(`/admin/orders/${id}/status`, { method: 'PATCH', body, cookies }),
 
-  // ── Admin – Products ───────────────────────────────────────────────────────
+  // Admin – Products
 
   adminListProducts: (cookies?: string) => request<ProductCardResponse[]>('/admin/products', { cookies }),
 
@@ -242,7 +236,7 @@ export const api = {
   adminArchiveProduct: (id: string, cookies?: string) =>
     request<void>(`/products/${id}`, { method: 'DELETE', cookies }),
 
-  // ── Admin – Categories ─────────────────────────────────────────────────────
+  // Admin – Categories
 
   adminCreateCategory: (body: Schemas['CreateCategoryDto'], cookies?: string) =>
     request<CategoryResponse>('/categories', { method: 'POST', body, cookies }),
@@ -256,7 +250,7 @@ export const api = {
   adminDeleteCategory: (id: string, cookies?: string) =>
     request<void>(`/categories/${id}`, { method: 'DELETE', cookies }),
 
-  // ── Admin – Users ──────────────────────────────────────────────────────────
+  // Admin – Users
 
   adminListUsers: (page = 1, limit = 20, cookies?: string) =>
     request<{ items: UserSummary[]; total: number; page: number; limit: number }>(
@@ -271,7 +265,7 @@ export const api = {
       cookies,
     }),
 
-  // ── Vendor ─────────────────────────────────────────────────────────────────
+  // Vendor
 
   vendorApply: (body: { name: string; description?: string; logoUrl?: string; contactEmail: string }, cookies?: string) =>
     request<VendorResponse>('/vendor/apply', { method: 'POST', body, cookies }),
@@ -368,7 +362,7 @@ export const api = {
   vendorRejectReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
     request<ReturnRequestResponse>(`/vendor/returns/${id}/reject`, { method: 'PATCH', body, cookies }),
 
-  // ── Admin – Vendors ────────────────────────────────────────────────────────
+  // Admin – Vendors
 
   adminListVendors: (status?: string, cookies?: string) => {
     const qs = status ? `?status=${status}` : '';
@@ -386,7 +380,7 @@ export const api = {
   adminSuspendVendor: (id: string, cookies?: string) =>
     request<VendorResponse>(`/admin/vendors/${id}/suspend`, { method: 'PATCH', cookies }),
 
-  // ── Admin – Dashboard / audit log / admin accounts ──────────────────────────
+  // Admin – Dashboard / audit log / admin accounts
 
   adminDashboard: (cookies?: string, range?: string, timezone?: string) => request<AdminDashboardResponse>(`/admin/dashboard?${new URLSearchParams({ ...(range ? { range } : {}), ...(timezone ? { timezone } : {}) })}`, { cookies }),
 
@@ -408,7 +402,7 @@ export const api = {
   adminCreateAdmin: (email: string, cookies?: string) =>
     request<{ id: string; email: string; role: string }>('/admin/admins', { method: 'POST', body: { email }, cookies }),
 
-  // ── Admin – Catalog imports ──────────────────────────────────────────────
+  // Admin – Catalog imports
 
   adminPreviewImport: (scope: ImportScopeInput, cookies?: string) =>
     request<ImportPreviewResponse>('/admin/catalog-imports/preview', { method: 'POST', body: scope, cookies }),
@@ -419,7 +413,7 @@ export const api = {
   adminListImportRuns: (limit = 20, cookies?: string) =>
     request<CatalogImportRunResponse[]>(`/admin/catalog-imports?limit=${limit}`, { cookies }),
 
-  // ── Reviews ──────────────────────────────────────────────────────────────
+  // Reviews
 
   listReviews: (slug: string, page = 1, limit = 10, cookies?: string) =>
     request<PublicReviewListResponse>(`/products/${slug}/reviews?page=${page}&limit=${limit}`, { cookies }),
@@ -445,7 +439,7 @@ export const api = {
   adminPublishReview: (id: string, cookies?: string) =>
     request<ReviewResponse>(`/admin/reviews/${id}/publish`, { method: 'PATCH', cookies }),
 
-  // ── Wishlist ─────────────────────────────────────────────────────────────
+  // Wishlist
 
   listWishlist: (cookies?: string) => request<WishlistItemResponse[]>('/me/wishlist', { cookies }),
 
@@ -455,7 +449,7 @@ export const api = {
   removeFromWishlist: (productId: string, cookies?: string) =>
     request<void>(`/me/wishlist/${productId}`, { method: 'DELETE', cookies }),
 
-  // ── Addresses ────────────────────────────────────────────────────────────
+  // Addresses
 
   listAddresses: (cookies?: string) => request<AddressResponse[]>('/me/addresses', { cookies }),
 
@@ -471,7 +465,7 @@ export const api = {
   setDefaultAddress: (id: string, cookies?: string) =>
     request<AddressResponse>(`/me/addresses/${id}/default`, { method: 'PATCH', cookies }),
 
-  // ── Admin – Promotions ───────────────────────────────────────────────────
+  // Admin – Promotions
 
   adminListPromotions: (cookies?: string) => request<PromotionResponse[]>('/admin/promotions', { cookies }),
 
@@ -481,7 +475,7 @@ export const api = {
   adminUpdatePromotion: (id: string, body: Schemas['UpdatePromotionDto'], cookies?: string) =>
     request<PromotionResponse>(`/admin/promotions/${id}`, { method: 'PATCH', body, cookies }),
 
-  // ── Admin – Returns ──────────────────────────────────────────────────────
+  // Admin – Returns
 
   adminListReturns: (status?: string, cookies?: string) => {
     const qs = status ? `?status=${status}` : '';
@@ -494,12 +488,7 @@ export const api = {
   adminRejectReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
     request<ReturnRequestResponse>(`/admin/returns/${id}/reject`, { method: 'PATCH', body, cookies }),
 
-  // ── Media ────────────────────────────────────────────────────────────────
-  // Browser-only — a file input has no server-side equivalent. Bypasses
-  // request() deliberately: a multipart body must not be JSON-stringified,
-  // and the browser sets its own Content-Type (with the boundary) when the
-  // body is a FormData instance, so no header is set here at all.
-
+  // Media
   uploadMedia: async (file: File): Promise<{ url: string }> => {
     const formData = new FormData();
     formData.append('file', file);
@@ -517,12 +506,6 @@ export const api = {
   },
 };
 
-// `PUT /cart/items` returns the raw upserted CartItem row (no nested
-// product/vendor — that flattening is `CartService.toCartResponse()`,
-// applied only to `GET /cart`'s full list). Typed separately so callers
-// aren't led to expect fields this specific response doesn't carry; every
-// call site invalidates and refetches the full cart anyway rather than
-// relying on this return value for display.
 interface CartItemFromUpsert {
   id: string;
   cartId: string;
