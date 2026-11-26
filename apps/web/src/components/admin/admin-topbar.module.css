@@ -1,4 +1,4 @@
-.header { height: 68px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 24px; background: #fff; border-bottom: 1px solid #f1f3f5; }
+.header { position: sticky; top: 0; z-index: 30; height: 68px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 24px; background: #fff; border-bottom: 1px solid #f1f3f5; }
 .toggle { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #232b34; cursor: pointer; }
 .toggle:hover { color: #0077b6; }
 .toggle:disabled { opacity: .5; cursor: wait; }

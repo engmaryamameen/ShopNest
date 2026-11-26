@@ -1,9 +1,21 @@
-import { IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID, Min, MinLength } from 'class-validator';
+import { OfferPricingDto } from '../../pricing/offer-pricing.dto';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsPositive,
+  IsString,
+  IsUUID,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OfferCondition } from '@prisma/client';
 
-export class CreateVendorOfferDto {
-  @ApiProperty({ description: 'Canonical product this offer sells — must already exist in the catalog' })
+export class CreateVendorOfferDto extends OfferPricingDto {
+  @ApiProperty({
+    description: 'Canonical product this offer sells — must already exist in the catalog',
+  })
   @IsUUID()
   productId!: string;
 
@@ -27,7 +39,9 @@ export class CreateVendorOfferDto {
   @IsPositive()
   priceCents!: number;
 
-  @ApiPropertyOptional({ description: 'Strike-through "was" price — must be greater than priceCents' })
+  @ApiPropertyOptional({
+    description: 'Strike-through "was" price — must be greater than priceCents',
+  })
   @IsOptional()
   @IsInt()
   @IsPositive()

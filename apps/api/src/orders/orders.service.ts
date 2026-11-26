@@ -15,8 +15,9 @@ import { PAYMENT_PROVIDER, type PaymentProvider } from '../payment/payment.types
 import { CheckoutDto } from './dto/checkout.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { assertValidTransition } from './order-state-machine';
+import { PriceInput } from '../pricing/price-calculator';
 
-interface LockedOffer {
+interface LockedOffer extends Omit<PriceInput, 'quantity'> {
   id: string;
   priceCents: number;
   stockQuantity: number;
@@ -82,7 +83,9 @@ export class OrdersService {
           const cart = await this.cartService.lockCart(tx, userId);
 
           const doubleCheck = await tx.order.findUnique({
-            where: { Order_userId_idempotencyKey_key: { userId, idempotencyKey: dto.idempotencyKey } },
+            where: {
+              Order_userId_idempotencyKey_key: { userId, idempotencyKey: dto.idempotencyKey },
+            },
             include: ORDER_INCLUDE,
           });
           if (doubleCheck) return doubleCheck;
@@ -100,11 +103,14 @@ export class OrdersService {
           // between validation and order creation.
           const lockedOffers = await tx.$queryRaw<LockedOffer[]>(
             Prisma.sql`
-              SELECT o.id, o."priceCents", o."stockQuantity", o."vendorId", o."productId",
-                     p.name AS "productName", p.slug AS "productSlug", v.name AS "vendorName"
+              SELECT o.*, p."brandId", p."categoryId", p."productType",
+                     CASE WHEN t.id IS NOT NULL THEN json_build_object('name', t.name, 'rateBps', t."rateBps", 'isActive', t."isActive") END AS "taxClass",
+                     CASE WHEN o."variantId" IS NULL THEN p.name ELSE p.name || ' (' || COALESCE((SELECT string_agg(a.name || ': ' || va.value, ', ' ORDER BY a.name) FROM "VariantAttributeValue" va JOIN "AttributeDefinition" a ON a.id = va."attributeDefinitionId" WHERE va."variantId" = o."variantId"), 'variant') || ')' END AS "productName",
+                     p.slug AS "productSlug", v.name AS "vendorName"
               FROM   "VendorOffer" o
               JOIN   "Product" p ON p.id = o."productId"
               JOIN   "Vendor" v ON v.id = o."vendorId"
+              LEFT JOIN "TaxClass" t ON t.id = o."taxClassId"
               WHERE  o.id IN (${Prisma.join(offerIds.map((id) => Prisma.sql`${id}::uuid`))})
                 AND  o.status = 'ACTIVE'
                 AND  p."publishStatus" = 'PUBLISHED'
@@ -117,7 +123,10 @@ export class OrdersService {
           const offerMap = new Map(lockedOffers.map((o) => [o.id, o]));
           for (const item of validItems) {
             const offer = offerMap.get(item.vendorOfferId!);
-            if (!offer) throw new BadRequestException('An item in your cart is no longer available. Remove it and try again.');
+            if (!offer)
+              throw new BadRequestException(
+                'An item in your cart is no longer available. Remove it and try again.',
+              );
             if (offer.stockQuantity < item.quantity) {
               throw new ConflictException(`Insufficient stock for ${offer.productName}`);
             }
@@ -126,45 +135,72 @@ export class OrdersService {
           // One VendorOrder per distinct vendor represented in the cart —
           // id generated up front (same trick as the Order id below) so
           // promotion validation can reference it before the row exists.
-          const byVendor = new Map<string, { vendorOrderId: string; items: typeof validItems; subtotalCents: number }>();
+          const byVendor = new Map<
+            string,
+            { vendorOrderId: string; items: typeof validItems; subtotalCents: number }
+          >();
           for (const item of validItems) {
             const offer = offerMap.get(item.vendorOfferId!)!;
-            const entry = byVendor.get(offer.vendorId) ?? { vendorOrderId: randomUUID(), items: [], subtotalCents: 0 };
+            const entry = byVendor.get(offer.vendorId) ?? {
+              vendorOrderId: randomUUID(),
+              items: [],
+              subtotalCents: 0,
+            };
             entry.items.push(item);
             entry.subtotalCents += offer.priceCents * item.quantity;
             byVendor.set(offer.vendorId, entry);
           }
 
-          const subtotalCents = validItems.reduce((sum, item) => {
-            const offer = offerMap.get(item.vendorOfferId!)!;
-            return sum + offer.priceCents * item.quantity;
-          }, 0);
-
-          let discountCents = 0;
+          const coupon = cart.appliedPromotionId
+            ? await this.promotions.lockPromotion(tx, cart.appliedPromotionId)
+            : null;
+          const quote = await this.promotions.quote(
+            validItems.map((item) => {
+              return { ...offerMap.get(item.vendorOfferId!)!, quantity: item.quantity };
+            }),
+            coupon,
+            tx,
+          );
+          const lineMap = new Map(quote.lines.map((line) => [line.id, line]));
+          const discountCents = quote.automaticDiscountCents + quote.couponDiscountCents;
           let redemption: { promotionId: string; vendorOrderId?: string } | null = null;
           if (cart.appliedPromotionId) {
-            const result = await this.promotions.validateAndReserve(tx, cart.appliedPromotionId, {
-              userId,
-              platformSubtotalCents: subtotalCents,
-              vendorOrders: Array.from(byVendor, ([vendorId, v]) => ({
-                vendorId,
-                vendorOrderId: v.vendorOrderId,
-                subtotalCents: v.subtotalCents,
-              })),
-            });
-            discountCents = result.discountCents;
+            const result = await this.promotions.validateAndReserve(
+              tx,
+              cart.appliedPromotionId,
+              {
+                userId,
+                platformSubtotalCents: quote.subtotalCents,
+                eligibleSubtotalCents: quote.couponEligibleSubtotalCents,
+                vendorOrders: Array.from(byVendor, ([vendorId, v]) => ({
+                  vendorId,
+                  vendorOrderId: v.vendorOrderId,
+                  subtotalCents: v.subtotalCents,
+                })),
+              },
+              coupon ?? undefined,
+            );
+            if (result.discountCents !== quote.couponDiscountCents)
+              throw new ConflictException('Promotion changed during checkout. Try again.');
             redemption = { promotionId: result.promotion.id, vendorOrderId: result.vendorOrderId };
           }
-
-          const totalCents = subtotalCents - discountCents;
+          const totalCents = quote.totalCents;
           const orderId = randomUUID();
-          const chargeResult = await this.payment.charge({ orderId, amountCents: totalCents, currency: 'USD' });
+          const chargeResult = await this.payment.charge({
+            orderId,
+            amountCents: totalCents,
+            currency: 'USD',
+          });
 
           const order = await tx.order.create({
             data: {
               id: orderId,
               userId,
               totalCents,
+              subtotalCents: quote.subtotalCents,
+              taxCents: quote.taxCents,
+              shippingCents: quote.shippingCents,
+              pricingSnapshot: JSON.parse(JSON.stringify(quote)),
               discountCents,
               currency: 'USD',
               idempotencyKey: dto.idempotencyKey,
@@ -172,11 +208,24 @@ export class OrdersService {
             },
           });
 
-          for (const [vendorId, { vendorOrderId, items, subtotalCents: vendorSubtotalCents }] of byVendor) {
-            const vendorDiscountCents = redemption?.vendorOrderId === vendorOrderId ? discountCents : 0;
+          for (const [vendorId, { vendorOrderId, items }] of byVendor) {
+            const vendorSubtotalCents = items.reduce((sum, item) => {
+              const line = lineMap.get(item.vendorOfferId!)!;
+              return sum + line.unitPriceCents * line.quantity;
+            }, 0);
+            const vendorDiscountCents = items.reduce((sum, item) => {
+              const line = lineMap.get(item.vendorOfferId!)!;
+              return sum + line.automaticDiscountCents + line.couponDiscountCents;
+            }, 0);
 
             await tx.vendorOrder.create({
-              data: { id: vendorOrderId, orderId: order.id, vendorId, subtotalCents: vendorSubtotalCents, discountCents: vendorDiscountCents },
+              data: {
+                id: vendorOrderId,
+                orderId: order.id,
+                vendorId,
+                subtotalCents: vendorSubtotalCents,
+                discountCents: vendorDiscountCents,
+              },
             });
 
             for (const item of items) {
@@ -188,7 +237,15 @@ export class OrdersService {
                   vendorOrderId,
                   vendorOfferId: offer.id,
                   quantity: item.quantity,
-                  unitPriceCents: offer.priceCents,
+                  unitPriceCents: lineMap.get(offer.id)!.unitPriceCents,
+                  regularUnitPriceCents: lineMap.get(offer.id)!.regularUnitPriceCents,
+                  discountCents:
+                    lineMap.get(offer.id)!.directDiscountCents +
+                    lineMap.get(offer.id)!.automaticDiscountCents +
+                    lineMap.get(offer.id)!.couponDiscountCents,
+                  taxCents: lineMap.get(offer.id)!.taxCents,
+                  totalCents: lineMap.get(offer.id)!.totalCents,
+                  pricingSnapshot: JSON.parse(JSON.stringify(lineMap.get(offer.id))),
                   productName: offer.productName,
                   productSlug: offer.productSlug,
                   vendorName: offer.vendorName,
@@ -202,7 +259,9 @@ export class OrdersService {
                   AND  "stockQuantity" >= ${item.quantity}
               `;
               if (affected === 0) {
-                throw new ConflictException(`Race condition: stock changed for ${offer.productName}`);
+                throw new ConflictException(
+                  `Race condition: stock changed for ${offer.productName}`,
+                );
               }
 
               await tx.inventoryAdjustment.create({
@@ -223,7 +282,7 @@ export class OrdersService {
                 orderId: order.id,
                 userId,
                 vendorOrderId: redemption.vendorOrderId,
-                amountCents: discountCents,
+                amountCents: quote.couponDiscountCents,
               },
             });
           }
@@ -311,7 +370,10 @@ export class OrdersService {
         throw new ForbiddenException('Not your order');
       }
 
-      const vendorOrders = await tx.vendorOrder.findMany({ where: { orderId }, select: { id: true, status: true } });
+      const vendorOrders = await tx.vendorOrder.findMany({
+        where: { orderId },
+        select: { id: true, status: true },
+      });
       if (vendorOrders.length === 0) throw new NotFoundException('Order has no vendor fulfilments');
 
       for (const vo of vendorOrders) {
@@ -322,7 +384,13 @@ export class OrdersService {
         await tx.vendorOrder.update({ where: { id: vo.id }, data: { status: toStatus } });
 
         await tx.orderStatusHistory.create({
-          data: { orderId, vendorOrderId: vo.id, changedById: actorId, fromStatus: vo.status, toStatus },
+          data: {
+            orderId,
+            vendorOrderId: vo.id,
+            changedById: actorId,
+            fromStatus: vo.status,
+            toStatus,
+          },
         });
 
         // Restore inventory on cancellation — inside the same transaction,
@@ -354,7 +422,10 @@ export class OrdersService {
   /** Recomputes Order.status from its VendorOrders. Public — also called
    * by VendorOrdersService. Must run inside the caller's transaction. */
   async recomputeOrderStatus(tx: Prisma.TransactionClient, orderId: string) {
-    const vendorOrders = await tx.vendorOrder.findMany({ where: { orderId }, select: { status: true } });
+    const vendorOrders = await tx.vendorOrder.findMany({
+      where: { orderId },
+      select: { status: true },
+    });
     const nextStatus = aggregateOrderStatus(vendorOrders.map((vo) => vo.status));
 
     return tx.order.update({

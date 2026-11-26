@@ -16,12 +16,21 @@ const CART_INCLUDE = {
     include: {
       vendorOffer: {
         include: {
+          taxClass: true,
+          variant: {
+            include: {
+              attributeValues: { include: { attributeDefinition: { select: { name: true } } } },
+            },
+          },
           vendor: { select: { id: true, name: true, slug: true } },
           product: {
             select: {
               id: true,
               name: true,
               slug: true,
+              brandId: true,
+              categoryId: true,
+              productType: true,
               media: { orderBy: { position: 'asc' as const }, take: 1, select: { url: true } },
             },
           },
@@ -30,7 +39,7 @@ const CART_INCLUDE = {
     },
     orderBy: { addedAt: 'asc' as const },
   },
-  appliedPromotion: { select: { id: true, code: true, type: true, value: true, scope: true, vendorId: true } },
+  appliedPromotion: true,
 } satisfies Prisma.CartInclude;
 
 @Injectable()
@@ -57,11 +66,17 @@ export class CartService {
     return this.prisma.$transaction(async (tx) => {
       const cart = await this.lockCart(tx, userId);
 
-      const offer = await tx.vendorOffer.findUnique({
-        where: { id: dto.vendorOfferId },
+      const offer = await tx.vendorOffer.findFirst({
+        where: {
+          id: dto.vendorOfferId,
+          status: OfferStatus.ACTIVE,
+          product: { publishStatus: 'PUBLISHED' },
+          vendor: { status: 'APPROVED' },
+        },
         select: { id: true, status: true, stockQuantity: true },
       });
-      if (!offer || offer.status !== OfferStatus.ACTIVE) throw new NotFoundException('Listing not found');
+      if (!offer || offer.status !== OfferStatus.ACTIVE)
+        throw new NotFoundException('Listing not found');
       if (offer.stockQuantity < dto.quantity) {
         throw new ConflictException('Insufficient stock');
       }
@@ -98,18 +113,41 @@ export class CartService {
     });
   }
 
-  /** Apply-time only checks the code itself is currently valid (active,
-   * in-window) — not redemption limits or minimum subtotal, both of which
-   * are re-checked authoritatively at checkout under a row lock, since
-   * cart contents and redemption counts can both change between now and
-   * then. This just sets the pointer; checkout is what actually decides. */
   async applyPromotion(userId: string, dto: ApplyPromotionDto) {
     const promotion = await this.promotions.resolveForApply(dto.code);
-    await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       const cart = await this.lockCart(tx, userId);
+      const current = await tx.cart.findUniqueOrThrow({
+        where: { id: cart.id },
+        include: CART_INCLUDE,
+      });
+      const coupon = await this.promotions.lockPromotion(tx, promotion.id);
+      const priced = await this.toCartResponse({ ...current, appliedPromotion: coupon }, tx);
+      const vendors = new Map<string, number>();
+      for (const item of current.items)
+        if (item.vendorOffer)
+          vendors.set(
+            item.vendorOffer.vendorId,
+            (vendors.get(item.vendorOffer.vendorId) ?? 0) +
+              item.vendorOffer.priceCents * item.quantity,
+          );
+      await this.promotions.validateAndReserve(
+        tx,
+        coupon.id,
+        {
+          userId,
+          platformSubtotalCents: priced.pricing.subtotalCents,
+          eligibleSubtotalCents: priced.pricing.couponEligibleSubtotalCents,
+          vendorOrders: [...vendors].map(([vendorId, subtotalCents]) => ({
+            vendorId,
+            subtotalCents,
+          })),
+        },
+        coupon,
+      );
       await tx.cart.update({ where: { id: cart.id }, data: { appliedPromotionId: promotion.id } });
+      return priced;
     });
-    return this.getCart(userId);
   }
 
   async removePromotion(userId: string) {
@@ -120,7 +158,10 @@ export class CartService {
     return this.getCart(userId);
   }
 
-  async lockCart(tx: Prisma.TransactionClient, userId: string): Promise<{ id: string; appliedPromotionId: string | null }> {
+  async lockCart(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ): Promise<{ id: string; appliedPromotionId: string | null }> {
     const rows = await tx.$queryRaw<Array<{ id: string; appliedPromotionId: string | null }>>`
       SELECT id, "appliedPromotionId" FROM "Cart" WHERE "userId" = ${userId}::uuid FOR UPDATE
     `;
@@ -133,7 +174,10 @@ export class CartService {
    * priceCents), plus the new vendor identity — grouping items by vendor
    * for split-checkout display is a frontend concern, this just makes
    * every field available. */
-  private toCartResponse(cart: Prisma.CartGetPayload<{ include: typeof CART_INCLUDE }>) {
+  private async toCartResponse(
+    cart: Prisma.CartGetPayload<{ include: typeof CART_INCLUDE }>,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
     const items = cart.items
       .filter((item) => item.vendorOffer !== null)
       .map((item) => {
@@ -145,9 +189,16 @@ export class CartService {
           addedAt: item.addedAt,
           updatedAt: item.updatedAt,
           priceCents: offer.priceCents,
+          lineTotalCents: offer.priceCents * item.quantity,
           stockQuantity: offer.stockQuantity,
           offerStatus: offer.status,
           vendor: offer.vendor,
+          variantLabel:
+            offer.variant?.attributeValues
+              .map((attribute) => `${attribute.attributeDefinition.name}: ${attribute.value}`)
+              .join(' · ') ||
+            offer.variant?.sku ||
+            null,
           product: {
             id: offer.product.id,
             name: offer.product.name,
@@ -157,25 +208,43 @@ export class CartService {
         };
       });
 
-    // Best-effort preview only — checkout is the source of truth
-    // (redemption limits and minimum subtotal are re-checked there, under
-    // a lock, since they can change between now and then).
-    let discountPreviewCents = 0;
-    if (cart.appliedPromotion) {
-      const promo = cart.appliedPromotion;
-      const baseCents =
-        promo.scope === 'PLATFORM'
-          ? items.reduce((sum, i) => sum + i.priceCents * i.quantity, 0)
-          : items.filter((i) => i.vendor.id === promo.vendorId).reduce((sum, i) => sum + i.priceCents * i.quantity, 0);
-      discountPreviewCents = this.promotions.computeDiscountCents(promo, baseCents);
+    const validCoupon =
+      cart.appliedPromotion &&
+      cart.appliedPromotion.isActive &&
+      new Date() >= cart.appliedPromotion.startsAt &&
+      new Date() <= cart.appliedPromotion.endsAt
+        ? cart.appliedPromotion
+        : null;
+    const quote = await this.promotions.quote(
+      cart.items
+        .filter((item) => item.vendorOffer)
+        .map((item) => {
+          const offer = item.vendorOffer!;
+          return {
+            ...offer,
+            quantity: item.quantity,
+            brandId: offer.product.brandId,
+            categoryId: offer.product.categoryId,
+            productType: offer.product.productType,
+          };
+        }),
+      validCoupon,
+      client,
+    );
+    for (const item of items) {
+      const line = quote.lines.find((line) => line.id === item.vendorOfferId)!;
+      item.lineTotalCents = line.totalCents;
+      item.priceCents = Math.round(line.totalCents / item.quantity);
     }
-
     return {
       id: cart.id,
       userId: cart.userId,
       updatedAt: cart.updatedAt,
       items,
-      appliedPromotion: cart.appliedPromotion ? { code: cart.appliedPromotion.code, discountPreviewCents } : null,
+      pricing: quote,
+      appliedPromotion: cart.appliedPromotion
+        ? { code: cart.appliedPromotion.code, discountPreviewCents: quote.couponDiscountCents }
+        : null,
     };
   }
 }

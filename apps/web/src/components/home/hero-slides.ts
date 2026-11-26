@@ -38,7 +38,7 @@ export const HERO_SLIDES: HeroSlide[] = [
     description:
       'Discover standout accessories and wardrobe staples from emerging marketplace sellers.',
     ctaLabel: 'Shop fashion',
-    href: '/shop?category=womens-dresses',
+    href: '/shop?category=womens-clothing',
     image: fashionImage,
     imageAlt: 'A premium arrangement of fashion accessories and footwear',
     tone: 'burgundy',
@@ -74,7 +74,7 @@ export const HERO_SLIDES: HeroSlide[] = [
     description:
       'Find dependable outdoor essentials for weekends, trails, and journeys beyond the everyday.',
     ctaLabel: 'Shop outdoor gear',
-    href: '/shop?category=sports-accessories',
+    href: '/shop?category=sports-equipment',
     image: outdoorImage,
     imageAlt: 'A premium collection of hiking and outdoor equipment',
     tone: 'charcoal',

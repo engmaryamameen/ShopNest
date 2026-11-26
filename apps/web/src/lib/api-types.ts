@@ -23,6 +23,8 @@ export interface CategoryResponse {
   position: number;
   isActive: boolean;
   imageUrl: string | null;
+  imageAttribution?: { name: string; url: string; license: string } | null;
+  aliases?: Array<{ slug: string }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +53,10 @@ export interface ProductBrandRef {
  * the id of that specific offer so the storefront can actually add it to
  * a cart. */
 export interface ProductCardResponse {
+  productType?: string | null;
+  pricingSettings?: PricingSettings;
+  vendorId?: string;
+  vendorName?: string;
   id: string;
   name: string;
   slug: string;
@@ -71,6 +77,8 @@ export interface ProductCardResponse {
 }
 
 export interface ProductVendorOfferResponse {
+  variantId?: string | null;
+  variantLabel?: string | null;
   id: string;
   priceCents: number;
   compareAtPriceCents: number | null;
@@ -82,6 +90,13 @@ export interface ProductVendorOfferResponse {
 /** `GET /products/:slug` (and the admin create/update responses) — every
  * active offer, not just the buy-box winner, plus specs/images. */
 export interface ProductDetailResponse {
+  variants?: Array<{
+    id: string;
+    sku: string | null;
+    label: string;
+    attributes?: Record<string, string>;
+  }>;
+  sourceAttributions?: Array<{ name: string; url: string; license: string }>;
   id: string;
   name: string;
   slug: string;
@@ -124,6 +139,8 @@ export interface CartItemProductRef {
 }
 
 export interface CartItemResponse {
+  variantLabel?: string | null;
+  lineTotalCents?: number;
   id: string;
   vendorOfferId: string;
   quantity: number;
@@ -142,6 +159,7 @@ export interface CartAppliedPromotion {
 }
 
 export interface CartResponse {
+  pricing?: PriceQuote;
   id: string;
   userId: string;
   updatedAt: string;
@@ -156,7 +174,12 @@ export type Cart = CartResponse;
 export type CartItem = CartItemResponse;
 
 export type ReturnStatus = 'REQUESTED' | 'REJECTED' | 'REFUNDED';
-export type ReturnReason = 'DEFECTIVE' | 'NOT_AS_DESCRIBED' | 'NO_LONGER_NEEDED' | 'WRONG_ITEM' | 'OTHER';
+export type ReturnReason =
+  | 'DEFECTIVE'
+  | 'NOT_AS_DESCRIBED'
+  | 'NO_LONGER_NEEDED'
+  | 'WRONG_ITEM'
+  | 'OTHER';
 
 export interface ReturnRequestResponse {
   id: string;
@@ -174,6 +197,10 @@ export interface ReturnRequestResponse {
 }
 
 export interface OrderItemResponse {
+  totalCents?: number;
+  taxCents?: number;
+  discountCents?: number;
+  pricingSnapshot?: unknown;
   id: string;
   orderId: string;
   vendorOrderId: string | null;
@@ -219,6 +246,10 @@ export interface UserSummary {
 }
 
 export interface OrderResponse {
+  subtotalCents?: number;
+  taxCents?: number;
+  shippingCents?: number;
+  pricingSnapshot?: PriceQuote | null;
   id: string;
   userId: string;
   status: OrderStatus;
@@ -255,7 +286,7 @@ export interface VendorResponse {
   members?: Array<{ id: string; role: 'OWNER' | 'STAFF'; user: { id: string; email: string } }>;
 }
 
-export interface VendorOfferResponse {
+export interface VendorOfferResponse extends PricingSettings {
   id: string;
   vendorId: string;
   productId: string;
@@ -331,17 +362,36 @@ export interface AdminDashboardResponse {
   vendors: { pending: number; approved: number; suspended: number; rejected: number };
   products: { draft: number; published: number; archived: number };
   orders: { byStatus: Partial<Record<OrderStatus, number>>; totalRevenueCents: number };
-  comparison: { start: string; end: string; currentStart: string; currentEnd: string; salesCents: number; orders: number; pending: number; cancelled: number } | null;
+  comparison: {
+    start: string;
+    end: string;
+    currentStart: string;
+    currentEnd: string;
+    salesCents: number;
+    orders: number;
+    pending: number;
+    cancelled: number;
+  } | null;
   periodOrderStatuses: Partial<Record<OrderStatus, number>>;
   periodNewCustomers: number;
   periodOrders: number;
   periodMerchandiseCents: number;
+  performance: {
+    current: PerformancePoint[];
+    previous: PerformancePoint[] | null;
+    timezone: string;
+  };
   pendingVendorApplications: number;
   recentAuditLogs: AuditLogResponse[];
   weeklyTrend: Array<{ date: string; label: string; orderCount: number; revenueCents: number }>;
   revenueChangePercent: number | null;
   orderCountChangePercent: number | null;
-  topProducts: Array<{ productSlug: string; productName: string; unitsSold: number; averageUnitPriceCents: number }>;
+  topProducts: Array<{
+    productSlug: string;
+    productName: string;
+    unitsSold: number;
+    averageUnitPriceCents: number;
+  }>;
 }
 
 export interface AuditLogResponse {
@@ -370,6 +420,11 @@ export interface AdminAccountResponse {
 }
 
 export interface ImportPreviewResponse {
+  unmappedCount?: number;
+  unmappedCategories?: Array<{ id: string; name: string; count: number }>;
+  exhausted?: boolean;
+  scanLimitReached?: boolean;
+  previewId: string;
   discoveredCount: number;
   scopedCount: number;
   skippedCount: number;
@@ -377,10 +432,36 @@ export interface ImportPreviewResponse {
   wouldUpdateCount: number;
   wouldBeUnchangedCount: number;
   wouldRejectImageCount: number;
-  sample: Array<{ externalId: string; name: string; categoryName: string; action: 'create' | 'update' | 'unchanged' }>;
+  sample: Array<{
+    externalId: string;
+    name: string;
+    categoryName: string;
+    categoryId?: string;
+    categoryPath?: string;
+    sourceCategoryName?: string;
+    brand?: string;
+    imageUrl?: string;
+    imageCount: number;
+    action: 'create' | 'update' | 'unchanged';
+    specifications?: Record<string, string>;
+    proposedOffer?: PricingSettings & {
+      vendorId: string;
+      vendorName: string;
+      priceCents: number;
+      stockQuantity: number;
+    };
+    pricing?: PriceQuote;
+    issues?: string[];
+  }>;
 }
 
-export type CatalogSource = 'DUMMY_JSON' | 'OPEN_FOOD_FACTS' | 'AMAZON';
+export type CatalogSource =
+  | 'AMAZON_BERKELEY'
+  | 'DUMMY_JSON'
+  | 'OPEN_FOOD_FACTS'
+  | 'OPEN_BEAUTY_FACTS'
+  | 'AMAZON'
+  | 'DARAZ';
 
 export interface CatalogImportRunResponse {
   id: string;
@@ -402,7 +483,25 @@ export interface CatalogImportRunResponse {
   completedAt: string | null;
 }
 
-export interface ImportScopeInput {
+export interface ImportScopeInput extends PricingSettings {
+  maxImageCount?: number;
+  promotionId?: string;
+  promotionTarget?: 'IMPORT' | 'ALL' | 'BRANDS' | 'CATEGORIES' | 'PRODUCT_TYPES' | 'VENDORS';
+  promotion?: PromotionInput;
+  rescan?: boolean;
+  targetCategoryId?: string;
+  vendorIds?: string[];
+  pricingStrategy?: 'FIXED' | 'RANGE' | 'CATEGORY';
+  minPriceCents?: number;
+  maxPriceCents?: number;
+  categoryPrices?: Array<{ category: string; minCents: number; maxCents: number }>;
+  minStock?: number;
+  maxStock?: number;
+  minImageDimension?: number;
+  previewId?: string;
+  selectedProductIds?: string[];
+  demoPriceCents?: number;
+  demoStockQuantity?: number;
   source: CatalogSource;
   categoryScope?: string[];
   maxRecords?: number;
@@ -493,6 +592,13 @@ export type PromotionType = 'PERCENT' | 'FIXED_AMOUNT';
 export type PromotionScope = 'PLATFORM' | 'VENDOR';
 
 export interface PromotionResponse {
+  automatic?: boolean;
+  productIds?: string[];
+  brandIds?: string[];
+  categoryIds?: string[];
+  vendorIds?: string[];
+  productTypes?: string[];
+  maxDiscountCents?: number | null;
   id: string;
   code: string;
   type: PromotionType;
@@ -508,4 +614,79 @@ export interface PromotionResponse {
   createdByUserId: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PerformancePoint {
+  start: string;
+  end: string;
+  sales: number;
+  orders: number;
+  customers: number;
+  vendors: number;
+}
+
+export interface PricingSettings {
+  taxable?: boolean;
+  priceIncludesTax?: boolean;
+  taxClassId?: string | null;
+  discountEnabled?: boolean;
+  discountType?: PromotionType;
+  discountValue?: number;
+  discountStartsAt?: string | null;
+  discountEndsAt?: string | null;
+}
+export interface PriceQuoteContext {
+  productId?: string;
+  vendorId?: string;
+  categoryId?: string;
+  brandId?: string | null;
+  productType?: string;
+}
+export interface PriceQuote {
+  includedTaxCents?: number;
+  addedTaxCents?: number;
+  regularSubtotalCents: number;
+  subtotalCents: number;
+  directDiscountCents: number;
+  automaticDiscountCents: number;
+  couponDiscountCents: number;
+  taxCents: number;
+  netCents: number;
+  shippingCents: number;
+  totalCents: number;
+}
+export interface TaxClass {
+  id: string;
+  name: string;
+  rateBps: number;
+  isActive: boolean;
+}
+export interface ImportOptions {
+  promotions: PromotionResponse[];
+  brands: Array<{ id: string; name: string }>;
+  managementVendors: Array<{ id: string; name: string }>;
+  runs: Array<{ id: string; source: CatalogSource; startedAt: string }>;
+  sourceFilters: CatalogSource[];
+  sources: Array<{ id: CatalogSource; name: string; available: boolean; reason: string }>;
+  vendors: Array<{ id: string; name: string; slug: string }>;
+  categories: CategoryResponse[];
+  taxClasses: TaxClass[];
+  currency: string;
+}
+export interface PromotionInput {
+  code: string;
+  type: PromotionType;
+  value: number;
+  startsAt: string;
+  endsAt: string;
+  automatic?: boolean;
+  productIds?: string[];
+  brandIds?: string[];
+  categoryIds?: string[];
+  vendorIds?: string[];
+  productTypes?: string[];
+  maxDiscountCents?: number;
+  minSubtotalCents?: number;
+  maxRedemptions?: number;
+  maxRedemptionsPerUser?: number;
 }

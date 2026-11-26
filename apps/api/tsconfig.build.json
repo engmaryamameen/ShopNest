@@ -6,5 +6,13 @@
   // dist/main.js and silently breaking the Docker CMD / start script,
   // which both expect the former.
   "compilerOptions": { "rootDir": "." },
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "prisma/seed.ts"]
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "**/*spec.ts",
+    "prisma/seed.ts",
+    "prisma/marketplace-taxonomy.ts",
+    "prisma/prepare-categories.ts"
+  ]
 }

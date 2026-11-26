@@ -6,9 +6,9 @@ export function UtilityBar() {
     <div className=" font-lato hidden bg-[#000000] text-[#FAFAFA] lg:block">
       <div className="mx-auto flex h-8 max-w-[1440px] items-center justify-between px-6 text-[11px] font-medium tracking-wide">
         <p className='text-center mx-auto'>
-          Summer Sale For All Swim Suits And Free Express Delivery - OFF 50%!{' '}
+          Discover new arrivals and offers from marketplace sellers.{' '}
           <span>
-            <Link href={''} className='font-semibold underline ml-1'>ShopNow</Link>{' '}
+            <Link href="/shop" className='font-semibold underline ml-1'>Shop now</Link>{' '}
           </span>
         </p>
         {/* <div className="flex items-center gap-5">

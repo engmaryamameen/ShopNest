@@ -2,7 +2,14 @@
 
 import { useRef } from 'react';
 import Link from 'next/link';
-import { CloseIcon, GridIcon, PackageIcon, ShieldCheckIcon, TagIcon, TruckIcon } from '@/assets/icons';
+import {
+  CloseIcon,
+  GridIcon,
+  PackageIcon,
+  ShieldCheckIcon,
+  TagIcon,
+  TruckIcon,
+} from '@/assets/icons';
 import { BrandLogo } from './brand-logo';
 import { useBodyScrollLock } from './use-body-scroll-lock';
 import { useFocusTrap } from './use-focus-trap';
@@ -10,6 +17,7 @@ import { useEscapeKey } from './use-escape-key';
 import { FOCUS_RING } from './styles';
 import type { HeaderCategory } from './types';
 import type { UserIdentity } from '@/store/user.store';
+import { categoryOptions } from '@/lib/category-tree';
 
 interface MobileDrawerProps {
   open: boolean;
@@ -25,7 +33,13 @@ interface MobileDrawerProps {
  * transitions animate smoothly; `inert` keeps it out of the tab order and
  * off-screen from assistive tech whenever it's closed.
  */
-export function MobileDrawer({ open, onClose, categories, currentUser, onSignOut }: MobileDrawerProps) {
+export function MobileDrawer({
+  open,
+  onClose,
+  categories,
+  currentUser,
+  onSignOut,
+}: MobileDrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useBodyScrollLock(open);
@@ -114,19 +128,23 @@ export function MobileDrawer({ open, onClose, categories, currentUser, onSignOut
             All categories
           </Link>
 
-          <p className="mt-2 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Popular categories</p>
+          <p className="mt-2 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+            Popular categories
+          </p>
           <ul>
-            {categories.map((category) => (
-              <li key={category.id}>
-                <Link
-                  href={`/shop?category=${encodeURIComponent(category.slug)}`}
-                  onClick={onClose}
-                  className={`flex items-center justify-between gap-2 rounded-lg px-3 py-3 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 ${FOCUS_RING}`}
-                >
-                  {category.name}
-                </Link>
-              </li>
-            ))}
+            {categoryOptions(categories)
+              .filter((category) => !category.parentId)
+              .map((category) => (
+                <li key={category.id}>
+                  <Link
+                    href={`/shop?category=${encodeURIComponent(category.slug)}`}
+                    onClick={onClose}
+                    className={`flex items-center justify-between gap-2 rounded-lg px-3 py-3 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 ${FOCUS_RING}`}
+                  >
+                    {category.name}
+                  </Link>
+                </li>
+              ))}
           </ul>
 
           <Link

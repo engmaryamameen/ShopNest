@@ -6,6 +6,10 @@ import { api, ApiError } from '@/lib/api';
 import type { VendorOfferResponse } from '@/lib/api-types';
 import { ProductPicker } from './product-picker';
 import { formatPrice } from '@/lib/format-price';
+import { OfferPricingFields, DEFAULT_PRICING } from '@/components/shared/offer-pricing-fields';
+import type { PricingSettings } from '@/lib/api-types';
+import { EditIcon } from '@/components/ui/icons/edit-icon';
+import { AdminSelect } from '@/components/ui/admin-form';
 
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-800',
@@ -20,6 +24,10 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
   const [isPending, startTransition] = useTransition();
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
   const [adjustDelta, setAdjustDelta] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<PricingSettings>(DEFAULT_PRICING);
+  const [variants, setVariants] = useState<Array<{ id: string; label: string }>>([]);
+  const [variantId, setVariantId] = useState('');
 
   const [form, setForm] = useState({
     productId: '',
@@ -30,6 +38,10 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
   });
 
   function resetForm() {
+    setVariants([]);
+    setVariantId('');
+    setEditingId(null);
+    setPricing(DEFAULT_PRICING);
     setForm({ productId: '', productName: '', vendorSku: '', priceCents: '', stockQuantity: '' });
     setShowCreate(false);
     setError(null);
@@ -40,12 +52,21 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
     setError(null);
     startTransition(async () => {
       try {
-        await api.vendorCreateOffer({
+        const fields = {
+          ...pricing,
+          variantId: variantId || undefined,
           productId: form.productId,
           vendorSku: form.vendorSku,
           priceCents: Math.round(Number(form.priceCents) * 100),
           stockQuantity: Number(form.stockQuantity),
-        });
+        };
+        if (editingId)
+          await api.vendorUpdateOffer(editingId, {
+            ...pricing,
+            vendorSku: fields.vendorSku,
+            priceCents: fields.priceCents,
+          });
+        else await api.vendorCreateOffer(fields);
         resetForm();
         router.refresh();
       } catch (err) {
@@ -97,19 +118,53 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
 
       {showCreate && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
-          <h2 className="font-semibold text-gray-900 mb-4">New offer</h2>
+          <h2 className="font-semibold text-gray-900 mb-4">
+            {editingId ? 'Edit offer' : 'New offer'}
+          </h2>
           {error && (
-            <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+            <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {error}
+            </div>
           )}
           <form onSubmit={handleCreate} className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
-              <ProductPicker
-                onSelect={(p) => setForm((f) => ({ ...f, productId: p.id, productName: p.name }))}
-              />
+              {editingId ? (
+                <p className="text-sm text-gray-600">{form.productName}</p>
+              ) : (
+                <ProductPicker
+                  onSelect={(p) => {
+                    setForm((f) => ({ ...f, productId: p.id, productName: p.name }));
+                    setVariants(p.variants ?? []);
+                    setVariantId('');
+                  }}
+                  onClear={() => {
+                    setForm((f) => ({ ...f, productId: '', productName: '' }));
+                    setVariants([]);
+                    setVariantId('');
+                  }}
+                />
+              )}
+              {!editingId && variants.length > 0 && (
+                <div className="mt-3">
+                  <label className="mb-1 block text-sm text-gray-700">Product variant</label>
+                  <AdminSelect
+                    id="vendor-offer-variant"
+                    value={variantId}
+                    options={[
+                      { value: '', label: 'Choose a variant' },
+                      ...variants.map((v) => ({ value: v.id, label: v.label })),
+                    ]}
+                    onChange={setVariantId}
+                  />
+                </div>
+              )}
             </div>
             <div>
-              <label htmlFor="offer-vendor-sku" className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="offer-vendor-sku"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Your SKU
               </label>
               <input
@@ -117,7 +172,7 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
                 required
                 value={form.vendorSku}
                 onChange={(e) => setForm({ ...form, vendorSku: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0077b6] focus:outline-none"
               />
             </div>
             <div>
@@ -132,32 +187,52 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
                 min="0.01"
                 value={form.priceCents}
                 onChange={(e) => setForm({ ...form, priceCents: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0077b6] focus:outline-none"
               />
             </div>
             <div>
               <label htmlFor="offer-stock" className="block text-sm font-medium text-gray-700 mb-1">
-                Starting stock
+                {editingId ? 'Current stock' : 'Starting stock'}
               </label>
               <input
                 id="offer-stock"
+                disabled={Boolean(editingId)}
                 required
                 type="number"
                 min="0"
                 value={form.stockQuantity}
                 onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0077b6] focus:outline-none"
+              />
+              {editingId && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Use inventory adjustments to change stock.
+                </p>
+              )}
+            </div>
+            <div className="col-span-2">
+              <OfferPricingFields
+                value={pricing}
+                onChange={setPricing}
+                priceCents={Math.round(Number(form.priceCents) * 100)}
+                context={{ productId: form.productId || undefined }}
               />
             </div>
             <div className="col-span-2 flex gap-3">
               <button
                 type="submit"
-                disabled={isPending || !form.productId}
+                disabled={
+                  isPending || !form.productId || (!editingId && variants.length > 0 && !variantId)
+                }
                 className="px-6 py-2 shopnest-primary rounded-lg font-medium  disabled:opacity-60 transition-colors"
               >
-                {isPending ? 'Creating…' : 'Create offer'}
+                {isPending ? 'Saving…' : editingId ? 'Save offer' : 'Create offer'}
               </button>
-              <button type="button" onClick={resetForm} className="px-6 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="px-6 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+              >
                 Cancel
               </button>
             </div>
@@ -167,23 +242,37 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {offers.length === 0 ? (
-          <div className="px-6 py-12 text-center text-gray-500">No offers yet. Create one to start selling.</div>
+          <div className="px-6 py-12 text-center text-gray-500">
+            No offers yet. Create one to start selling.
+          </div>
         ) : (
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Product
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  SKU
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Price
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Stock
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Status
+                </th>
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {offers.map((offer) => (
                 <tr key={offer.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm text-gray-900">{offer.product?.name ?? offer.productId}</td>
+                  <td className="px-6 py-4 text-sm text-gray-900">
+                    {offer.product?.name ?? offer.productId}
+                  </td>
                   <td className="px-6 py-4 text-xs text-gray-400 font-mono">{offer.vendorSku}</td>
                   <td className="px-6 py-4 text-sm font-medium">{formatPrice(offer.priceCents)}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">
@@ -197,8 +286,18 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
                           placeholder="±qty"
                           className="w-20 px-2 py-1 border border-gray-300 rounded text-xs"
                         />
-                        <button onClick={() => submitAdjustment(offer.id)} className="text-emerald-700 text-xs font-medium">Save</button>
-                        <button onClick={() => setAdjustingId(null)} className="text-gray-400 text-xs">✕</button>
+                        <button
+                          onClick={() => submitAdjustment(offer.id)}
+                          className="text-emerald-700 text-xs font-medium"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setAdjustingId(null)}
+                          className="text-gray-400 text-xs"
+                        >
+                          ✕
+                        </button>
                       </div>
                     ) : (
                       <button onClick={() => setAdjustingId(offer.id)} className="hover:underline">
@@ -207,11 +306,41 @@ export function VendorOfferList({ offers }: { offers: VendorOfferResponse[] }) {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[offer.status]}`}>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLES[offer.status]}`}
+                    >
                       {offer.status}
                     </span>
                   </td>
                   <td className="px-6 py-4">
+                    <button
+                      aria-label={`Edit ${offer.product?.name ?? offer.vendorSku}`}
+                      title="Edit offer"
+                      onClick={() => {
+                        setEditingId(offer.id);
+                        setPricing({
+                          taxable: offer.taxable,
+                          priceIncludesTax: offer.priceIncludesTax,
+                          taxClassId: offer.taxClassId,
+                          discountEnabled: offer.discountEnabled,
+                          discountType: offer.discountType,
+                          discountValue: offer.discountValue,
+                          discountStartsAt: offer.discountStartsAt,
+                          discountEndsAt: offer.discountEndsAt,
+                        });
+                        setForm({
+                          productId: offer.productId,
+                          productName: offer.product?.name ?? offer.productId,
+                          vendorSku: offer.vendorSku,
+                          priceCents: String(offer.priceCents / 100),
+                          stockQuantity: String(offer.stockQuantity),
+                        });
+                        setShowCreate(true);
+                      }}
+                      className="mr-2 inline-flex h-9 w-9 items-center justify-center text-slate-600 hover:text-[#0077b6]"
+                    >
+                      <EditIcon />
+                    </button>
                     <button
                       onClick={() => toggleStatus(offer)}
                       disabled={isPending}

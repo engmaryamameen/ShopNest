@@ -8,9 +8,16 @@ describe('CatalogImportController', () => {
     const worker = { poll: jest.fn().mockResolvedValue(undefined) };
     const controller = new CatalogImportController(imports as never, worker as never);
 
-    const result = await controller.triggerImport({ source: CatalogSource.AMAZON, categoryScope: ['Electronics'] } as never);
+    const result = await controller.triggerImport({
+      source: CatalogSource.AMAZON,
+      categoryScope: ['Electronics'],
+    } as never);
 
-    expect(imports.enqueue).toHaveBeenCalledWith(CatalogSource.AMAZON, { source: CatalogSource.AMAZON, categoryScope: ['Electronics'] });
+    expect(imports.enqueue).toHaveBeenCalledWith(
+      CatalogSource.AMAZON,
+      { categoryScope: ['Electronics'] },
+      undefined,
+    );
     expect(worker.poll).toHaveBeenCalledTimes(1);
     expect(result).toBe(run);
   });
@@ -21,20 +28,26 @@ describe('CatalogImportController', () => {
     const worker = { poll: jest.fn().mockRejectedValue(new Error('claim query failed')) };
     const controller = new CatalogImportController(imports as never, worker as never);
 
-    await expect(controller.triggerImport({ source: CatalogSource.DUMMY_JSON } as never)).resolves.toBe(run);
+    await expect(
+      controller.triggerImport({ source: CatalogSource.DUMMY_JSON } as never),
+    ).resolves.toBe(run);
     // Let the fire-and-forget rejection settle before the test ends.
     await new Promise((resolve) => setImmediate(resolve));
   });
 
-  it('preview delegates to the service with the requested source', async () => {
-    const imports = { preview: jest.fn().mockResolvedValue({ discoveredCount: 0 }) };
-    const worker = { poll: jest.fn() };
+  it('preview queues a recoverable review and starts the existing worker', async () => {
+    const imports = {
+      queuePreview: jest.fn().mockResolvedValue({ previewId: 'preview', status: 'PREPARING' }),
+    };
+    const worker = { poll: jest.fn().mockResolvedValue(undefined) };
     const controller = new CatalogImportController(imports as never, worker as never);
 
     const scope = { source: CatalogSource.OPEN_FOOD_FACTS, maxRecords: 10 };
     await controller.preview(scope as never);
 
-    expect(imports.preview).toHaveBeenCalledWith(CatalogSource.OPEN_FOOD_FACTS, scope);
-    expect(worker.poll).not.toHaveBeenCalled(); // a preview never triggers processing
+    expect(imports.queuePreview).toHaveBeenCalledWith(CatalogSource.OPEN_FOOD_FACTS, {
+      maxRecords: 10,
+    });
+    expect(worker.poll).toHaveBeenCalledTimes(1);
   });
 });

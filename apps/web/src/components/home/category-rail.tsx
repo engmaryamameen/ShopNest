@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ChevronRightIcon } from '@/assets/icons';
 import type { HeaderCategory } from '@/components/shop/nav/types';
 
-const CATEGORY_LIMIT = 10;
+const CATEGORY_LIMIT = 11;
 
 function formatCategoryName(name: string) {
   return name
@@ -13,7 +13,9 @@ function formatCategoryName(name: string) {
 }
 
 export function CategoryRail({ categories }: { categories: HeaderCategory[] }) {
-  const visibleCategories = categories.slice(0, CATEGORY_LIMIT);
+  const visibleCategories = categories
+    .filter((category) => !category.parentId && category.isActive !== false)
+    .slice(0, CATEGORY_LIMIT);
 
   if (visibleCategories.length === 0) return null;
 
@@ -23,7 +25,7 @@ export function CategoryRail({ categories }: { categories: HeaderCategory[] }) {
       className="hidden min-w-[224px] lg:max-h-[344px] lg:min-h-[344px] shrink-0 xl:block pt-[30px]"
     >
       <nav className="h-[344px]">
-        <ul className="w-full space-y-4">
+        <ul className="w-full space-y-2">
           {visibleCategories.map((category, index) => (
             <li key={category.id}>
               <Link

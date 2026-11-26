@@ -34,7 +34,7 @@ const arrivals = {
     title: 'Women’s Collections',
     description:
       'Featured woman collections that give you another vibe.',
-    href: '/shop?category=womens-dresses',
+    href: '/shop?category=womens-clothing',
     image: womensCollectionImage,
     imageAlt: 'Women’s fashion collection',
   },

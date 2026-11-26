@@ -4,8 +4,10 @@ describe('catalog import configuration', () => {
   const originalEnv = process.env;
   afterEach(() => { process.env = originalEnv; });
 
-  it.each(['development', 'production'])('cannot enable imports in %s', (nodeEnv) => {
-    process.env = { ...originalEnv, NODE_ENV: nodeEnv, CATALOG_IMPORT_TEST_ENABLED: 'true' };
+  it('enables local development imports but not production imports', () => {
+    process.env = { ...originalEnv, NODE_ENV: 'development' };
+    expect(appConfig().catalogImportEnabled).toBe(true);
+    process.env.NODE_ENV = 'production';
     expect(appConfig().catalogImportEnabled).toBe(false);
   });
 
@@ -16,11 +18,9 @@ describe('catalog import configuration', () => {
     expect(appConfig().catalogImportEnabled).toBe(true);
   });
 
-  it('keeps the scheduler and worker off when not explicitly configured', () => {
+  it('recovers queued imports by default without recurring synchronization', () => {
     process.env = { ...originalEnv, NODE_ENV: 'development' };
     delete process.env.CATALOG_WORKER_ENABLED;
-    delete process.env.CATALOG_SCHEDULE_ENABLED;
-    expect(appConfig().catalogWorkerEnabled).toBe(false);
-    expect(appConfig().catalogScheduleEnabled).toBe(false);
+    expect(appConfig().catalogWorkerEnabled).toBe(true);
   });
 });

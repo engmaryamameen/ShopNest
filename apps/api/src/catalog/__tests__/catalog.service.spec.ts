@@ -18,10 +18,21 @@ function prismaUniqueViolation(): Prisma.PrismaClientKnownRequestError {
 function makeTxMock() {
   return {
     category: { findUnique: jest.fn(), findMany: jest.fn(), delete: jest.fn(), count: jest.fn() },
-    product: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), update: jest.fn(), create: jest.fn(), count: jest.fn() },
+    product: {
+      findUnique: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn(),
+      count: jest.fn(),
+    },
     productMedia: { create: jest.fn() },
     vendor: { findUnique: jest.fn() },
-    vendorOffer: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+    vendorOffer: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
     inventoryAdjustment: { create: jest.fn() },
   };
 }
@@ -56,6 +67,7 @@ describe('CatalogService', () => {
 
   beforeEach(async () => {
     tx = makeTxMock();
+    tx.vendor.findUnique.mockResolvedValue({ id: SYSTEM_VENDOR_ID });
     prisma = makePrismaMock(tx);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -66,14 +78,34 @@ describe('CatalogService', () => {
   });
 
   describe('createCategory', () => {
+    it('requires an image for an active main department', async () => {
+      await expect(service.createCategory({ name: 'New department' })).rejects.toThrow(
+        'Main categories need an image',
+      );
+      expect(prisma.category.create).not.toHaveBeenCalled();
+    });
     it('slugifies the name when no slug is provided', async () => {
       prisma.category.findUnique.mockResolvedValue(null);
-      prisma.category.create.mockResolvedValue({ id: CATEGORY_ID, name: 'Home & Garden', slug: 'home-garden' });
+      prisma.category.create.mockResolvedValue({
+        id: CATEGORY_ID,
+        name: 'Home & Garden',
+        slug: 'home-garden',
+      });
 
-      await service.createCategory({ name: 'Home & Garden' } as never);
+      await service.createCategory({
+        name: 'Home & Garden',
+        imageUrl: 'http://localhost:3001/uploads/home.png',
+      } as never);
 
       expect(prisma.category.create).toHaveBeenCalledWith({
-        data: { name: 'Home & Garden', slug: 'home-garden', parentId: null },
+        data: {
+          name: 'Home & Garden',
+          slug: 'home-garden',
+          parentId: null,
+          imageUrl: 'http://localhost:3001/uploads/home.png',
+          position: 0,
+          isActive: true,
+        },
       });
     });
 
@@ -83,10 +115,20 @@ describe('CatalogService', () => {
         .mockResolvedValueOnce(null); // "books-2" free
       prisma.category.create.mockResolvedValue({ id: CATEGORY_ID, name: 'Books', slug: 'books-2' });
 
-      await service.createCategory({ name: 'Books' } as never);
+      await service.createCategory({
+        name: 'Books',
+        imageUrl: 'http://localhost:3001/uploads/books.png',
+      } as never);
 
       expect(prisma.category.create).toHaveBeenCalledWith({
-        data: { name: 'Books', slug: 'books-2', parentId: null },
+        data: {
+          name: 'Books',
+          slug: 'books-2',
+          parentId: null,
+          imageUrl: 'http://localhost:3001/uploads/books.png',
+          position: 0,
+          isActive: true,
+        },
       });
     });
 
@@ -94,7 +136,12 @@ describe('CatalogService', () => {
       prisma.category.findUnique.mockResolvedValue(null);
       prisma.category.create.mockRejectedValue(prismaUniqueViolation());
 
-      await expect(service.createCategory({ name: 'Books' } as never)).rejects.toThrow(ConflictException);
+      await expect(
+        service.createCategory({
+          name: 'Books',
+          imageUrl: 'http://localhost:3001/uploads/books.png',
+        } as never),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('rejects a category pointed at a parent that does not exist', async () => {
@@ -108,20 +155,38 @@ describe('CatalogService', () => {
   });
 
   describe('updateCategory', () => {
+    it('requires an image when promoting an active subcategory to a main department', async () => {
+      prisma.category.findUnique.mockResolvedValue({
+        id: CATEGORY_ID,
+        parentId: 'parent',
+        isActive: true,
+        imageUrl: null,
+      });
+      await expect(service.updateCategory(CATEGORY_ID, { parentId: null })).rejects.toThrow(
+        'Main categories need an image',
+      );
+      expect(prisma.category.update).not.toHaveBeenCalled();
+    });
     it('rejects an update with no fields provided', async () => {
-      await expect(service.updateCategory(CATEGORY_ID, {} as never)).rejects.toThrow(BadRequestException);
+      await expect(service.updateCategory(CATEGORY_ID, {} as never)).rejects.toThrow(
+        BadRequestException,
+      );
       expect(prisma.category.findUnique).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when the category does not exist', async () => {
       prisma.category.findUnique.mockResolvedValue(null);
-      await expect(service.updateCategory(CATEGORY_ID, { name: 'New name' } as never)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.updateCategory(CATEGORY_ID, { name: 'New name' } as never),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('does not silently auto-change the slug when only the name changes (stable URLs)', async () => {
-      prisma.category.findUnique.mockResolvedValue({ id: CATEGORY_ID, name: 'Old', slug: 'old-slug' });
+      prisma.category.findUnique.mockResolvedValue({
+        id: CATEGORY_ID,
+        name: 'Old',
+        slug: 'old-slug',
+      });
       prisma.category.update.mockResolvedValue({ id: CATEGORY_ID, name: 'New', slug: 'old-slug' });
 
       await service.updateCategory(CATEGORY_ID, { name: 'New' } as never);
@@ -142,9 +207,7 @@ describe('CatalogService', () => {
       const CHILD_ID = 'child-cat';
       prisma.category.findUnique.mockResolvedValueOnce({ id: CHILD_ID }); // ensureCategoryExists(parentId)
       // getDescendantCategoryIds(CATEGORY_ID) walks children — CHILD_ID is one of them
-      prisma.category.findMany
-        .mockResolvedValueOnce([{ id: CHILD_ID }])
-        .mockResolvedValueOnce([]);
+      prisma.category.findMany.mockResolvedValueOnce([{ id: CHILD_ID }]).mockResolvedValueOnce([]);
 
       await expect(
         service.updateCategory(CATEGORY_ID, { parentId: CHILD_ID } as never),
@@ -194,7 +257,12 @@ describe('CatalogService', () => {
       prisma.category.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.createProduct({ name: 'Widget', categoryId: 'missing-cat', priceCents: 100, stockQuantity: 1 } as never),
+        service.createProduct({
+          name: 'Widget',
+          categoryId: 'missing-cat',
+          priceCents: 100,
+          stockQuantity: 1,
+        } as never),
       ).rejects.toThrow(NotFoundException);
       expect(tx.product.create).not.toHaveBeenCalled();
     });
@@ -228,30 +296,114 @@ describe('CatalogService', () => {
       // Product itself never receives commercial fields — those go only to
       // the VendorOffer created alongside it (assertion below).
       expect(tx.product.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.not.objectContaining({ priceCents: expect.anything() }) }),
+        expect.objectContaining({
+          data: expect.not.objectContaining({ priceCents: expect.anything() }),
+        }),
       );
       expect(tx.vendorOffer.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ vendorId: SYSTEM_VENDOR_ID, productId: PRODUCT_ID, priceCents: 999, stockQuantity: 5 }),
+          data: expect.objectContaining({
+            vendorId: SYSTEM_VENDOR_ID,
+            productId: PRODUCT_ID,
+            priceCents: 999,
+            stockQuantity: 5,
+          }),
         }),
       );
       // Non-zero initial stock gets a matching InventoryAdjustment — the
       // "every stock mutation has an audit row" invariant.
       expect(tx.inventoryAdjustment.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ vendorOfferId: 'offer-1', delta: 5 }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ vendorOfferId: 'offer-1', delta: 5 }),
+        }),
       );
     });
   });
 
-  describe('listProducts', () => {
-    it('returns an empty page (no query) for an unknown category slug', async () => {
-      prisma.category.findUnique.mockResolvedValue(null);
+  describe('updateProduct', () => {
+    const detail = {
+      id: PRODUCT_ID,
+      name: 'Widget',
+      slug: 'widget',
+      description: '',
+      categoryId: CATEGORY_ID,
+      category: { id: CATEGORY_ID, name: 'Cat', slug: 'cat' },
+      brand: null,
+      media: [],
+      offers: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
 
-      const result = await service.listProducts({ category: 'does-not-exist' } as never);
+    it('changes a regular price and fixed discount together to preserve the database constraint', async () => {
+      tx.product.findUnique.mockResolvedValue(detail);
+      tx.product.findUniqueOrThrow.mockResolvedValue(detail);
+      tx.vendorOffer.findFirst.mockResolvedValue({
+        id: 'offer-1',
+        priceCents: 1000,
+        stockQuantity: 2,
+        compareAtPriceCents: null,
+        discountEnabled: true,
+        discountType: 'FIXED_AMOUNT',
+        discountValue: 800,
+      });
 
-      expect(result).toEqual({ items: [], total: 0, page: 1, limit: 20 });
-      expect(prisma.product.findMany).not.toHaveBeenCalled();
+      await service.updateProduct(PRODUCT_ID, {
+        offerId: 'offer-1',
+        priceCents: 500,
+        discountValue: 100,
+      });
+
+      expect(tx.vendorOffer.update).toHaveBeenCalledWith({
+        where: { id: 'offer-1' },
+        data: { priceCents: 500, stockQuantity: 2, discountValue: 100 },
+      });
     });
+
+    it('restores owned imported offers when publishing without a price edit', async () => {
+      tx.product.findUnique.mockResolvedValue({ ...detail, publishStatus: 'ARCHIVED' });
+      tx.product.findUniqueOrThrow.mockResolvedValue(detail);
+
+      await service.updateProduct(PRODUCT_ID, { isActive: true });
+
+      expect(tx.vendorOffer.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            productId: PRODUCT_ID,
+            OR: expect.arrayContaining([{ importRunId: { not: null } }]),
+          }),
+          data: { status: 'ACTIVE' },
+        }),
+      );
+      expect(tx.vendorOffer.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listProducts', () => {
+    it('keeps an old supplier category URL working through its canonical category and descendants', async () => {
+      prisma.category.findUnique.mockResolvedValue({ id: CATEGORY_ID });
+      prisma.category.findMany.mockResolvedValueOnce([{ id: 'child' }]).mockResolvedValueOnce([]);
+      prisma.product.findMany.mockResolvedValue([]);
+      prisma.product.count.mockResolvedValue(0);
+      await service.listProducts({ category: 'aftershave-balms' } as never);
+      expect(prisma.category.findUnique).toHaveBeenCalledWith({ where: { slug: 'aftershaves' } });
+      expect(prisma.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ categoryId: { in: [CATEGORY_ID, 'child'] } }),
+        }),
+      );
+    });
+    it.each(['does-not-exist', 'constructor', '__proto__'])(
+      'returns an empty page for unknown category %s',
+      async (category) => {
+        prisma.category.findUnique.mockResolvedValue(null);
+
+        const result = await service.listProducts({ category } as never);
+
+        expect(result).toEqual({ items: [], total: 0, page: 1, limit: 20 });
+        expect(prisma.product.findMany).not.toHaveBeenCalled();
+      },
+    );
 
     it('scopes the default listing to published products with at least one active offer', async () => {
       prisma.product.findMany.mockResolvedValue([]);
@@ -263,7 +415,7 @@ describe('CatalogService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             publishStatus: 'PUBLISHED',
-            offers: { some: { status: 'ACTIVE' } },
+            offers: { some: { status: 'ACTIVE', vendor: { status: 'APPROVED' } } },
           }),
         }),
       );
@@ -282,7 +434,9 @@ describe('CatalogService', () => {
       await service.listProducts({ category: 'electronics' } as never);
 
       expect(prisma.product.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ categoryId: { in: [PARENT_ID, CHILD_ID] } }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ categoryId: { in: [PARENT_ID, CHILD_ID] } }),
+        }),
       );
     });
   });
@@ -339,7 +493,7 @@ describe('CatalogService', () => {
       expect(where).not.toHaveProperty('vendorOffers');
     });
 
-    it('caps the requested limit at 25 and floors it at 1, never trusting the caller\'s raw value', async () => {
+    it("caps the requested limit at 25 and floors it at 1, never trusting the caller's raw value", async () => {
       prisma.product.findMany.mockResolvedValue([]);
 
       await service.searchForListing('lamp', 1000);
@@ -355,7 +509,9 @@ describe('CatalogService', () => {
       await service.searchForListing('lamp');
 
       const select = prisma.product.findMany.mock.calls[0][0].select;
-      expect(Object.keys(select).sort()).toEqual(['category', 'id', 'name', 'slug', 'variants'].sort());
+      expect(Object.keys(select).sort()).toEqual(
+        ['category', 'id', 'name', 'slug', 'variants'].sort(),
+      );
     });
   });
 });

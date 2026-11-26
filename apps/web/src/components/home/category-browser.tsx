@@ -24,11 +24,7 @@ function ArrowIcon({ direction }: { direction: 'left' | 'right' }) {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6" fill="none">
       <path
-        d={
-          direction === 'left'
-            ? 'M20 12H4m6-6-6 6 6 6'
-            : 'M4 12h16m-6-6 6 6-6 6'
-        }
+        d={direction === 'left' ? 'M20 12H4m6-6-6 6 6 6' : 'M4 12h16m-6-6 6 6-6 6'}
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
@@ -38,11 +34,10 @@ function ArrowIcon({ direction }: { direction: 'left' | 'right' }) {
   );
 }
 
-export function CategoryBrowser({
-  categories,
-}: {
-  categories: HeaderCategory[];
-}) {
+export function CategoryBrowser({ categories: allCategories }: { categories: HeaderCategory[] }) {
+  const categories = allCategories.filter(
+    (category) => !category.parentId && category.isActive !== false,
+  );
   const railRef = useRef<HTMLDivElement>(null);
   const [scrollState, setScrollState] = useState({
     canScrollLeft: false,
@@ -50,10 +45,7 @@ export function CategoryBrowser({
   });
 
   const updateScrollState = useCallback(
-    (state: {
-      canScrollLeft: boolean;
-      canScrollRight: boolean;
-    }) => {
+    (state: { canScrollLeft: boolean; canScrollRight: boolean }) => {
       setScrollState(state);
     },
     [],
@@ -82,19 +74,11 @@ export function CategoryBrowser({
   }
 
   return (
-    <section
-      aria-labelledby="category-browser-title"
-      className="flex w-full flex-col gap-5"
-    >
+    <section aria-labelledby="category-browser-title" className="flex w-full flex-col gap-5">
       <div className="flex items-center gap-4">
-        <span
-          aria-hidden="true"
-          className="h-10 w-1 rounded-full bg-[#DB4444]"
-        />
+        <span aria-hidden="true" className="h-10 w-1 rounded-full bg-[#DB4444]" />
 
-        <p className="text-base font-bold leading-5 text-[#DB4444]">
-          Categories
-        </p>
+        <p className="text-base font-bold leading-5 text-[#DB4444]">Categories</p>
       </div>
 
       <div className="flex items-center justify-between gap-6">
@@ -108,9 +92,7 @@ export function CategoryBrowser({
         <div className="flex shrink-0 gap-2">
           {(['left', 'right'] as const).map((direction) => {
             const disabled =
-              direction === 'left'
-                ? !scrollState.canScrollLeft
-                : !scrollState.canScrollRight;
+              direction === 'left' ? !scrollState.canScrollLeft : !scrollState.canScrollRight;
 
             return (
               <button
@@ -180,6 +162,7 @@ export function CategoryBrowser({
               slug={category.slug}
               name={category.name}
               priority={index < 7}
+              imageUrl={category.imageUrl}
             />
 
             <span className="relative line-clamp-2 min-h-6 max-w-[180px] text-base font-medium leading-6">
@@ -188,6 +171,18 @@ export function CategoryBrowser({
           </Link>
         ))}
       </HorizontalFadeScroll>
+      {categories.some((category) => category.imageAttribution) && (
+        <p className="text-xs text-gray-500">
+          Selected category photos: Amazon.com, Amazon Berkeley Objects,{' '}
+          <a
+            className="underline"
+            href="https://amazon-berkeley-objects.s3.amazonaws.com/index.html"
+          >
+            CC BY 4.0
+          </a>
+          .
+        </p>
+      )}
     </section>
   );
 }

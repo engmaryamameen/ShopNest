@@ -12,7 +12,10 @@ import { CatalogImportStatus, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { CatalogImportWorker } from '../src/catalog-import/catalog-import.worker';
 import { CatalogImportService } from '../src/catalog-import/catalog-import.service';
-import type { CatalogSourceAdapter, FetchProductsResult } from '../src/catalog-import/catalog-source.adapter';
+import type {
+  CatalogSourceAdapter,
+  FetchProductsResult,
+} from '../src/catalog-import/catalog-source.adapter';
 import type { CatalogSourceRegistry } from '../src/catalog-import/catalog-source-registry';
 
 const prisma = new PrismaClient();
@@ -23,16 +26,23 @@ afterAll(async () => {
 
 function makeConfig(overrides: Record<string, unknown> = {}) {
   const values: Record<string, unknown> = {
+    'app.nodeEnv': 'test',
     'app.catalogImportEnabled': true,
     'app.catalogWorkerLeaseSeconds': 300,
     'app.catalogImportBatchSize': 2,
     ...overrides,
   };
-  return { get: (key: string, fallback?: unknown) => (key in values ? values[key] : fallback) } as never;
+  return {
+    get: (key: string, fallback?: unknown) => (key in values ? values[key] : fallback),
+  } as never;
 }
 
 function makeStubAdapter(products: FetchProductsResult['products']): CatalogSourceAdapter {
-  return { fetchProducts: async () => ({ products, skippedCount: 0 }) };
+  const version = `catimp-${randomUUID()}`;
+  return {
+    datasetVersion: async () => version,
+    fetchProducts: async () => ({ products, skippedCount: 0, exhausted: true }),
+  };
 }
 
 function makeRegistry(adapter: CatalogSourceAdapter): CatalogSourceRegistry {
@@ -41,15 +51,19 @@ function makeRegistry(adapter: CatalogSourceAdapter): CatalogSourceRegistry {
 
 const createdRunIds: string[] = [];
 
-async function createRun(overrides: Partial<{
-  status: CatalogImportStatus;
-  lockedAt: Date | null;
-  lockedBy: string | null;
-  attemptCount: number;
-}> = {}) {
+async function createRun(
+  overrides: Partial<{
+    status: CatalogImportStatus;
+    lockedAt: Date | null;
+    lockedBy: string | null;
+    attemptCount: number;
+  }> = {},
+) {
   const run = await prisma.catalogImportRun.create({
     data: {
       source: 'DUMMY_JSON',
+      maxRecords: 4,
+      minImageCount: 0,
       status: overrides.status ?? CatalogImportStatus.QUEUED,
       lockedAt: overrides.lockedAt ?? null,
       lockedBy: overrides.lockedBy ?? null,
@@ -103,6 +117,9 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
     await prisma.product.deleteMany({ where: { id: { in: productIds } } });
     await prisma.category.deleteMany({ where: { slug: { contains: 'catimp-' } } });
     await prisma.catalogImportRun.deleteMany({ where: { id: { in: createdRunIds } } });
+    await prisma.catalogSourceCheckpoint.deleteMany({
+      where: { source: 'DUMMY_JSON', version: { startsWith: 'catimp-' } },
+    });
     createdRunIds.length = 0;
   });
 
@@ -116,12 +133,18 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
 
     const imports = { executeRun: jest.fn().mockResolvedValue(undefined) };
     // 1-second lease — the 10-minutes-ago lock is unambiguously stale.
-    const secondWorker = new CatalogImportWorker(prisma as never, imports as never, makeConfig({ 'app.catalogWorkerLeaseSeconds': 1 }));
+    const secondWorker = new CatalogImportWorker(
+      prisma as never,
+      imports as never,
+      makeConfig({ 'app.catalogWorkerLeaseSeconds': 1 }),
+    );
 
     await secondWorker.poll();
 
     expect(imports.executeRun).toHaveBeenCalledWith(staleRun.id);
-    const reclaimed = await prisma.catalogImportRun.findUniqueOrThrow({ where: { id: staleRun.id } });
+    const reclaimed = await prisma.catalogImportRun.findUniqueOrThrow({
+      where: { id: staleRun.id },
+    });
     expect(reclaimed.lockedBy).not.toBe('dead-worker');
     expect(reclaimed.attemptCount).toBe(2);
   });
@@ -135,7 +158,11 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
     });
 
     const imports = { executeRun: jest.fn().mockResolvedValue(undefined) };
-    const worker = new CatalogImportWorker(prisma as never, imports as never, makeConfig({ 'app.catalogWorkerLeaseSeconds': 300 }));
+    const worker = new CatalogImportWorker(
+      prisma as never,
+      imports as never,
+      makeConfig({ 'app.catalogWorkerLeaseSeconds': 300 }),
+    );
 
     await worker.poll();
 
@@ -166,13 +193,31 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
     // constraint violation, aborting that batch's transaction for real.
     const collidingSlug = `${products[3].name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy-json-${products[3].externalId}`;
     const category = await prisma.category.create({
-      data: { name: `Catimp Integration Category Collide ${randomUUID()}`, slug: `catimp-collide-${randomUUID()}` },
+      data: {
+        name: `Catimp Integration Category Collide ${randomUUID()}`,
+        slug: `catimp-collide-${randomUUID()}`,
+      },
+    });
+    await prisma.catalogImportRun.update({
+      where: { id: run.id },
+      data: {
+        candidateSnapshot: {
+          products: products.map((product) => ({ ...product, targetCategoryId: category.id })),
+          configuration: '',
+          checkpoints: [],
+        },
+      },
     });
     await prisma.product.create({
-      data: { name: 'Colliding product', slug: collidingSlug, description: 'Pre-existing.', categoryId: category.id },
+      data: {
+        name: 'Colliding product',
+        slug: collidingSlug,
+        description: 'Pre-existing.',
+        categoryId: category.id,
+      },
     });
 
-    await expect(service.executeRun(run.id)).rejects.toThrow();
+    await expect(service.executeRun(run.id)).rejects.toMatchObject({ code: 'P2002' });
 
     const afterFailure = await prisma.catalogImportRun.findUniqueOrThrow({ where: { id: run.id } });
     expect(afterFailure.processedCount).toBe(2); // batch 1 (products 0,1) committed for real
@@ -180,7 +225,16 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
     expect(afterFailure.status).not.toBe(CatalogImportStatus.SUCCEEDED);
 
     const productsAfterFailure = await prisma.product.findMany({
-      where: { slug: { in: products.slice(0, 2).map((p) => `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy-json-${p.externalId}`) } },
+      where: {
+        slug: {
+          in: products
+            .slice(0, 2)
+            .map(
+              (p) =>
+                `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy-json-${p.externalId}`,
+            ),
+        },
+      },
     });
     expect(productsAfterFailure).toHaveLength(2); // really committed, not rolled back with the rest
 
@@ -198,7 +252,13 @@ describe('Catalog import — real-database worker and checkpoint behavior', () =
     expect(final.createdCount).toBe(4);
 
     const allCreated = await prisma.product.findMany({
-      where: { slug: { in: products.map((p) => `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy-json-${p.externalId}`) } },
+      where: {
+        slug: {
+          in: products.map(
+            (p) => `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dummy-json-${p.externalId}`,
+          ),
+        },
+      },
     });
     expect(allCreated).toHaveLength(4); // no duplicates from the retried batch
   });

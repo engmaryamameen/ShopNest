@@ -12,6 +12,7 @@ import { CartService } from '../../cart/cart.service';
 import { PromotionsService } from '../../promotions/promotions.service';
 import { PAYMENT_PROVIDER } from '../../payment/payment.types';
 import { PaymentDeclinedException } from '../../payment/payment-declined.exception';
+import { calculatePrices, PriceInput, PricingPromotion } from '../../pricing/price-calculator';
 
 const OFFER_ID_A = '00000000-0000-4000-a000-000000000001';
 const OFFER_ID_B = '00000000-0000-4000-a000-000000000002';
@@ -71,7 +72,7 @@ function makeCartServiceMock() {
 }
 
 function makePromotionsServiceMock() {
-  return { validateAndReserve: jest.fn() };
+  return { validateAndReserve: jest.fn(), lockPromotion: jest.fn(async (tx: { promotion: { findUnique: (input: unknown) => Promise<PricingPromotion> } }, id: string) => tx.promotion.findUnique({ where: { id } })), quote: jest.fn(async (inputs: PriceInput[], coupon?: PricingPromotion) => calculatePrices(inputs, [], coupon)) };
 }
 
 function makePaymentProviderMock() {
@@ -93,6 +94,7 @@ function makeCheckoutTxMock() {
     cartItem: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
     cart: { update: jest.fn() },
     promotionRedemption: { create: jest.fn() },
+    promotion: { findUnique: jest.fn().mockResolvedValue({ id: 'promo-1', code: 'TEST', scope: 'PLATFORM', vendorId: null, type: 'FIXED_AMOUNT', value: 100 }) },
     $queryRaw: jest.fn().mockResolvedValue([]),
     $executeRaw: jest.fn().mockResolvedValue(1),
   };
@@ -311,6 +313,7 @@ describe('OrdersService', () => {
         const tx = makeCheckoutTxMock();
         tx.cartItem.findMany.mockResolvedValue([mockCartItem(OFFER_ID_A, 2)]);
         tx.$queryRaw.mockResolvedValue([mockOffer(OFFER_ID_A, { priceCents: 1000 })]);
+        tx.promotion.findUnique.mockResolvedValue({ id: 'promo-1', code: 'TEST', scope: 'PLATFORM', vendorId: null, type: 'FIXED_AMOUNT', value: 300 });
         return fn(tx);
       });
 
@@ -357,6 +360,7 @@ describe('OrdersService', () => {
       let orderCreateArgs: unknown;
       prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = makeCheckoutTxMock();
+        tx.promotion.findUnique.mockResolvedValue({ id: 'promo-1', code: 'TEST', scope: 'PLATFORM', vendorId: null, type: 'FIXED_AMOUNT', value: 300 });
         tx.cartItem.findMany.mockResolvedValue([mockCartItem(OFFER_ID_A, 2)]);
         tx.$queryRaw.mockResolvedValue([mockOffer(OFFER_ID_A, { priceCents: 1000 })]);
         tx.order.create.mockImplementation((args: unknown) => {

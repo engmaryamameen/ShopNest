@@ -218,23 +218,25 @@ type CategoryIconProps = {
   slug: string;
   name?: string;
   priority?: boolean;
+  imageUrl?: string | null;
 };
 
 export function CategoryIcon({
   slug,
   name,
   priority = false,
+  imageUrl,
 }: CategoryIconProps) {
   const artwork = resolveArtwork(slug, name);
 
-  if (!artwork) {
+  if (!artwork && !imageUrl) {
     return <CategoryImageFallback />;
   }
 
   return (
     <span className="relative block h-[82px] w-[128px] shrink-0">
       <Image
-        src={artwork.image}
+        src={imageUrl ?? artwork!.image}
         alt=""
         fill
         priority={priority}
@@ -243,7 +245,7 @@ export function CategoryIcon({
           'select-none object-contain',
           'transition-transform duration-500 ease-out',
           'group-hover:scale-[1.04]',
-          artwork.scale,
+          artwork?.scale,
         ]
           .filter(Boolean)
           .join(' ')}

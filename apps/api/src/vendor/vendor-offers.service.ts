@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { offerPricingData, validateOfferPricing } from '../pricing/offer-pricing.dto';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { OfferStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CatalogService } from '../catalog/catalog.service';
@@ -38,6 +44,11 @@ export class VendorOffersService {
   }
 
   async create(userId: string, dto: CreateVendorOfferDto) {
+    try {
+      validateOfferPricing(dto);
+    } catch (e) {
+      throw new BadRequestException((e as Error).message);
+    }
     const { vendorId } = await this.membership.requireMembership(userId);
 
     const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
@@ -58,6 +69,7 @@ export class VendorOffersService {
       return await this.prisma.$transaction(async (tx) => {
         const offer = await tx.vendorOffer.create({
           data: {
+            ...offerPricingData(dto),
             vendorId,
             productId: dto.productId,
             variantId: dto.variantId ?? null,
@@ -98,7 +110,12 @@ export class VendorOffersService {
     const { vendorId } = await this.membership.requireMembership(userId);
     const offer = await this.ownedOffer(vendorId, offerId);
 
-    const data: Prisma.VendorOfferUpdateInput = {};
+    try {
+      validateOfferPricing({ ...offer, ...dto });
+    } catch (e) {
+      throw new BadRequestException((e as Error).message);
+    }
+    const data: Prisma.VendorOfferUncheckedUpdateInput = offerPricingData(dto);
     if (dto.vendorSku !== undefined) data.vendorSku = dto.vendorSku;
     if (dto.condition !== undefined) data.condition = dto.condition;
     if (dto.priceCents !== undefined) data.priceCents = dto.priceCents;

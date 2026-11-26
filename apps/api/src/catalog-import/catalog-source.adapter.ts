@@ -1,5 +1,26 @@
 export type SupplierProduct = {
   externalId: string;
+  sourceCategoryIds?: string[];
+  audience?: import('../catalog/category-taxonomy').CategoryAudience;
+  gtin?: string;
+  productType?: string;
+  specifications?: Record<string, string>;
+  attribution?: { name: string; url: string; license: string };
+  targetCategoryId?: string;
+  proposedOffer?: {
+    vendorId: string;
+    vendorName: string;
+    priceCents: number;
+    stockQuantity: number;
+    taxable?: boolean;
+    priceIncludesTax?: boolean;
+    taxClassId?: string | null;
+    discountEnabled?: boolean;
+    discountType?: 'PERCENT' | 'FIXED_AMOUNT';
+    discountValue?: number;
+    discountStartsAt?: string | null;
+    discountEndsAt?: string | null;
+  };
   name: string;
   description: string;
   categoryName: string;
@@ -19,6 +40,7 @@ export type SupplierProduct = {
    * only ever carries one image; present for a source like Amazon's
    * catalog metadata, which lists several real angles per product. */
   imageUrls?: string[];
+  imageDimensions?: Record<string, { width: number; height: number }>;
   /** How many images the supplier listed for this product. Used by the
    * admin `minImageCount` import-scope filter. */
   imageCount: number;
@@ -32,8 +54,22 @@ export interface FetchProductsResult {
    * either silently dropped or aborting every other, valid record in the
    * same fetch. */
   skippedCount: number;
+  exhausted?: boolean;
+  nextPosition?: number;
+  version?: string;
 }
 
+export type SourceCategory = { id: string; name: string; parents: string[]; count?: number };
+
 export interface CatalogSourceAdapter {
-  fetchProducts(): Promise<FetchProductsResult>;
+  /** Supplier hierarchy used in memory, never inserted as marketplace categories. */
+  categoryTaxonomy?(): Promise<SourceCategory[]>;
+  datasetVersion?(category: string): Promise<string>;
+  searchCategories?(query: string): Promise<SourceCategory[]>;
+  fetchProducts(options?: {
+    categories?: string[];
+    page?: number;
+    position?: number;
+    limit?: number;
+  }): Promise<FetchProductsResult>;
 }

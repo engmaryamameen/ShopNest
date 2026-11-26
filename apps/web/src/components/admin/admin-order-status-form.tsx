@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import type { OrderStatus } from '@/lib/api-types';
+import { AdminSelect } from '@/components/ui/admin-form';
 
 interface AdminOrderStatusFormProps {
   orderId: string;
@@ -43,15 +44,17 @@ export function AdminOrderStatusForm({ orderId, availableStatuses }: AdminOrderS
       )}
 
       <form onSubmit={handleSubmit} className="flex gap-3">
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as OrderStatus)}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          {availableStatuses.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+        <div className="min-w-0 flex-1">
+          <label htmlFor="order-next-status" className="sr-only">
+            New order status
+          </label>
+          <AdminSelect
+            id="order-next-status"
+            value={status}
+            onChange={(next) => setStatus(next as OrderStatus)}
+            options={availableStatuses.map((next) => ({ value: next, label: next }))}
+          />
+        </div>
         <button
           type="submit"
           disabled={isPending || !status}

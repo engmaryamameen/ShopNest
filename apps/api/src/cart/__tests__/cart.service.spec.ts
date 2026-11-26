@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { CartService } from '../cart.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromotionsService } from '../../promotions/promotions.service';
+import { calculatePrices, PriceInput, PricingPromotion } from '../../pricing/price-calculator';
 
 const USER_ID = '00000000-0000-4000-a000-000000000001';
 const OFFER_ID = '00000000-0000-4000-b000-000000000001';
@@ -12,9 +13,9 @@ const CART_ID = '00000000-0000-4000-c000-000000000001';
 function makeTxMock() {
   return {
     $queryRaw: jest.fn().mockResolvedValue([{ id: CART_ID, appliedPromotionId: null }]),
-    vendorOffer: { findUnique: jest.fn() },
+    vendorOffer: { findFirst: jest.fn() },
     cartItem: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn(), delete: jest.fn(), deleteMany: jest.fn() },
-    cart: { update: jest.fn() },
+    cart: { update: jest.fn(), findUniqueOrThrow: jest.fn() },
   };
 }
 
@@ -31,6 +32,9 @@ function makeConfigMock(maxQty = 10) {
 
 function makePromotionsServiceMock() {
   return {
+    lockPromotion: jest.fn().mockResolvedValue({ id: 'promo-1', code: 'SAVE10', type: 'PERCENT', value: 10, scope: 'PLATFORM', vendorId: null, isActive: true, startsAt: new Date('2020-01-01'), endsAt: new Date('2099-01-01') }),
+    validateAndReserve: jest.fn().mockResolvedValue({}),
+    quote: jest.fn(async (inputs: PriceInput[], coupon?: PricingPromotion) => calculatePrices(inputs, [], coupon)),
     resolveForApply: jest.fn(),
     computeDiscountCents: jest.fn().mockReturnValue(0),
   };
@@ -119,7 +123,7 @@ describe('CartService', () => {
     });
 
     it('throws NotFoundException for an offer that does not exist', async () => {
-      tx.vendorOffer.findUnique.mockResolvedValue(null);
+      tx.vendorOffer.findFirst.mockResolvedValue(null);
 
       await expect(
         service.upsertItem(USER_ID, { vendorOfferId: OFFER_ID, quantity: 1 } as never),
@@ -127,7 +131,7 @@ describe('CartService', () => {
     });
 
     it('throws NotFoundException for an offer that is not ACTIVE', async () => {
-      tx.vendorOffer.findUnique.mockResolvedValue({ id: OFFER_ID, status: 'INACTIVE', stockQuantity: 10 });
+      tx.vendorOffer.findFirst.mockResolvedValue({ id: OFFER_ID, status: 'INACTIVE', stockQuantity: 10 });
 
       await expect(
         service.upsertItem(USER_ID, { vendorOfferId: OFFER_ID, quantity: 1 } as never),
@@ -135,7 +139,7 @@ describe('CartService', () => {
     });
 
     it('throws ConflictException when requested quantity exceeds available stock', async () => {
-      tx.vendorOffer.findUnique.mockResolvedValue({ id: OFFER_ID, status: 'ACTIVE', stockQuantity: 2 });
+      tx.vendorOffer.findFirst.mockResolvedValue({ id: OFFER_ID, status: 'ACTIVE', stockQuantity: 2 });
 
       await expect(
         service.upsertItem(USER_ID, { vendorOfferId: OFFER_ID, quantity: 3 } as never),
@@ -143,7 +147,7 @@ describe('CartService', () => {
     });
 
     it('updates the existing cart item (sets quantity, not delta) when one already exists', async () => {
-      tx.vendorOffer.findUnique.mockResolvedValue({ id: OFFER_ID, status: 'ACTIVE', stockQuantity: 10 });
+      tx.vendorOffer.findFirst.mockResolvedValue({ id: OFFER_ID, status: 'ACTIVE', stockQuantity: 10 });
       tx.cartItem.findUnique.mockResolvedValue({ id: 'existing-item', quantity: 1 });
       tx.cartItem.update.mockResolvedValue({ id: 'existing-item', quantity: 4 });
 
@@ -154,7 +158,7 @@ describe('CartService', () => {
     });
 
     it('creates a new cart item when none exists yet for this offer', async () => {
-      tx.vendorOffer.findUnique.mockResolvedValue({ id: OFFER_ID, status: 'ACTIVE', stockQuantity: 10 });
+      tx.vendorOffer.findFirst.mockResolvedValue({ id: OFFER_ID, status: 'ACTIVE', stockQuantity: 10 });
       tx.cartItem.findUnique.mockResolvedValue(null);
       tx.cartItem.create.mockResolvedValue({ id: 'new-item', quantity: 2 });
 
@@ -197,6 +201,7 @@ describe('CartService', () => {
   describe('applyPromotion / removePromotion', () => {
     it('applyPromotion resolves the code, sets it on the locked cart, then returns the fresh cart', async () => {
       promotions.resolveForApply.mockResolvedValue({ id: 'promo-1', code: 'SAVE10' });
+      tx.cart.findUniqueOrThrow.mockResolvedValue({ id: CART_ID, userId: USER_ID, updatedAt: new Date(), items: [{ id: 'item', quantity: 1, vendorOffer: { id: OFFER_ID, vendorId: 'v1', priceCents: 1000, stockQuantity: 5, status: 'ACTIVE', product: { id: 'p1', name: 'Widget', slug: 'widget', media: [] }, vendor: { id: 'v1' } } }] });
       prisma.cart.findUnique.mockResolvedValue({ id: CART_ID, userId: USER_ID, updatedAt: new Date(), items: [] });
 
       await service.applyPromotion(USER_ID, { code: 'SAVE10' } as never);
@@ -227,7 +232,7 @@ describe('CartService', () => {
         id: CART_ID,
         userId: USER_ID,
         updatedAt: new Date(),
-        appliedPromotion: { id: 'promo-1', code: 'SAVE10', type: 'PERCENT', value: 10, scope: 'PLATFORM', vendorId: null },
+        appliedPromotion: { id: 'promo-1', code: 'SAVE10', type: 'PERCENT', value: 10, scope: 'PLATFORM', vendorId: null, isActive: true, startsAt: new Date('2020-01-01'), endsAt: new Date('2099-01-01') },
         items: [
           {
             id: 'item-1',
@@ -250,7 +255,7 @@ describe('CartService', () => {
 
       const result = await service.getCart(USER_ID);
 
-      expect(promotions.computeDiscountCents).toHaveBeenCalledWith(cart.appliedPromotion, 2000);
+      expect(promotions.quote).toHaveBeenCalledWith(expect.any(Array), cart.appliedPromotion, prisma);
       expect(result.appliedPromotion).toEqual({ code: 'SAVE10', discountPreviewCents: 200 });
     });
 

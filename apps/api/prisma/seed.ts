@@ -11,6 +11,7 @@
 import { PrismaClient, Role, VendorMemberRole } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { SYSTEM_VENDOR_NAME, SYSTEM_VENDOR_SLUG } from '../src/catalog/system-vendor.constants.ts';
+import { prepareMarketplaceTaxonomy } from './marketplace-taxonomy.ts';
 
 const prisma = new PrismaClient();
 
@@ -81,7 +82,12 @@ async function upsertOffer(params: {
   });
   if (!alreadyRecorded && params.stockQuantity > 0) {
     await prisma.inventoryAdjustment.create({
-      data: { vendorOfferId: offer.id, delta: params.stockQuantity, reason: 'IMPORT_INITIAL', reference: `seed:${offer.id}` },
+      data: {
+        vendorOfferId: offer.id,
+        delta: params.stockQuantity,
+        reason: 'IMPORT_INITIAL',
+        reference: `seed:${offer.id}`,
+      },
     });
   }
   return offer;
@@ -104,7 +110,12 @@ async function seedDeliveredOrder(params: {
   idempotencyKey: string;
 }) {
   const existing = await prisma.order.findUnique({
-    where: { Order_userId_idempotencyKey_key: { userId: params.buyerId, idempotencyKey: params.idempotencyKey } },
+    where: {
+      Order_userId_idempotencyKey_key: {
+        userId: params.buyerId,
+        idempotencyKey: params.idempotencyKey,
+      },
+    },
     include: { items: true },
   });
   if (existing) return existing.items[0];
@@ -112,10 +123,21 @@ async function seedDeliveredOrder(params: {
   const totalCents = params.unitPriceCents * params.quantity;
   return prisma.$transaction(async (tx) => {
     const order = await tx.order.create({
-      data: { userId: params.buyerId, totalCents, currency: 'USD', idempotencyKey: params.idempotencyKey, paymentRef: `seed_charge_${params.idempotencyKey}` },
+      data: {
+        userId: params.buyerId,
+        totalCents,
+        currency: 'USD',
+        idempotencyKey: params.idempotencyKey,
+        paymentRef: `seed_charge_${params.idempotencyKey}`,
+      },
     });
     const vendorOrder = await tx.vendorOrder.create({
-      data: { orderId: order.id, vendorId: params.vendorId, subtotalCents: totalCents, status: 'DELIVERED' },
+      data: {
+        orderId: order.id,
+        vendorId: params.vendorId,
+        subtotalCents: totalCents,
+        status: 'DELIVERED',
+      },
     });
     const item = await tx.orderItem.create({
       data: {
@@ -133,7 +155,14 @@ async function seedDeliveredOrder(params: {
   });
 }
 
-async function seedReview(params: { productId: string; userId: string; orderItemId: string; rating: number; title: string; body: string }) {
+async function seedReview(params: {
+  productId: string;
+  userId: string;
+  orderItemId: string;
+  rating: number;
+  title: string;
+  body: string;
+}) {
   const existing = await prisma.review.findUnique({ where: { orderItemId: params.orderItemId } });
   if (existing) return;
   await prisma.$transaction(async (tx) => {
@@ -170,7 +199,12 @@ async function main() {
   if (!admin) {
     const passwordHash = await argon2.hash(adminPassword, { type: argon2.argon2id });
     admin = await prisma.user.create({
-      data: { email: adminEmail, passwordHash, role: Role.SUPER_ADMIN, emailVerifiedAt: new Date() },
+      data: {
+        email: adminEmail,
+        passwordHash,
+        role: Role.SUPER_ADMIN,
+        emailVerifiedAt: new Date(),
+      },
     });
     await prisma.cart.create({ data: { userId: admin.id } });
     console.log(`Super admin created: ${adminEmail}`);
@@ -196,19 +230,16 @@ async function main() {
   console.log(`System vendor ready: ${systemVendor.name}`);
 
   // ── Categories ─────────────────────────────────────────────────────────
-  const categories = [
-    { name: 'Electronics', slug: 'electronics' },
-    { name: 'Clothing', slug: 'clothing' },
-    { name: 'Books', slug: 'books' },
-    { name: 'Home & Garden', slug: 'home-garden' },
-  ];
-  for (const cat of categories) {
-    await prisma.category.upsert({ where: { slug: cat.slug }, update: {}, create: cat });
-  }
+  await prepareMarketplaceTaxonomy(prisma, { apply: true });
+  const categories = ['electronics', 'clothing', 'books', 'home-furniture'].map((slug) => ({
+    slug,
+  }));
   const [electronics, clothing, books, home] = await Promise.all(
     categories.map((c) => prisma.category.findUniqueOrThrow({ where: { slug: c.slug } })),
   );
-  console.log(`Categories seeded: ${categories.map((c) => c.name).join(', ')}`);
+  console.log(
+    `Marketplace categories seeded; demo products use ${categories.map((c) => c.slug).join(', ')}`,
+  );
 
   // ── Brands ─────────────────────────────────────────────────────────────
   const brands = [
@@ -260,28 +291,61 @@ async function main() {
   // A few products are offered by more than one vendor, to show a real
   // multi-seller product page — same reason the search-path bug (Phase 5)
   // mattered: this shape has to actually exist in seed data to be tested.
-  async function upsertProduct(data: { name: string; slug: string; description: string; categoryId: string; brandId?: string }) {
+  async function upsertProduct(data: {
+    name: string;
+    slug: string;
+    description: string;
+    categoryId: string;
+    brandId?: string;
+  }) {
     return prisma.product.upsert({ where: { slug: data.slug }, update: {}, create: data });
   }
 
   const headphones = await upsertProduct({
     name: 'Wireless Noise-Cancelling Headphones',
     slug: 'wireless-noise-cancelling-headphones',
-    description: 'Premium wireless headphones with active noise cancellation and 30-hour battery life.',
+    description:
+      'Premium wireless headphones with active noise cancellation and 30-hour battery life.',
     categoryId: electronics.id,
     brandId: auroraAudio.id,
   });
-  await upsertOffer({ vendorId: systemVendor.id, productId: headphones.id, vendorSku: headphones.slug, priceCents: 29999, compareAtPriceCents: 34999, stockQuantity: 40 });
-  await upsertOffer({ vendorId: techHub.id, productId: headphones.id, vendorSku: `techhub-${headphones.slug}`, priceCents: 27999, stockQuantity: 15 });
+  await upsertOffer({
+    vendorId: systemVendor.id,
+    productId: headphones.id,
+    vendorSku: headphones.slug,
+    priceCents: 29999,
+    compareAtPriceCents: 34999,
+    stockQuantity: 40,
+  });
+  await upsertOffer({
+    vendorId: techHub.id,
+    productId: headphones.id,
+    vendorSku: `techhub-${headphones.slug}`,
+    priceCents: 27999,
+    stockQuantity: 15,
+  });
 
   const keyboard = await upsertProduct({
     name: 'Mechanical Keyboard',
     slug: 'mechanical-keyboard',
-    description: 'Compact 75% mechanical keyboard with Cherry MX switches and per-key RGB lighting.',
+    description:
+      'Compact 75% mechanical keyboard with Cherry MX switches and per-key RGB lighting.',
     categoryId: electronics.id,
   });
-  await upsertOffer({ vendorId: systemVendor.id, productId: keyboard.id, vendorSku: keyboard.slug, priceCents: 14999, stockQuantity: 25 });
-  await upsertOffer({ vendorId: techHub.id, productId: keyboard.id, vendorSku: `techhub-${keyboard.slug}`, priceCents: 13999, stockQuantity: 10 });
+  await upsertOffer({
+    vendorId: systemVendor.id,
+    productId: keyboard.id,
+    vendorSku: keyboard.slug,
+    priceCents: 14999,
+    stockQuantity: 25,
+  });
+  await upsertOffer({
+    vendorId: techHub.id,
+    productId: keyboard.id,
+    vendorSku: `techhub-${keyboard.slug}`,
+    priceCents: 13999,
+    stockQuantity: 10,
+  });
 
   const speaker = await upsertProduct({
     name: 'Portable Bluetooth Speaker',
@@ -290,15 +354,28 @@ async function main() {
     categoryId: electronics.id,
     brandId: auroraAudio.id,
   });
-  await upsertOffer({ vendorId: techHub.id, productId: speaker.id, vendorSku: speaker.slug, priceCents: 8999, stockQuantity: 60 });
+  await upsertOffer({
+    vendorId: techHub.id,
+    productId: speaker.id,
+    vendorSku: speaker.slug,
+    priceCents: 8999,
+    stockQuantity: 60,
+  });
 
   const daypack = await upsertProduct({
     name: 'All-Weather Daypack 22L',
     slug: 'all-weather-daypack-22l',
-    description: 'Water-resistant daypack with a padded laptop sleeve, built for daily commuting or day hikes.',
+    description:
+      'Water-resistant daypack with a padded laptop sleeve, built for daily commuting or day hikes.',
     categoryId: home.id,
   });
-  await upsertOffer({ vendorId: acme.id, productId: daypack.id, vendorSku: daypack.slug, priceCents: 6999, stockQuantity: 35 });
+  await upsertOffer({
+    vendorId: acme.id,
+    productId: daypack.id,
+    vendorSku: daypack.slug,
+    priceCents: 6999,
+    stockQuantity: 35,
+  });
 
   const waterBottle = await upsertProduct({
     name: 'Insulated Steel Water Bottle 750ml',
@@ -306,8 +383,21 @@ async function main() {
     description: 'Double-wall vacuum insulation keeps drinks cold 24 hours or hot for 12.',
     categoryId: home.id,
   });
-  await upsertOffer({ vendorId: acme.id, productId: waterBottle.id, vendorSku: waterBottle.slug, priceCents: 2499, compareAtPriceCents: 2999, stockQuantity: 100 });
-  await upsertOffer({ vendorId: systemVendor.id, productId: waterBottle.id, vendorSku: `direct-${waterBottle.slug}`, priceCents: 2699, stockQuantity: 50 });
+  await upsertOffer({
+    vendorId: acme.id,
+    productId: waterBottle.id,
+    vendorSku: waterBottle.slug,
+    priceCents: 2499,
+    compareAtPriceCents: 2999,
+    stockQuantity: 100,
+  });
+  await upsertOffer({
+    vendorId: systemVendor.id,
+    productId: waterBottle.id,
+    vendorSku: `direct-${waterBottle.slug}`,
+    priceCents: 2699,
+    stockQuantity: 50,
+  });
 
   const tee = await upsertProduct({
     name: 'Organic Cotton Crewneck Tee',
@@ -316,7 +406,13 @@ async function main() {
     categoryId: clothing.id,
     brandId: northlineApparel.id,
   });
-  await upsertOffer({ vendorId: urbanThreads.id, productId: tee.id, vendorSku: tee.slug, priceCents: 3200, stockQuantity: 80 });
+  await upsertOffer({
+    vendorId: urbanThreads.id,
+    productId: tee.id,
+    vendorSku: tee.slug,
+    priceCents: 3200,
+    stockQuantity: 80,
+  });
 
   const jacket = await upsertProduct({
     name: 'Packable Rain Jacket',
@@ -325,7 +421,14 @@ async function main() {
     categoryId: clothing.id,
     brandId: northlineApparel.id,
   });
-  await upsertOffer({ vendorId: urbanThreads.id, productId: jacket.id, vendorSku: jacket.slug, priceCents: 8900, compareAtPriceCents: 11000, stockQuantity: 20 });
+  await upsertOffer({
+    vendorId: urbanThreads.id,
+    productId: jacket.id,
+    vendorSku: jacket.slug,
+    priceCents: 8900,
+    compareAtPriceCents: 11000,
+    stockQuantity: 20,
+  });
 
   const novel = await upsertProduct({
     name: 'The Long Passage — a novel',
@@ -334,7 +437,13 @@ async function main() {
     categoryId: books.id,
     brandId: fieldstonePress.id,
   });
-  await upsertOffer({ vendorId: systemVendor.id, productId: novel.id, vendorSku: novel.slug, priceCents: 1899, stockQuantity: 70 });
+  await upsertOffer({
+    vendorId: systemVendor.id,
+    productId: novel.id,
+    vendorSku: novel.slug,
+    priceCents: 1899,
+    stockQuantity: 70,
+  });
 
   const cookbook = await upsertProduct({
     name: 'Weeknight: 100 Fast, Real Dinners',
@@ -343,7 +452,13 @@ async function main() {
     categoryId: books.id,
     brandId: fieldstonePress.id,
   });
-  await upsertOffer({ vendorId: systemVendor.id, productId: cookbook.id, vendorSku: cookbook.slug, priceCents: 2499, stockQuantity: 45 });
+  await upsertOffer({
+    vendorId: systemVendor.id,
+    productId: cookbook.id,
+    vendorSku: cookbook.slug,
+    priceCents: 2499,
+    stockQuantity: 45,
+  });
 
   const deskLamp = await upsertProduct({
     name: 'Adjustable LED Desk Lamp',
@@ -351,7 +466,13 @@ async function main() {
     description: 'Stepless dimming, five color temperatures, USB-C charging port in the base.',
     categoryId: home.id,
   });
-  await upsertOffer({ vendorId: techHub.id, productId: deskLamp.id, vendorSku: deskLamp.slug, priceCents: 3999, stockQuantity: 55 });
+  await upsertOffer({
+    vendorId: techHub.id,
+    productId: deskLamp.id,
+    vendorSku: deskLamp.slug,
+    priceCents: 3999,
+    stockQuantity: 55,
+  });
 
   console.log('Products + offers seeded (11 products, 3 multi-seller).');
 

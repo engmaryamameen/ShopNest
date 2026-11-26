@@ -13,33 +13,26 @@ export default registerAs('app', () => ({
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '30d',
   refreshGracePeriodMs: parseInt(process.env.REFRESH_GRACE_PERIOD_MS ?? '30000', 10),
   cartMaxQuantityPerProduct: parseInt(process.env.CART_MAX_QTY_PER_PRODUCT ?? '10', 10),
-  // Imports can overwrite manual catalog and inventory edits. Keep them
-  // disabled until ownership and conflict handling are implemented.
-  catalogImportEnabled: process.env.NODE_ENV === 'test' && process.env.CATALOG_IMPORT_TEST_ENABLED === 'true',
+  catalogImportEnabled: (process.env.NODE_ENV ?? 'development') === 'development' || (process.env.NODE_ENV === 'test' && process.env.CATALOG_IMPORT_TEST_ENABLED === 'true'),
   catalogImportUrl: process.env.CATALOG_IMPORT_URL ?? 'https://dummyjson.com',
   catalogImportTimeoutMs: parseInt(process.env.CATALOG_IMPORT_TIMEOUT_MS ?? '5000', 10),
-  catalogWorkerEnabled: process.env.CATALOG_WORKER_ENABLED === 'true',
+  catalogWorkerEnabled: process.env.CATALOG_WORKER_ENABLED !== 'false',
   catalogWorkerPollMs: parseInt(process.env.CATALOG_WORKER_POLL_MS ?? '2000', 10),
   catalogWorkerLeaseSeconds: parseInt(process.env.CATALOG_WORKER_LEASE_SECONDS ?? '300', 10),
   catalogImportBatchSize: parseInt(process.env.CATALOG_IMPORT_BATCH_SIZE ?? '25', 10),
-  catalogScheduleEnabled: process.env.CATALOG_SCHEDULE_ENABLED === 'true',
-  catalogScheduleIntervalMs: parseInt(process.env.CATALOG_SCHEDULE_INTERVAL_MS ?? '21600000', 10),
-  // Open Food Facts — open, keyless, real (see OpenFoodFactsAdapter). No
-  // pricing data; imports from this source land as DRAFT/offer-less
-  // products for an admin to price and publish.
+  catalogCacheDir: process.env.CATALOG_CACHE_DIR ?? '.cache/catalog',
+  // Facts sources provide metadata; commercial settings are chosen by the administrator.
   openFoodFactsUrl: process.env.OPEN_FOOD_FACTS_URL ?? 'https://world.openfoodfacts.org',
   openFoodFactsTimeoutMs: parseInt(process.env.OPEN_FOOD_FACTS_TIMEOUT_MS ?? '8000', 10),
   openFoodFactsPageSize: parseInt(process.env.OPEN_FOOD_FACTS_PAGE_SIZE ?? '100', 10),
-  // Amazon Reviews 2023 (McAuley Lab) per-category metadata files, hosted
-  // on Hugging Face — open, keyless. No search API and no price/stock for
-  // most records; AmazonAdapter streams each category file and stops
-  // early once amazonPerCategoryLimit real records are collected, rather
-  // than downloading a full file (each can run 100MB+).
+  // Historical metadata is fetched with bounded byte ranges only after source permission.
+  amazonLicenseConfirmed: process.env.AMAZON_CATALOG_LICENSE_CONFIRMED === 'true',
+  darazAppKey: process.env.DARAZ_APP_KEY ?? '',
+  darazAppSecret: process.env.DARAZ_APP_SECRET ?? '',
+  darazAccessToken: process.env.DARAZ_ACCESS_TOKEN ?? '',
   amazonBaseUrl:
     process.env.AMAZON_CATALOG_URL ??
     'https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023/resolve/main/raw/meta_categories',
-  amazonTimeoutMs: parseInt(process.env.AMAZON_CATALOG_TIMEOUT_MS ?? '20000', 10),
-  amazonPerCategoryLimit: parseInt(process.env.AMAZON_CATALOG_PER_CATEGORY_LIMIT ?? '150', 10),
   geocodingUrl: process.env.GEOCODING_URL ?? 'https://nominatim.openstreetmap.org',
   geocodingTimeoutMs: parseInt(process.env.GEOCODING_TIMEOUT_MS ?? '5000', 10),
   googlePlacesApiKey: process.env.GOOGLE_PLACES_API_KEY ?? '',

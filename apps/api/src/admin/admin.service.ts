@@ -5,6 +5,8 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { dashboardPeriod, previousDashboardPeriod } from './dashboard-period';
+import { performanceBuckets, performanceBucketDays } from './performance-buckets';
+import { Temporal } from '@js-temporal/polyfill';
 
 export interface DashboardSummary {
   users: { total: number; customers: number; vendorsRole: number; admins: number };
@@ -16,6 +18,7 @@ export interface DashboardSummary {
   periodNewCustomers: number;
   periodOrders: number;
   periodMerchandiseCents: number;
+  performance: { current: PerformancePoint[]; previous: PerformancePoint[] | null; timezone: string };
   pendingVendorApplications: number;
   recentAuditLogs: Array<{
     id: string;
@@ -39,6 +42,8 @@ export interface DashboardSummary {
   topProducts: Array<{ productSlug: string; productName: string; unitsSold: number; averageUnitPriceCents: number }>;
 }
 
+type PerformancePoint = { start: string; end: string; sales: number; orders: number; customers: number; vendors: number };
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -52,6 +57,7 @@ export class AdminService {
     // UTC day keys would misbucket every order near a day boundary on any
     // server not running in UTC.
     const now = new Date();
+    try { new Intl.DateTimeFormat('en', { timeZone: timezone }); } catch { timezone = 'UTC'; }
     const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     const fourteenDaysAgo = new Date(startOfToday);
     fourteenDaysAgo.setUTCDate(fourteenDaysAgo.getUTCDate() - (days * 2 - 1));
@@ -78,6 +84,9 @@ export class AdminService {
       previousOrders,
       previousStatuses,
       previousItems,
+      performanceOrders,
+      performanceCustomers,
+      performanceVendors,
     ] = await Promise.all([
       this.prisma.user.groupBy({ by: ['role'], _count: true }),
       this.prisma.user.count({ where: { role: Role.CUSTOMER, createdAt: periodDates } }),
@@ -106,7 +115,7 @@ export class AdminService {
       this.prisma.order.groupBy({ by: ['status'], _count: true, where: { createdAt: periodDates } }),
       this.prisma.orderItem.findMany({
         where: { order: { createdAt: periodDates, status: { not: 'CANCELLED' } } },
-        select: { quantity: true, unitPriceCents: true },
+        select: { quantity: true, unitPriceCents: true, totalCents: true, taxCents: true, pricingSnapshot: true },
       }),
       this.prisma.orderItem.groupBy({
         by: ['productSlug', 'productName'],
@@ -118,7 +127,10 @@ export class AdminService {
       }),
       previous ? this.prisma.order.count({ where: { createdAt: { gte: previous.start, lt: previous.end } } }) : null,
       previous ? this.prisma.order.groupBy({ by: ['status'], _count: true, where: { createdAt: { gte: previous.start, lt: previous.end } } }) : [],
-      previous ? this.prisma.orderItem.findMany({ where: { order: { createdAt: { gte: previous.start, lt: previous.end }, status: { not: 'CANCELLED' } } }, select: { quantity: true, unitPriceCents: true } }) : [],
+      previous ? this.prisma.orderItem.findMany({ where: { order: { createdAt: { gte: previous.start, lt: previous.end }, status: { not: 'CANCELLED' } } }, select: { quantity: true, unitPriceCents: true, totalCents: true, taxCents: true, pricingSnapshot: true } }) : [],
+      this.prisma.order.findMany({ where: { createdAt: { ...(previous ? { gte: previous.start } : period.start ? { gte: period.start } : {}), lt: period.end } }, select: { createdAt: true, status: true, items: { select: { quantity: true, unitPriceCents: true, totalCents: true, taxCents: true, pricingSnapshot: true } } } }),
+      this.prisma.user.findMany({ where: { role: Role.CUSTOMER, createdAt: { ...(previous ? { gte: previous.start } : period.start ? { gte: period.start } : {}), lt: period.end } }, select: { createdAt: true } }),
+      this.prisma.vendor.findMany({ where: { createdAt: { ...(previous ? { gte: previous.start } : period.start ? { gte: period.start } : {}), lt: period.end } }, select: { createdAt: true } }),
     ]);
 
     const { weeklyTrend, revenueChangePercent, orderCountChangePercent } = this.buildWeeklyTrend(
@@ -137,6 +149,19 @@ export class AdminService {
     const vendorsByStatus = Object.fromEntries(vendorCounts.map((r) => [r.status, r._count]));
     const productsByStatus = Object.fromEntries(productCounts.map((r) => [r.publishStatus, r._count]));
     const ordersByStatus = Object.fromEntries(orderCounts.map((r) => [r.status, r._count]));
+
+    const allDates = [...performanceOrders, ...performanceCustomers, ...performanceVendors].map((row) => row.createdAt.getTime());
+    const localDate = (date: Date) => Temporal.Instant.fromEpochMilliseconds(date.getTime()).toZonedDateTimeISO(timezone).toPlainDate();
+    const start = period.start ?? (allDates.length ? new Date(localDate(new Date(allDates.reduce((earliest, value) => Math.min(earliest, value), Infinity))).toZonedDateTime(timezone).epochMilliseconds) : new Date(localDate(period.end).subtract({ days: 1 }).toZonedDateTime(timezone).epochMilliseconds));
+    const bucketDays = performanceBucketDays(localDate(start).until(localDate(period.end), { largestUnit: 'days' }).days);
+    const sales = performanceOrders.map((order) => ({ createdAt: order.createdAt, value: order.status === 'CANCELLED' ? 0 : order.items.reduce((total, item) => total + merchandiseValue(item), 0) }));
+    const orderEvents = performanceOrders.map((order) => ({ createdAt: order.createdAt, value: 1 }));
+    const customerEvents = performanceCustomers.map((customer) => ({ createdAt: customer.createdAt, value: 1 }));
+    const vendorEvents = performanceVendors.map((vendor) => ({ createdAt: vendor.createdAt, value: 1 }));
+    const points = (from: Date, to: Date): PerformancePoint[] => {
+      const series = [sales, orderEvents, customerEvents, vendorEvents].map((events) => performanceBuckets(events, from, to, timezone, bucketDays));
+      return series[0].map((bucket, index) => ({ start: bucket.start, end: bucket.end, sales: bucket.value, orders: series[1][index].value, customers: series[2][index].value, vendors: series[3][index].value }));
+    };
 
     return {
       users: {
@@ -160,11 +185,12 @@ export class AdminService {
         byStatus: ordersByStatus,
         totalRevenueCents: revenue._sum.totalCents ?? 0,
       },
-      comparison: previous && period.start && previousOrders !== null ? { start: previous.start, end: previous.end, currentStart: period.start, currentEnd: period.end, salesCents: previousItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0), orders: previousOrders, pending: previousStatuses.find((row) => row.status === 'PENDING')?._count ?? 0, cancelled: previousStatuses.find((row) => row.status === 'CANCELLED')?._count ?? 0 } : null,
+      comparison: previous && period.start && previousOrders !== null ? { start: previous.start, end: previous.end, currentStart: period.start, currentEnd: period.end, salesCents: previousItems.reduce((sum, item) => sum + merchandiseValue(item), 0), orders: previousOrders, pending: previousStatuses.find((row) => row.status === 'PENDING')?._count ?? 0, cancelled: previousStatuses.find((row) => row.status === 'CANCELLED')?._count ?? 0 } : null,
       periodOrderStatuses: Object.fromEntries(periodStatuses.map((row) => [row.status, row._count])),
       periodNewCustomers,
       periodOrders: periodOrderCount,
-      periodMerchandiseCents: merchandiseItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0),
+      periodMerchandiseCents: merchandiseItems.reduce((sum, item) => sum + merchandiseValue(item), 0),
+      performance: { current: points(start, period.end), previous: previous ? points(previous.start, previous.end) : null, timezone },
       pendingVendorApplications: vendorsByStatus['PENDING'] ?? 0,
       recentAuditLogs: recentAuditLogs.map((log) => ({
         id: log.id,
@@ -289,4 +315,8 @@ export class AdminService {
 
     return { id: admin.id, email: admin.email, role: admin.role };
   }
+}
+
+function merchandiseValue(item: { quantity: number; unitPriceCents: number; totalCents?: number; taxCents?: number; pricingSnapshot?: unknown }): number {
+  return item.pricingSnapshot && item.totalCents !== undefined ? item.totalCents - (item.taxCents ?? 0) : item.quantity * item.unitPriceCents;
 }

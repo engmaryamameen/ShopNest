@@ -17,6 +17,7 @@ function makePrismaMock() {
       findMany: jest.fn().mockResolvedValue([]),
     },
     vendor: {
+      findMany: jest.fn().mockResolvedValue([]),
       groupBy: jest.fn().mockResolvedValue([
         { status: 'PENDING', _count: 2 },
         { status: 'APPROVED', _count: 5 },
@@ -69,7 +70,7 @@ describe('AdminService', () => {
 
   describe('getDashboardSummary', () => {
     it.each([1, 7, 30, 365])('returns %i days of order totals', async (days) => {
-      prisma.order.findMany.mockResolvedValue([{ createdAt: new Date(), totalCents: 1250 }]);
+      prisma.order.findMany.mockResolvedValue([{ createdAt: new Date(), totalCents: 1250, items: [{ quantity: 1, unitPriceCents: 1250 }] }]);
       const summary = await service.getDashboardSummary(days);
       expect(summary.weeklyTrend).toHaveLength(days);
       expect(summary.weeklyTrend.at(-1)).toEqual(expect.objectContaining({ orderCount: 1, revenueCents: 1250 }));
@@ -127,9 +128,9 @@ describe('AdminService', () => {
       yesterday.setDate(yesterday.getDate() - 1);
 
       prisma.order.findMany.mockResolvedValue([
-        { createdAt: today, totalCents: 1000 },
-        { createdAt: today, totalCents: 500 },
-        { createdAt: yesterday, totalCents: 2000 },
+        { createdAt: today, totalCents: 1000, items: [{ quantity: 1, unitPriceCents: 1000 }] },
+        { createdAt: today, totalCents: 500, items: [{ quantity: 1, unitPriceCents: 500 }] },
+        { createdAt: yesterday, totalCents: 2000, items: [{ quantity: 1, unitPriceCents: 2000 }] },
       ]);
 
       const summary = await service.getDashboardSummary();
@@ -149,8 +150,8 @@ describe('AdminService', () => {
       eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);
 
       prisma.order.findMany.mockResolvedValue([
-        { createdAt: today, totalCents: 20000 }, // this week: $200
-        { createdAt: eightDaysAgo, totalCents: 10000 }, // prior week: $100
+        { createdAt: today, totalCents: 20000, items: [{ quantity: 1, unitPriceCents: 20000 }] },
+        { createdAt: eightDaysAgo, totalCents: 10000, items: [{ quantity: 1, unitPriceCents: 10000 }] },
       ]);
 
       const summary = await service.getDashboardSummary();
@@ -161,7 +162,7 @@ describe('AdminService', () => {
 
     it('reports null change percentages rather than 0% or Infinity% when the prior week had no activity', async () => {
       const today = new Date();
-      prisma.order.findMany.mockResolvedValue([{ createdAt: today, totalCents: 5000 }]);
+      prisma.order.findMany.mockResolvedValue([{ createdAt: today, totalCents: 5000, items: [{ quantity: 1, unitPriceCents: 5000 }] }]);
 
       const summary = await service.getDashboardSummary();
 

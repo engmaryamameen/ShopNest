@@ -41,7 +41,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     throw err;
   }
 
-  const subtotalCents = order.totalCents + order.discountCents;
+  const subtotalCents =
+    order.pricingSnapshot?.regularSubtotalCents ?? order.totalCents + order.discountCents;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -51,7 +52,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           <p>Current checkout payments are simulated; no money is charged.</p>
           <p className="text-gray-500 mt-1">#{order.id.slice(0, 8).toUpperCase()}</p>
         </div>
-        <span className={`px-4 py-1.5 rounded-full text-sm font-medium ${STATUS_COLORS[order.status] ?? 'bg-gray-100'}`}>
+        <span
+          className={`px-4 py-1.5 rounded-full text-sm font-medium ${STATUS_COLORS[order.status] ?? 'bg-gray-100'}`}
+        >
           {order.status}
         </span>
       </div>
@@ -69,19 +72,30 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             return (
               <div key={item.id} className="px-6 py-4 flex justify-between">
                 <div>
-                  <Link href={`/products/${item.productSlug}`} className="font-medium text-gray-900 hover:text-indigo-600">
+                  <Link
+                    href={`/products/${item.productSlug}`}
+                    className="font-medium text-gray-900 hover:text-indigo-600"
+                  >
                     {item.productName}
                   </Link>
                   <p className="text-sm text-gray-500">× {item.quantity}</p>
                   {item.returnRequest ? (
-                    <p className="text-xs text-gray-500 mt-1">{RETURN_STATUS_LABELS[item.returnRequest.status]}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {RETURN_STATUS_LABELS[item.returnRequest.status]}
+                    </p>
                   ) : canRequestReturn ? (
                     <div className="mt-1">
                       <RequestReturnButton orderItemId={item.id} />
                     </div>
                   ) : null}
                 </div>
-                <p className="font-medium">{formatPrice(item.unitPriceCents * item.quantity)}</p>
+                <p className="font-medium">
+                  {formatPrice(
+                    item.pricingSnapshot
+                      ? (item.totalCents ?? 0)
+                      : item.unitPriceCents * item.quantity,
+                  )}
+                </p>
               </div>
             );
           })}
@@ -89,10 +103,33 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <span>Subtotal</span>
             <span>{formatPrice(subtotalCents)}</span>
           </div>
-          {order.discountCents > 0 && (
+          {order.discountCents + (order.pricingSnapshot?.directDiscountCents ?? 0) > 0 && (
             <div className="px-6 py-3 flex justify-between text-sm text-emerald-700 bg-emerald-50">
               <span>Discount</span>
-              <span>−{formatPrice(order.discountCents)}</span>
+              <span>
+                −
+                {formatPrice(
+                  order.discountCents + (order.pricingSnapshot?.directDiscountCents ?? 0),
+                )}
+              </span>
+            </div>
+          )}
+          {order.pricingSnapshot && (
+            <div className="px-6 py-3 space-y-1 text-sm text-gray-600">
+              <div className="flex justify-between">
+                <span>Tax added</span>
+                <span>{formatPrice(order.pricingSnapshot.addedTaxCents ?? 0)}</span>
+              </div>
+              {!!order.pricingSnapshot.includedTaxCents && (
+                <div className="flex justify-between">
+                  <span>Tax already included</span>
+                  <span>{formatPrice(order.pricingSnapshot.includedTaxCents)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span>Shipping</span>
+                <span>{formatPrice(order.shippingCents ?? 0)}</span>
+              </div>
             </div>
           )}
           <div className="px-6 py-4 flex justify-between bg-gray-50">
@@ -113,9 +150,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               <span className="text-gray-600">
                 {h.fromStatus} → {h.toStatus}
               </span>
-              <span className="text-gray-400">
-                {new Date(h.createdAt).toLocaleString()}
-              </span>
+              <span className="text-gray-400">{new Date(h.createdAt).toLocaleString()}</span>
             </div>
           ))}
         </div>
@@ -123,12 +158,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
       {/* Actions */}
       <div className="flex gap-3">
-        <Link href="/orders" className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">
+        <Link
+          href="/orders"
+          className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+        >
           Back to orders
         </Link>
-        {order.status === 'PENDING' && (
-          <CancelOrderButton orderId={order.id} />
-        )}
+        {order.status === 'PENDING' && <CancelOrderButton orderId={order.id} />}
       </div>
     </div>
   );

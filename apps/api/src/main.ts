@@ -42,6 +42,7 @@ export async function createApp(): Promise<NestExpressApplication> {
     prefix: '/uploads',
     setHeaders: (res) => {
       res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     },
   });

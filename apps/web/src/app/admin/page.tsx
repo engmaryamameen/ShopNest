@@ -6,7 +6,7 @@ import { StatCard } from '@/components/admin/dashboard/stat-card';
 import { StatusBreakdownCard } from '@/components/admin/dashboard/status-breakdown-card';
 import { TopProductsCard } from '@/components/admin/dashboard/top-products-card';
 import { RecentActivityCard } from '@/components/admin/dashboard/recent-activity-card';
-import { WeeklyAreaChart } from '@/components/admin/weekly-area-chart';
+import { MarketplacePerformance } from '@/components/admin/dashboard/marketplace-performance';
 import { DashboardRangeSelect } from '@/components/admin/dashboard/dashboard-range-select';
 import { MetricComparison } from '@/components/admin/dashboard/metric-comparison';
 
@@ -21,7 +21,7 @@ const QUICK_LINKS = [
   { href: '/admin/reviews', title: 'Reviews', description: 'Moderate published customer reviews' },
   { href: '/admin/returns', title: 'Returns', description: 'Review and decide customer return requests' },
   { href: '/admin/promotions', title: 'Promotions', description: 'Create platform-wide discount codes' },
-  { href: '/admin/imports', title: 'Catalog imports', description: 'Review import history; new imports are disabled' },
+  { href: '/admin/imports', title: 'Catalog imports', description: 'Import products and manage import history' },
 ];
 
 export default async function AdminDashboardPage() {
@@ -64,9 +64,12 @@ export default async function AdminDashboardPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.2)] p-5">
-        <h2 className="font-bold text-admin-heading font-lato mb-4">Simulated order totals · last 30 days (UTC)</h2>
-        <WeeklyAreaChart data={summary.weeklyTrend} />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(220px,1fr)]">
+        <MarketplacePerformance {...summary.performance} />
+        <section className="rounded-lg border border-slate-100 bg-[#f9fafb] p-5 sm:p-6" aria-labelledby="traffic-sources-title">
+          <h2 id="traffic-sources-title" className="font-['Inter_Variable',sans-serif] text-sm font-semibold text-[#1c1c1c]">Traffic by website</h2>
+          <p className="mt-4 text-sm leading-6 text-slate-500">Visitor sources aren’t being recorded yet.</p>
+        </section>
       </div>
 
       <TopProductsCard products={summary.topProducts} period="Selected period" />

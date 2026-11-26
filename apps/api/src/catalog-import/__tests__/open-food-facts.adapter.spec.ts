@@ -6,7 +6,10 @@ describe('OpenFoodFactsAdapter', () => {
   const config = {
     get: jest.fn((key: string) => (key === 'app.openFoodFactsUrl' ? 'https://off.test' : 100)),
   } as unknown as ConfigService;
-  const adapter = new OpenFoodFactsAdapter(config);
+  let adapter: OpenFoodFactsAdapter;
+  beforeEach(() => {
+    adapter = new OpenFoodFactsAdapter(config);
+  });
 
   afterEach(() => jest.restoreAllMocks());
 
@@ -22,6 +25,38 @@ describe('OpenFoodFactsAdapter', () => {
       return new Response(JSON.stringify({ products: body }), { status: 200 });
     });
   }
+
+  it('fetches only the requested category and page', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ products: [] }), { status: 200 }));
+    await adapter.fetchProducts({ categories: ['en:snacks'], page: 3 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.get('categories_tags_en')).toBe('snacks');
+    expect(url.searchParams.get('page')).toBe('3');
+  });
+
+  it('collects distinct selected product images', async () => {
+    mockEveryCategory([
+      {
+        code: '123',
+        product_name: 'Oat biscuits',
+        categories_tags: ['en:biscuits'],
+        image_url: 'https://images.openfoodfacts.org/front.jpg',
+        selected_images: {
+          front: { display: { en: 'https://images.openfoodfacts.org/front.jpg' } },
+          packaging: { display: { en: 'https://images.openfoodfacts.org/back.jpg' } },
+        },
+      },
+    ]);
+    const result = await adapter.fetchProducts();
+    expect(result.products[0].imageUrls).toEqual([
+      'https://images.openfoodfacts.org/front.jpg',
+      'https://images.openfoodfacts.org/back.jpg',
+    ]);
+    expect(result.products[0].imageCount).toBe(2);
+  });
 
   it('normalizes a record with no commercial data — priceCents/stockQuantity stay undefined', async () => {
     mockEveryCategory([
@@ -68,7 +103,11 @@ describe('OpenFoodFactsAdapter', () => {
 
   it('takes the most specific (last) en: category tag', async () => {
     mockEveryCategory([
-      { code: '222', product_name: 'Greek Yogurt', categories_tags: ['en:dairies', 'en:fermented-foods', 'en:yogurts'] },
+      {
+        code: '222',
+        product_name: 'Greek Yogurt',
+        categories_tags: ['en:dairies', 'en:fermented-foods', 'en:yogurts'],
+      },
     ]);
 
     const result = await adapter.fetchProducts();
@@ -89,7 +128,11 @@ describe('OpenFoodFactsAdapter', () => {
   });
 
   it('dedupes the same product seen under more than one scoped category', async () => {
-    const crossListed = { code: '666', product_name: 'Cross-listed Item', categories_tags: ['en:snacks'] };
+    const crossListed = {
+      code: '666',
+      product_name: 'Cross-listed Item',
+      categories_tags: ['en:snacks'],
+    };
     // Same real barcode returned by two different category searches —
     // realistic, since one product can carry more than one category tag.
     // A fresh Response per call: a body can only be read once.
@@ -109,23 +152,17 @@ describe('OpenFoodFactsAdapter', () => {
   // takes longer than jest's default per-test timeout to exercise for
   // real, so these two get an explicit longer one rather than mocking the
   // backoff away and losing coverage of the retry path itself.
-  it(
-    'maps a total upstream outage (every category fails) to a stable gateway error',
-    async () => {
-      jest.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 503 }));
-      await expect(adapter.fetchProducts()).rejects.toThrow('Catalog supplier is unavailable');
-    },
-    15000,
-  );
+  it('maps a total upstream outage (every category fails) to a stable gateway error', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 503 }));
+    await expect(adapter.fetchProducts()).rejects.toThrow(
+      'Open Food Facts is temporarily unavailable',
+    );
+  }, 15000);
 
-  it(
-    'maps a total network-level outage to a stable gateway error too',
-    async () => {
-      jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNRESET'));
-      await expect(adapter.fetchProducts()).rejects.toThrow(BadGatewayException);
-    },
-    15000,
-  );
+  it('maps a total network-level outage to a stable gateway error too', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNRESET'));
+    await expect(adapter.fetchProducts()).rejects.toThrow(BadGatewayException);
+  }, 15000);
 
   it('retries a single failing category and still returns the rest — one bad category does not sink the whole fetch', async () => {
     let snacksAttempts = 0;
@@ -139,8 +176,8 @@ describe('OpenFoodFactsAdapter', () => {
       return new Response(JSON.stringify({ products: [] }), { status: 200 });
     });
 
-    const result = await adapter.fetchProducts();
-    expect(snacksAttempts).toBeGreaterThanOrEqual(2); // retried, not skipped on the first failure
+    const result = await adapter.fetchProducts({ categories: ['snacks', 'beverages'] });
+    expect(snacksAttempts).toBeGreaterThanOrEqual(2);
     expect(result.products).toEqual([]); // no data anywhere, but no thrown error either
   });
 });

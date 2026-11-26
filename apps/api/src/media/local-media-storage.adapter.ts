@@ -9,11 +9,12 @@ import type { MediaStorageProvider, UploadedFile } from './media.types';
 export class LocalMediaStorageAdapter implements MediaStorageProvider {
   constructor(private readonly config: ConfigService) {}
 
-  async upload(file: UploadedFile): Promise<{ url: string; contentType: string }> {
+  async upload(file: UploadedFile, contentHash?: string): Promise<{ url: string; contentType: string }> {
     const uploadDir = this.config.get<string>('app.mediaUploadDir', 'uploads');
     await mkdir(uploadDir, { recursive: true });
 
-    const filename = `${randomUUID()}.${file.ext}`;
+    if (contentHash && !/^[a-f0-9]{64}$/.test(contentHash)) throw new Error('Invalid content hash');
+    const filename = `${contentHash ?? randomUUID()}.${file.ext}`;
     await writeFile(join(uploadDir, filename), file.buffer);
 
     const baseUrl = this.config.get<string>('app.mediaPublicBaseUrl', 'http://localhost:3001');

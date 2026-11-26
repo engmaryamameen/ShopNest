@@ -1,6 +1,14 @@
 # ShopNest
 
-Catalog imports are disabled while ownership and overwrite safeguards are incomplete. Existing import history remains available, and queued runs are not processed. The worker and scheduler are off by default. Import execution can only be enabled in an isolated test process using `NODE_ENV=test` and `CATALOG_IMPORT_TEST_ENABLED=true`; this is not a production import feature.
+Catalog Import is available to administrators in local development. Open Food Facts, Open Beauty Facts and the CC BY 4.0 Amazon Berkeley Objects dataset provide real product metadata and attributed images. Saved previews, durable category checkpoints, insert-only imports, and a lightweight worker support repeated imports and interruption recovery. The separate Amazon Reviews historical adapter requires explicit source-specific reuse permission; Daraz requires application credentials and seller authorization. DummyJSON is reserved for tests. There is no recurring catalog synchronization. See [source capabilities and exact access requirements](docs/catalog-source-assessment.md).
+
+## Marketplace categories
+
+ShopNest has 11 curated departments and 140 categories. The hierarchy and source mapping rules live in `apps/api/src/catalog/category-taxonomy.ts`. Supplier classifications and inherited mappings are resolved in memory, never stored in lookup tables or inserted as ShopNest categories. The database stores the real category hierarchy, its images and each product’s category ID. Watches have Men’s, Women’s, Unisex and Kids’ branches; only explicit source audience information selects one.
+
+Import settings allow a category override for that import only. Unmapped products are skipped and reported for review. Parent browsing includes descendants; compatibility redirects for previously issued category URLs live in application code. After migrations, `pnpm --filter @shopnest/api db:taxonomy` previews category setup; add `--apply` to install the hierarchy and images. Normal setup works without source taxonomy downloads. The optional `--reconcile` operation requires a backup and no running imports; review its dry run before applying. Image credits are in `apps/web/src/assets/images/categories/ATTRIBUTION.md`.
+
+Local unpublished catalog migrations are consolidated into `0022_marketplace_catalog`; committed migration history remains intact.
 
 ## Fictional demo catalog
 
@@ -114,7 +122,7 @@ packages/
   api-client/  Shared OpenAPI-generated TypeScript types
 docs/
   operations.md               Backup/restore, security headers, monitoring
-  catalog-background-sync.md  Import worker/scheduler runtime flow
+  catalog-background-sync.md  Import worker runtime flow
 ```
 
 ## Key Engineering Decisions

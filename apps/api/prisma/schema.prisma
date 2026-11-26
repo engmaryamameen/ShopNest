@@ -93,6 +93,9 @@ enum AttributeInputType {
 }
 
 enum CatalogSource {
+  AMAZON_BERKELEY
+  OPEN_BEAUTY_FACTS
+  DARAZ
   DUMMY_JSON
   OPEN_FOOD_FACTS
   AMAZON
@@ -228,7 +231,7 @@ model RefreshToken {
   @@index([familyId])
 }
 
-/// A product belongs to exactly one canonical leaf category (no
+/// A product belongs to exactly one canonical category, as specific as its verified data allows (no
 /// multi-category bridge table — deliberately: nothing in this catalog's
 /// scope needs a product to live in two places at once, and a bridge table
 /// would just move the "which one is primary for breadcrumbs/canonical URL"
@@ -251,6 +254,7 @@ model Category {
   position             Int                   @default(0)
   isActive             Boolean               @default(true)
   imageUrl             String?
+  imageAttribution     Json?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   products             Product[]
@@ -281,6 +285,8 @@ model Product {
   brand         Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
   categoryId    String               @db.Uuid
   category      Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  gtin          String?              @unique
+  productType   String?
   publishStatus ProductPublishStatus @default(PUBLISHED)
 
   // Derived-only — never hand-set. Recomputed transactionally by
@@ -548,7 +554,26 @@ model VendorStaffInvite {
 /// `@@unique`); the declarative `@@unique` below still correctly covers
 /// every variant-specific row, since Postgres compares non-null tuples
 /// normally.
+model TaxClass {
+  id String @id @default(uuid()) @db.Uuid
+  name String @unique
+  rateBps Int @default(0)
+  isActive Boolean @default(true)
+  offers VendorOffer[]
+}
+
 model VendorOffer {
+  importRunId String? @db.Uuid
+  importRun CatalogImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
+  taxable Boolean @default(true)
+  priceIncludesTax Boolean @default(false)
+  taxClassId String? @db.Uuid
+  taxClass TaxClass? @relation(fields: [taxClassId], references: [id], onDelete: Restrict)
+  discountEnabled Boolean @default(false)
+  discountType PromotionType @default(PERCENT)
+  discountValue Int @default(0)
+  discountStartsAt DateTime?
+  discountEndsAt DateTime?
   id                  String          @id @default(uuid()) @db.Uuid
   vendorId            String          @db.Uuid
   vendor              Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
@@ -571,6 +596,7 @@ model VendorOffer {
 
   @@unique([vendorId, productId, variantId])
   @@unique([vendorId, vendorSku])
+  @@index([importRunId])
   @@index([productId, status])
   @@index([vendorId, status])
 }
@@ -628,10 +654,13 @@ model VendorOrder {
 }
 
 model ProductSource {
+  attribution Json?
   id         String        @id @default(uuid()) @db.Uuid
   productId  String        @db.Uuid
   product    Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
   source     CatalogSource
+  importRunId String?      @db.Uuid
+  importRun  CatalogImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
   externalId String
   checksum   String
   lastSeenAt DateTime
@@ -641,9 +670,40 @@ model ProductSource {
   @@unique([source, externalId])
   @@unique([productId, source])
   @@index([productId])
+  @@index([importRunId])
+}
+
+model CatalogSourceCheckpoint {
+  id String @id @default(uuid()) @db.Uuid
+  source CatalogSource
+  category String
+  version String
+  position Int @default(1)
+  exhausted Boolean @default(false)
+  updatedAt DateTime @updatedAt
+  @@unique([source, category, version])
+}
+
+model CatalogImportPreview {
+  status String @default("READY")
+  requestScope Json?
+  errorMessage String?
+  lockedAt DateTime?
+  id        String        @id @default(uuid()) @db.Uuid
+  source    CatalogSource
+  products  Json
+  expiresAt DateTime
+  createdAt DateTime      @default(now())
+
+  @@index([expiresAt])
 }
 
 model CatalogImportRun {
+  offers VendorOffer[]
+  candidateSnapshot Json?
+  demoPriceCents Int?
+  demoStockQuantity Int?
+  products        ProductSource[]
   id              String              @id @default(uuid()) @db.Uuid
   source          CatalogSource
   status          CatalogImportStatus @default(RUNNING)
@@ -721,6 +781,10 @@ model Order {
   /// independently-set value once vendorOrders exist — see VendorOrder's
   /// model doc and the aggregation invariant in DECISIONS.md.
   status         OrderStatus @default(PENDING)
+  subtotalCents  Int @default(0)
+  taxCents       Int @default(0)
+  shippingCents  Int @default(0)
+  pricingSnapshot Json?
   totalCents     Int
   currency       String      @default("USD")
   idempotencyKey String
@@ -753,6 +817,11 @@ model Order {
 /// link to the current PDP), but nothing here depends on that relation for
 /// its own correctness.
 model OrderItem {
+  regularUnitPriceCents Int @default(0)
+  discountCents Int @default(0)
+  taxCents Int @default(0)
+  totalCents Int @default(0)
+  pricingSnapshot Json?
   id             String         @id @default(uuid()) @db.Uuid
   orderId        String         @db.Uuid
   order          Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
@@ -846,6 +915,13 @@ enum PromotionScope {
 /// (see the migration), the same technique already used elsewhere in this
 /// schema for constraints Prisma's DSL can't express.
 model Promotion {
+  automatic Boolean @default(false)
+  productIds String[] @default([])
+  brandIds String[] @default([])
+  categoryIds String[] @default([])
+  productTypes String[] @default([])
+  vendorIds String[] @default([])
+  maxDiscountCents Int?
   id                    String         @id @default(uuid()) @db.Uuid
   code                  String         @unique
   type                  PromotionType

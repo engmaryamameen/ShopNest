@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { api } from '@/lib/api';
-import { AdminProductList } from '@/components/admin/admin-product-list';
+import { ImportedProductList } from '@/components/admin/imported-product-list';
+import { AdminPageHeader } from '@/components/ui/admin-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,15 +9,18 @@ export default async function AdminProductsPage() {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
-  const [products, categories] = await Promise.all([
-    api.adminListProducts(cookieHeader),
-    api.listCategories(),
+  const [products, options] = await Promise.all([
+    api.adminProductPage({ importedOnly: 'false' }, cookieHeader),
+    api.adminImportOptions(cookieHeader),
   ]);
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Products</h1>
-      <AdminProductList products={products} categories={categories} />
+      <AdminPageHeader
+        title="Products"
+        description="Manage catalog information, offers, pricing and inventory."
+      />
+      <ImportedProductList initialPage={products} options={options} importedOnly={false} />
     </div>
   );
 }

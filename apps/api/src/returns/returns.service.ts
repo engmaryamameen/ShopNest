@@ -1,4 +1,10 @@
-import { Inject, Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrderStatus, ReturnStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PAYMENT_PROVIDER, type PaymentProvider } from '../payment/payment.types';
@@ -6,7 +12,11 @@ import { CreateReturnRequestDto } from './dto/create-return-request.dto';
 import { DecideReturnRequestDto } from './dto/decide-return-request.dto';
 
 const RETURN_REQUEST_INCLUDE = {
-  orderItem: { include: { vendorOrder: { include: { vendor: { select: { id: true, name: true, slug: true } } } } } },
+  orderItem: {
+    include: {
+      vendorOrder: { include: { vendor: { select: { id: true, name: true, slug: true } } } },
+    },
+  },
   user: { select: { id: true, email: true } },
 } as const;
 
@@ -31,7 +41,8 @@ export class ReturnsService {
     }
 
     const existing = await this.prisma.returnRequest.findUnique({ where: { orderItemId } });
-    if (existing) throw new BadRequestException('A return has already been requested for this item');
+    if (existing)
+      throw new BadRequestException('A return has already been requested for this item');
 
     return this.prisma.returnRequest.create({
       data: { orderItemId, userId, reason: dto.reason, note: dto.note },
@@ -55,11 +66,21 @@ export class ReturnsService {
     });
   }
 
-  async vendorApprove(vendorId: string, id: string, decidedByUserId: string, dto: DecideReturnRequestDto) {
+  async vendorApprove(
+    vendorId: string,
+    id: string,
+    decidedByUserId: string,
+    dto: DecideReturnRequestDto,
+  ) {
     return this.decide(id, decidedByUserId, ReturnStatus.REFUNDED, dto, vendorId);
   }
 
-  async vendorReject(vendorId: string, id: string, decidedByUserId: string, dto: DecideReturnRequestDto) {
+  async vendorReject(
+    vendorId: string,
+    id: string,
+    decidedByUserId: string,
+    dto: DecideReturnRequestDto,
+  ) {
     return this.decide(id, decidedByUserId, ReturnStatus.REJECTED, dto, vendorId);
   }
 
@@ -102,11 +123,21 @@ export class ReturnsService {
           data: { stockQuantity: { increment: item.quantity } },
         });
         await tx.inventoryAdjustment.create({
-          data: { vendorOfferId: item.vendorOfferId, delta: item.quantity, reason: 'RETURN', reference: request.id },
+          data: {
+            vendorOfferId: item.vendorOfferId,
+            delta: item.quantity,
+            reason: 'RETURN',
+            reference: request.id,
+          },
         });
 
-        const order = await tx.order.findUniqueOrThrow({ where: { id: item.orderId }, select: { id: true, paymentRef: true, currency: true } });
-        const refundAmountCents = item.unitPriceCents * item.quantity;
+        const order = await tx.order.findUniqueOrThrow({
+          where: { id: item.orderId },
+          select: { id: true, paymentRef: true, currency: true },
+        });
+        const refundAmountCents = item.pricingSnapshot
+          ? item.totalCents
+          : item.unitPriceCents * item.quantity;
         await this.payment.refund({
           orderId: order.id,
           amountCents: refundAmountCents,

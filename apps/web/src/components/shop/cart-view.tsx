@@ -6,7 +6,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
-import { CART_QUERY_KEY, useCart, useRemoveCartItem, useApplyPromotion, useRemovePromotion, type Cart } from '@/lib/use-cart';
+import {
+  CART_QUERY_KEY,
+  useCart,
+  useRemoveCartItem,
+  useApplyPromotion,
+  useRemovePromotion,
+  type Cart,
+} from '@/lib/use-cart';
 import { formatPrice } from '@/lib/format-price';
 import { isFirstPartyImageUrl } from '@/lib/is-first-party-image';
 
@@ -33,16 +40,19 @@ export function CartView({ initialCart }: CartViewProps) {
   const applyPromotion = useApplyPromotion();
   const removePromotion = useRemovePromotion();
 
-  const subtotal = cart.items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
+  const subtotal =
+    cart.pricing?.regularSubtotalCents ??
+    cart.items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
   const discountPreview = cart.appliedPromotion?.discountPreviewCents ?? 0;
-  const total = subtotal - discountPreview;
+  const total = cart.pricing?.totalCents ?? subtotal - discountPreview;
 
   function handleApplyPromo(e: React.FormEvent) {
     e.preventDefault();
     setPromoError(null);
     applyPromotion.mutate(promoCode, {
       onSuccess: () => setPromoCode(''),
-      onError: (err) => setPromoError(err instanceof ApiError ? err.message : 'Could not apply that code'),
+      onError: (err) =>
+        setPromoError(err instanceof ApiError ? err.message : 'Could not apply that code'),
     });
   }
 
@@ -89,7 +99,10 @@ export function CartView({ initialCart }: CartViewProps) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
           {cart.items.map((item) => (
-            <div key={item.id} className="bg-white rounded-xl border border-gray-200 p-4 flex gap-4">
+            <div
+              key={item.id}
+              className="bg-white rounded-xl border border-gray-200 p-4 flex gap-4"
+            >
               <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100 shrink-0">
                 {item.product.imageUrl ? (
                   <Image
@@ -112,10 +125,15 @@ export function CartView({ initialCart }: CartViewProps) {
                   {item.product.name}
                 </Link>
                 <p className="text-gray-400 text-xs mt-0.5">Sold by {item.vendor.name}</p>
+                {item.variantLabel && (
+                  <p className="text-gray-500 text-xs mt-0.5">{item.variantLabel}</p>
+                )}
                 <p className="text-gray-500 text-sm mt-0.5">{formatPrice(item.priceCents)} each</p>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
-                  <span className="font-semibold">{formatPrice(item.priceCents * item.quantity)}</span>
+                  <span className="font-semibold">
+                    {formatPrice(item.lineTotalCents ?? item.priceCents * item.quantity)}
+                  </span>
                 </div>
               </div>
 
@@ -141,7 +159,7 @@ export function CartView({ initialCart }: CartViewProps) {
                 <span>
                   {item.product.name} × {item.quantity}
                 </span>
-                <span>{formatPrice(item.priceCents * item.quantity)}</span>
+                <span>{formatPrice(item.lineTotalCents ?? item.priceCents * item.quantity)}</span>
               </div>
             ))}
           </div>
@@ -150,7 +168,8 @@ export function CartView({ initialCart }: CartViewProps) {
             {cart.appliedPromotion ? (
               <div className="flex items-center justify-between text-sm mb-2">
                 <span className="text-emerald-700">
-                  Code <span className="font-mono font-medium">{cart.appliedPromotion.code}</span> applied
+                  Code <span className="font-mono font-medium">{cart.appliedPromotion.code}</span>{' '}
+                  applied
                   {discountPreview > 0 ? ` (−${formatPrice(discountPreview)})` : ''}
                 </span>
                 <button
@@ -181,10 +200,40 @@ export function CartView({ initialCart }: CartViewProps) {
             )}
             {promoError && <p className="text-xs text-red-600 mb-2">{promoError}</p>}
 
-            {discountPreview > 0 && (
+            {
               <div className="flex justify-between text-sm text-gray-500 mb-1">
                 <span>Subtotal</span>
                 <span>{formatPrice(subtotal)}</span>
+              </div>
+            }
+            {cart.pricing && (
+              <div className="mb-3 space-y-1 text-sm text-gray-500">
+                <div className="flex justify-between">
+                  <span>Direct discounts</span>
+                  <span>−{formatPrice(cart.pricing.directDiscountCents)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Automatic promotions</span>
+                  <span>−{formatPrice(cart.pricing.automaticDiscountCents)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Coupon</span>
+                  <span>−{formatPrice(cart.pricing.couponDiscountCents)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tax added</span>
+                  <span>{formatPrice(cart.pricing.addedTaxCents ?? cart.pricing.taxCents)}</span>
+                </div>
+                {!!cart.pricing.includedTaxCents && (
+                  <div className="flex justify-between text-xs">
+                    <span>Tax already included</span>
+                    <span>{formatPrice(cart.pricing.includedTaxCents)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Shipping</span>
+                  <span>{formatPrice(cart.pricing.shippingCents)}</span>
+                </div>
               </div>
             )}
             <div className="flex justify-between font-bold text-lg">
@@ -207,7 +256,9 @@ export function CartView({ initialCart }: CartViewProps) {
             {isCheckingOut ? 'Processing…' : 'Place Order'}
           </button>
 
-          <p className="text-xs text-gray-600 text-center mt-4">Demo checkout: payments are simulated and no money is charged. All amounts are in USD.</p>
+          <p className="text-xs text-gray-600 text-center mt-4">
+            Demo checkout: payments are simulated and no money is charged. All amounts are in USD.
+          </p>
         </div>
       </div>
     </div>

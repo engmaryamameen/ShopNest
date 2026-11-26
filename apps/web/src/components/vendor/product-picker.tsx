@@ -1,94 +1,105 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-
+import { AdminInput } from '@/components/ui/admin-form';
 interface PickableProduct {
   id: string;
   name: string;
   slug: string;
   category: { name: string; slug: string } | null;
+  variants?: Array<{ id: string; sku: string | null; label: string }>;
 }
-
-interface ProductPickerProps {
+export function ProductPicker({
+  onSelect,
+  onClear,
+}: {
   onSelect: (product: PickableProduct) => void;
-}
-
-/** A search-as-you-type picker over the existing canonical catalog — a
- * vendor offer always sells an existing Product (requesting a brand new
- * canonical product to be created is a deferred admin-review flow, not
- * built here; see the final report). Uses the vendor-scoped search
- * endpoint, not the public product listing — the public one only returns
- * products that already have an active offer, which would hide exactly
- * the products a vendor most wants to find (nobody selling them yet). */
-export function ProductPicker({ onSelect }: ProductPickerProps) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<PickableProduct[]>([]);
-  const [loading, setLoading] = useState(false);
+  onClear?: () => void;
+}) {
+  const [query, setQuery] = useState(''),
+    [results, setResults] = useState<PickableProduct[]>([]),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState('');
   const [selected, setSelected] = useState<PickableProduct | null>(null);
-
   useEffect(() => {
     if (query.trim().length < 2) {
       setResults([]);
       return;
     }
+    let cancelled = false;
     const timer = setTimeout(async () => {
       setLoading(true);
+      setError('');
       try {
-        setResults(await api.vendorSearchProducts(query));
+        const data = await api.vendorSearchProducts(query);
+        if (!cancelled) setResults(data);
+      } catch (e) {
+        if (!cancelled) {
+          setResults([]);
+          setError((e as Error).message);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [query]);
-
-  if (selected) {
+  if (selected)
     return (
-      <div className="flex items-center justify-between rounded-lg border border-gray-300 px-3 py-2">
-        <span className="text-sm text-gray-900">{selected.name}</span>
+      <div className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-sm">
+        <span>{selected.name}</span>
         <button
           type="button"
           onClick={() => {
             setSelected(null);
             setQuery('');
+            onClear?.();
           }}
-          className="text-xs text-gray-400 hover:text-gray-600"
+          className="text-[#0077b6]"
         >
           Change
         </button>
       </div>
     );
-  }
-
   return (
     <div className="relative">
-      <input
+      <AdminInput
+        aria-label="Search products to sell"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search products to sell…"
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
       />
       {query.trim().length >= 2 && (
-        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-          {loading && <div className="px-3 py-2 text-sm text-gray-400">Searching…</div>}
-          {!loading && results.length === 0 && (
-            <div className="px-3 py-2 text-sm text-gray-400">No products found</div>
+        <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+          {loading ? (
+            <p role="status" className="p-3 text-sm text-gray-500">
+              Searching…
+            </p>
+          ) : error ? (
+            <p role="alert" className="p-3 text-sm text-red-700">
+              {error}
+            </p>
+          ) : !results.length ? (
+            <p className="p-3 text-sm text-gray-500">No products found</p>
+          ) : (
+            results.map((product) => (
+              <button
+                key={product.id}
+                type="button"
+                onClick={() => {
+                  setSelected(product);
+                  onSelect(product);
+                }}
+                className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-blue-50"
+              >
+                {product.name}
+                <span className="text-gray-400"> · {product.category?.name}</span>
+              </button>
+            ))
           )}
-          {results.map((product) => (
-            <button
-              key={product.id}
-              type="button"
-              onClick={() => {
-                setSelected(product);
-                onSelect(product);
-              }}
-              className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-            >
-              {product.name}
-              {product.category && <span className="text-gray-400"> · {product.category.name}</span>}
-            </button>
-          ))}
         </div>
       )}
     </div>

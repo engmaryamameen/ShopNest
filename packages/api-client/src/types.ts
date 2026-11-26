@@ -21,6 +21,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AuthController_googleStart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AuthController_googleCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/link-confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AuthController_googleLinkConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/google/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AuthController_googleLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/register": {
         parameters: {
             query?: never;
@@ -30,8 +94,41 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register a new customer account */
+        /** Send an email code to start signup */
         post: operations["AuthController_register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/signup/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify the signup code and create an account */
+        post: operations["AuthController_verifySignup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/signup/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AuthController_resendSignup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -347,6 +444,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/products/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CatalogController_adminProductPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CatalogController_getProductImages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CatalogController_getProductDetails"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}/variants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CatalogController_createVariant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}/variants/{variantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["CatalogController_updateVariant"];
+        trace?: never;
+    };
     "/products/{slug}": {
         parameters: {
             query?: never;
@@ -380,6 +557,105 @@ export interface paths {
         head?: never;
         /** [Admin] Update a product */
         patch: operations["CatalogController_updateProduct"];
+        trace?: never;
+    };
+    "/admin/pricing/tax-classes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["PricingController_list"];
+        put?: never;
+        post: operations["PricingController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/pricing/tax-classes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["PricingController_update"];
+        trace?: never;
+    };
+    "/admin/pricing/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PricingController_quote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/promotions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** [Admin] List platform-scope promotions */
+        get: operations["AdminPromotionsController_list"];
+        put?: never;
+        /** [Admin] Create a platform-scope promotion */
+        post: operations["AdminPromotionsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/promotions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** [Admin] Update a platform-scope promotion */
+        patch: operations["AdminPromotionsController_update"];
+        trace?: never;
+    };
+    "/admin/promotions/{id}/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AdminPromotionsController_assign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/cart": {
@@ -450,41 +726,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/admin/promotions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** [Admin] List platform-scope promotions */
-        get: operations["AdminPromotionsController_list"];
-        put?: never;
-        /** [Admin] Create a platform-scope promotion */
-        post: operations["AdminPromotionsController_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/promotions/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** [Admin] Update a platform-scope promotion */
-        patch: operations["AdminPromotionsController_update"];
         trace?: never;
     };
     "/orders/checkout": {
@@ -1120,6 +1361,71 @@ export interface paths {
         patch: operations["AdminReturnsController_reject"];
         trace?: never;
     };
+    "/admin/catalog-imports/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search source categories */
+        get: operations["CatalogImportController_categories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog-imports/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CatalogImportController_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog-imports/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CatalogImportController_retry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog-imports/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CatalogImportController_importedProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/catalog-imports/preview": {
         parameters: {
             query?: never;
@@ -1129,7 +1435,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** [Admin] Dry run — see what a DummyJSON sync with this scope would do, without writing anything */
+        /** [Admin] Dry run — see what a sync with this source/scope would do, without writing anything */
         post: operations["CatalogImportController_preview"];
         delete?: never;
         options?: never;
@@ -1137,7 +1443,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/catalog-imports/dummy-json": {
+    "/admin/catalog-imports/previews/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["CatalogImportController_previewStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog-imports/run": {
         parameters: {
             query?: never;
             header?: never;
@@ -1146,8 +1468,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** [Admin] Queue a DummyJSON catalog synchronization, optionally scoped */
-        post: operations["CatalogImportController_importDummyJson"];
+        /** [Admin] Queue a catalog synchronization from the given source, optionally scoped, and process it now */
+        post: operations["CatalogImportController_triggerImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog-imports/archive-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Summarize imported products eligible for archiving */
+        post: operations["CatalogImportController_archivePreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/catalog-imports/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive imported products without deleting order history */
+        post: operations["CatalogImportController_archive"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1199,6 +1555,39 @@ export interface paths {
         get: operations["LocationController_suggestions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AdminController_listFavorites"];
+        put: operations["AdminController_addFavorite"];
+        post?: never;
+        delete: operations["AdminController_removeFavorite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/demo-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** [Admin] Add the fictional demo catalog in an enabled development environment */
+        post: operations["AdminController_addDemoCatalog"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1453,6 +1842,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         RegisterDto: {
+            /** @example Alex Morgan */
             fullName?: string;
             /**
              * Format: email
@@ -1461,6 +1851,10 @@ export interface components {
             email: string;
             /** @example str0ngP@ssword */
             password: string;
+        };
+        SignupCodeDto: {
+            /** @example 123456 */
+            code: string;
         };
         AuthUserDto: {
             id: string;
@@ -1556,13 +1950,16 @@ export interface components {
             /** @description Sort order among siblings */
             position?: number;
             isActive?: boolean;
-            /** Format: uri */
-            imageUrl?: string;
             /**
              * Format: uuid
              * @description Parent category UUID, or null to move to root
              */
             parentId?: string | null;
+            /**
+             * Format: uri
+             * @description Category image URL, or null to remove the image
+             */
+            imageUrl?: string | null;
         };
         CreateProductDto: {
             /** @example Wireless Headphones */
@@ -1579,20 +1976,55 @@ export interface components {
              * @example 9999
              */
             priceCents: number;
+            /** @description Original price in cents when the offer is discounted */
+            compareAtPriceCents?: number | null;
             /** @example 50 */
             stockQuantity: number;
-            /**
-             * Format: uri
-             * @example https://cdn.example.com/img/headphones.jpg
-             */
+            /** @example https://cdn.example.com/img/headphones.jpg */
             imageUrl?: string;
+            imageUrls?: string[];
             /** @example uuid-of-category */
             categoryId: string;
             /**
              * Format: uuid
              * @example uuid-of-brand
              */
-            brandId?: string;
+            brandId?: string | null;
+            specifications?: {
+                [key: string]: string;
+            };
+            productType?: string;
+            taxable?: boolean;
+            priceIncludesTax?: boolean;
+            /** Format: uuid */
+            taxClassId?: string | null;
+            discountEnabled?: boolean;
+            /** @enum {string} */
+            discountType?: "PERCENT" | "FIXED_AMOUNT";
+            discountValue?: number;
+            discountStartsAt?: string | null;
+            discountEndsAt?: string | null;
+        };
+        Object: Record<string, never>;
+        ProductVariantDto: {
+            sku?: string;
+            attributes: {
+                [key: string]: string;
+            };
+            /** Format: uuid */
+            vendorId?: string;
+            priceCents: number;
+            stockQuantity: number;
+            taxable?: boolean;
+            priceIncludesTax?: boolean;
+            /** Format: uuid */
+            taxClassId?: string | null;
+            discountEnabled?: boolean;
+            /** @enum {string} */
+            discountType?: "PERCENT" | "FIXED_AMOUNT";
+            discountValue?: number;
+            discountStartsAt?: string | null;
+            discountEndsAt?: string | null;
         };
         UpdateProductDto: {
             /** @example Wireless Headphones */
@@ -1609,38 +2041,50 @@ export interface components {
              * @example 9999
              */
             priceCents?: number;
+            /** @description Original price in cents when the offer is discounted */
+            compareAtPriceCents?: number | null;
             /** @example 50 */
             stockQuantity?: number;
-            /**
-             * Format: uri
-             * @example https://cdn.example.com/img/headphones.jpg
-             */
+            /** @example https://cdn.example.com/img/headphones.jpg */
             imageUrl?: string;
+            imageUrls?: string[];
             /** @example uuid-of-category */
             categoryId?: string;
             /**
              * Format: uuid
              * @example uuid-of-brand
              */
-            brandId?: string;
+            brandId?: string | null;
+            taxable?: boolean;
+            priceIncludesTax?: boolean;
+            /** Format: uuid */
+            taxClassId?: string | null;
+            discountEnabled?: boolean;
+            /** @enum {string} */
+            discountType?: "PERCENT" | "FIXED_AMOUNT";
+            discountValue?: number;
+            discountStartsAt?: string | null;
+            discountEndsAt?: string | null;
+            specifications?: {
+                [key: string]: string;
+            };
+            productType?: string;
             isActive?: boolean;
+            /** Format: uuid */
+            offerId?: string;
         };
-        UpsertCartItemDto: {
-            /**
-             * Format: uuid
-             * @description The specific seller's listing to add — not the canonical product id
-             * @example uuid-of-vendor-offer
-             */
-            vendorOfferId: string;
-            /**
-             * @description Quantity to set (not delta)
-             * @example 2
-             */
-            quantity: number;
-        };
-        ApplyPromotionDto: {
-            /** @example SAVE10 */
-            code: string;
+        TaxClassDto: Record<string, never>;
+        QuoteDto: {
+            taxable?: boolean;
+            priceIncludesTax?: boolean;
+            /** Format: uuid */
+            taxClassId?: string | null;
+            discountEnabled?: boolean;
+            /** @enum {string} */
+            discountType?: "PERCENT" | "FIXED_AMOUNT";
+            discountValue?: number;
+            discountStartsAt?: string | null;
+            discountEndsAt?: string | null;
         };
         CreatePromotionDto: {
             /** @example SAVE10 */
@@ -1657,6 +2101,13 @@ export interface components {
             maxRedemptions?: number;
             maxRedemptionsPerUser?: number;
             minSubtotalCents?: number;
+            automatic?: boolean;
+            productIds?: string[];
+            brandIds?: string[];
+            categoryIds?: string[];
+            vendorIds?: string[];
+            productTypes?: string[];
+            maxDiscountCents?: number;
         };
         UpdatePromotionDto: {
             isActive?: boolean;
@@ -1664,6 +2115,24 @@ export interface components {
             maxRedemptions?: number;
             maxRedemptionsPerUser?: number;
             minSubtotalCents?: number;
+        };
+        AssignPromotionProductsDto: Record<string, never>;
+        UpsertCartItemDto: {
+            /**
+             * Format: uuid
+             * @description The specific seller's listing to add — not the canonical product id
+             * @example uuid-of-vendor-offer
+             */
+            vendorOfferId: string;
+            /**
+             * @description Quantity to set (not delta)
+             * @example 2
+             */
+            quantity: number;
+        };
+        ApplyPromotionDto: {
+            /** @example SAVE10 */
+            code: string;
         };
         CheckoutDto: {
             /**
@@ -1727,6 +2196,16 @@ export interface components {
             compareAtPriceCents?: number;
             /** @example 25 */
             stockQuantity: number;
+            taxable?: boolean;
+            priceIncludesTax?: boolean;
+            /** Format: uuid */
+            taxClassId?: string | null;
+            discountEnabled?: boolean;
+            /** @enum {string} */
+            discountType?: "PERCENT" | "FIXED_AMOUNT";
+            discountValue?: number;
+            discountStartsAt?: string | null;
+            discountEndsAt?: string | null;
         };
         UpdateVendorOfferDto: {
             /**
@@ -1745,6 +2224,16 @@ export interface components {
             priceCents?: number;
             /** @description Strike-through "was" price — must be greater than priceCents */
             compareAtPriceCents?: number;
+            taxable?: boolean;
+            priceIncludesTax?: boolean;
+            /** Format: uuid */
+            taxClassId?: string | null;
+            discountEnabled?: boolean;
+            /** @enum {string} */
+            discountType?: "PERCENT" | "FIXED_AMOUNT";
+            discountValue?: number;
+            discountStartsAt?: string | null;
+            discountEndsAt?: string | null;
             /** @enum {string} */
             status?: "DRAFT" | "ACTIVE" | "INACTIVE";
         };
@@ -1792,13 +2281,76 @@ export interface components {
             reason: "DEFECTIVE" | "NOT_AS_DESCRIBED" | "NO_LONGER_NEEDED" | "WRONG_ITEM" | "OTHER";
             note?: string;
         };
+        CategoryPriceRule: {
+            category: string;
+            minCents: number;
+            maxCents: number;
+        };
         ImportScopeDto: {
+            /**
+             * @description Which supplier to import from.
+             * @enum {string}
+             */
+            source: "AMAZON_BERKELEY" | "OPEN_BEAUTY_FACTS" | "DARAZ" | "DUMMY_JSON" | "OPEN_FOOD_FACTS" | "AMAZON";
+            /**
+             * Format: uuid
+             * @description Previously previewed selection.
+             */
+            previewId?: string;
+            /** @description Product identifiers selected from the preview. */
+            selectedProductIds?: string[];
             /** @description Only import products in these supplier category names. Omit/empty = no restriction. */
             categoryScope?: string[];
             /** @description Import at most this many scoped products. */
             maxRecords?: number;
+            /** @description Optional demo offer price in cents. */
+            demoPriceCents?: number;
+            /** @description Optional demo offer quantity. */
+            demoStockQuantity?: number;
             /** @description Only import products with at least this many supplier images. */
             minImageCount?: number;
+            maxImageCount?: number;
+            /** Format: uuid */
+            promotionId?: string;
+            /** @enum {string} */
+            promotionTarget?: "IMPORT" | "ALL" | "BRANDS" | "CATEGORIES" | "PRODUCT_TYPES" | "VENDORS";
+            promotion?: components["schemas"]["CreatePromotionDto"];
+            rescan?: boolean;
+            /** Format: uuid */
+            targetCategoryId?: string;
+            vendorIds?: string[];
+            /** @enum {string} */
+            pricingStrategy?: "FIXED" | "RANGE" | "CATEGORY";
+            minPriceCents?: number;
+            maxPriceCents?: number;
+            categoryPrices?: components["schemas"]["CategoryPriceRule"][];
+            minStock?: number;
+            maxStock?: number;
+            minImageDimension?: number;
+            taxable?: boolean;
+            priceIncludesTax?: boolean;
+            /** Format: uuid */
+            taxClassId?: string | null;
+            discountEnabled?: boolean;
+            /** @enum {string} */
+            discountType?: "PERCENT" | "FIXED_AMOUNT";
+            discountValue?: number;
+            discountStartsAt?: string | null;
+            discountEndsAt?: string | null;
+        };
+        ArchiveImportedProductsDto: {
+            /** @enum {string} */
+            source?: "AMAZON_BERKELEY" | "OPEN_BEAUTY_FACTS" | "DARAZ" | "DUMMY_JSON" | "OPEN_FOOD_FACTS" | "AMAZON";
+            /** Format: uuid */
+            runId?: string;
+            /** Format: uuid */
+            categoryId?: string;
+            productIds?: string[];
+            /** Format: uuid */
+            requireFilter?: string;
+        };
+        AdminFavoriteDto: {
+            path: string;
         };
         CreateAdminDto: {
             /**
@@ -1866,6 +2418,79 @@ export interface operations {
             };
         };
     };
+    AuthController_googleStart: {
+        parameters: {
+            query?: {
+                returnTo?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_googleCallback: {
+        parameters: {
+            query?: {
+                state?: unknown;
+                code?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_googleLinkConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_googleLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     AuthController_register: {
         parameters: {
             query?: never;
@@ -1879,6 +2504,27 @@ export interface operations {
             };
         };
         responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AuthController_verifySignup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupCodeDto"];
+            };
+        };
+        responses: {
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -1886,6 +2532,23 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthResponseDto"];
                 };
+            };
+        };
+    };
+    AuthController_resendSignup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2314,6 +2977,123 @@ export interface operations {
             };
         };
     };
+    CatalogController_adminProductPage: {
+        parameters: {
+            query: {
+                q?: string;
+                importedOnly?: "true" | "false";
+                source?: "AMAZON_BERKELEY" | "OPEN_BEAUTY_FACTS" | "DARAZ" | "DUMMY_JSON" | "OPEN_FOOD_FACTS" | "AMAZON";
+                categoryId?: string;
+                brandId?: string;
+                vendorId?: string;
+                runId?: string;
+                status?: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+                since?: string;
+                sort?: "newest" | "name" | "price";
+                page: components["schemas"]["Object"];
+                limit: components["schemas"]["Object"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogController_getProductImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    CatalogController_getProductDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogController_createVariant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductVariantDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogController_updateVariant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                variantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductVariantDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     CatalogController_getProductBySlug: {
         parameters: {
             query?: never;
@@ -2368,6 +3148,176 @@ export interface operations {
         };
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PricingController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    PricingController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxClassDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PricingController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxClassDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PricingController_quote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminPromotionsController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    AdminPromotionsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePromotionDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminPromotionsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePromotionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminPromotionsController_assign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignPromotionProductsDto"];
+            };
+        };
+        responses: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2479,69 +3429,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AdminPromotionsController_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    AdminPromotionsController_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreatePromotionDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    AdminPromotionsController_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdatePromotionDto"];
-            };
-        };
         responses: {
             200: {
                 headers: {
@@ -3416,6 +4303,81 @@ export interface operations {
             };
         };
     };
+    CatalogImportController_categories: {
+        parameters: {
+            query: {
+                source: string;
+                q?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogImportController_options: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogImportController_retry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogImportController_importedProducts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
     CatalogImportController_preview: {
         parameters: {
             query?: never;
@@ -3433,13 +4395,30 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": Record<string, never>;
-                };
+                content?: never;
             };
         };
     };
-    CatalogImportController_importDummyJson: {
+    CatalogImportController_previewStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogImportController_triggerImport: {
         parameters: {
             query?: never;
             header?: never;
@@ -3453,6 +4432,48 @@ export interface operations {
         };
         responses: {
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogImportController_archivePreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveImportedProductsDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CatalogImportController_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveImportedProductsDto"];
+            };
+        };
+        responses: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3524,9 +4545,92 @@ export interface operations {
             };
         };
     };
-    AdminController_getDashboard: {
+    AdminController_listFavorites: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    AdminController_addFavorite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminFavoriteDto"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminController_removeFavorite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminFavoriteDto"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminController_addDemoCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    AdminController_getDashboard: {
+        parameters: {
+            query?: {
+                range?: string;
+                timezone?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

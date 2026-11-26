@@ -26,5 +26,11 @@
   // (`db:seed`), which requires an explicit .ts import extension —
   // incompatible with this project's tsc, which rejects one. Never part
   // of the compiled app, so excluding it here costs nothing.
-  "exclude": ["node_modules", "dist", "prisma/seed.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "prisma/seed.ts",
+    "prisma/marketplace-taxonomy.ts",
+    "prisma/prepare-categories.ts"
+  ]
 }

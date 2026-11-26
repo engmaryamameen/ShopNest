@@ -1,4 +1,4 @@
-import { ExecutionContext } from '@nestjs/common';
+import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Role } from '@prisma/client';
 import { RolesGuard } from '../roles.guard';
@@ -43,7 +43,7 @@ describe('RolesGuard', () => {
 
   it('denies an unauthenticated request (no user on the request at all) for a protected route', () => {
     reflector.getAllAndOverride.mockReturnValue([Role.ADMIN]);
-    expect(guard.canActivate(makeContext(undefined))).toBe(false);
+    expect(() => guard.canActivate(makeContext(undefined))).toThrow(UnauthorizedException);
   });
 
   describe('SUPER_ADMIN hierarchy', () => {

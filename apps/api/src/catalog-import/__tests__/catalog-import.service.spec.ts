@@ -1,686 +1,297 @@
-import { CatalogImportStatus, CatalogSource } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import { CatalogImportService } from '../catalog-import.service';
-import { CatalogSourceAdapter } from '../catalog-source.adapter';
-import { CatalogSourceRegistry } from '../catalog-source-registry';
-
-/** A registry that always resolves to the one adapter under test — the
- * service is source-parameterized, but these tests exercise its generic
- * import behavior, not source selection itself (see catalog-source-
- * registry.spec.ts for that). */
-function makeRegistry(adapter: CatalogSourceAdapter): CatalogSourceRegistry {
-  return { resolve: () => adapter } as unknown as CatalogSourceRegistry;
-}
-
-const SYSTEM_VENDOR_ID = 'system-vendor-id';
-
-const supplierProduct = {
-  externalId: '7',
-  name: 'Mechanical Keyboard',
-  description: 'A durable mechanical keyboard.',
-  categoryName: 'Computer Accessories',
-  priceCents: 4995,
-  stockQuantity: 12,
-  imageUrl: 'http://localhost:3001/keyboard.jpg',
-  imageCount: 3,
-};
-
-/** A real accumulating in-memory row, shared between the top-level
- * `prisma.catalogImportRun` and every `tx.catalogImportRun` seen inside a
- * `$transaction` callback — exactly like a real Postgres row is the same
- * row regardless of which connection/transaction touches it. Understands
- * Prisma's `{ increment: N }` update operator so checkpoint math
- * (processedCount, createdCount, ...) behaves like the real thing across
- * multiple batches and multiple `executeRun` calls (retries/resumes). */
-function makeRunStore(overrides: Record<string, unknown> = {}) {
-  let row: Record<string, unknown> = {
-    id: 'run-id',
-    status: CatalogImportStatus.QUEUED,
-    discoveredCount: 0,
-    createdCount: 0,
-    updatedCount: 0,
-    unchangedCount: 0,
-    scopedCount: 0,
+import { CatalogSource } from '@prisma/client';
+import { SupplierProduct } from '../catalog-source.adapter';
+const source = CatalogSource.OPEN_FOOD_FACTS;
+const candidate = (id: string): SupplierProduct => ({
+  externalId: id,
+  name: `Product ${id}`,
+  description: 'Supplier product description',
+  categoryName: 'Snacks',
+  imageUrls: ['https://images.openfoodfacts.org/a.jpg', 'https://images.openfoodfacts.org/b.jpg'],
+  imageCount: 2,
+  specifications: { Ingredients: 'Oats' },
+  brand: 'Test brand',
+});
+function setup() {
+  const run: Record<string, any> = {
+    id: 'run',
+    source,
+    status: 'QUEUED',
     processedCount: 0,
-    skippedCount: 0,
-    imagesRejectedCount: 0,
-    categoryScope: [],
-    maxRecords: null,
-    minImageCount: null,
-    errorMessage: null,
-    lockedAt: null,
-    lockedBy: null,
-    completedAt: null,
-    source: CatalogSource.DUMMY_JSON,
-    ...overrides,
+    createdCount: 0,
+    unchangedCount: 0,
+    categoryScope: ['en:snacks'],
   };
-
-  function applyData(data: Record<string, unknown>) {
-    for (const [key, value] of Object.entries(data)) {
-      if (value && typeof value === 'object' && 'increment' in (value as Record<string, unknown>)) {
-        row[key] = (Number(row[key]) || 0) + Number((value as { increment: number }).increment);
-      } else {
-        row[key] = value;
-      }
-    }
-  }
-
-  const update = jest.fn((args: { data: Record<string, unknown> }) => {
-    applyData(args.data);
-    return Promise.resolve({ ...row });
-  });
-  const findUniqueOrThrow = jest.fn(() => Promise.resolve({ ...row }));
-
-  return { snapshot: () => ({ ...row }), update, findUniqueOrThrow };
-}
-
-function makePrismaMock(runOverrides: Record<string, unknown> = {}) {
-  const runStore = makeRunStore(runOverrides);
-
-  const tx = {
-    $queryRaw: jest.fn().mockResolvedValue([{ acquired: true }]),
-    vendor: { upsert: jest.fn().mockResolvedValue({ id: SYSTEM_VENDOR_ID }) },
-    productSource: {
-      findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockResolvedValue({}),
-      update: jest.fn().mockResolvedValue({}),
+  const db: any = {
+    catalogImportPreview: {
+      create: jest.fn(async ({ data }) => ({ ...data, id: 'preview' })),
+      findUnique: jest.fn(),
+      deleteMany: jest.fn(async () => ({ count: 1 })),
     },
-    category: { upsert: jest.fn().mockResolvedValue({ id: 'category-id' }) },
-    product: {
-      create: jest.fn().mockResolvedValue({ id: 'product-id' }),
-      update: jest.fn().mockResolvedValue({}),
-    },
-    productMedia: { upsert: jest.fn().mockResolvedValue({}), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    vendorOffer: {
-      findFirst: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockResolvedValue({ id: 'offer-id' }),
-      update: jest.fn().mockResolvedValue({}),
-    },
-    inventoryAdjustment: { create: jest.fn().mockResolvedValue({}) },
-    // Same store, same jest.fn()s, as the top-level catalogImportRun below —
-    // a batch's checkpoint update inside a transaction and a read outside
-    // one see the same row, exactly like a real Postgres table would.
-    catalogImportRun: { update: runStore.update, findUniqueOrThrow: runStore.findUniqueOrThrow },
-  };
-  return {
-    tx,
-    runStore,
-    // Read directly by preview() — no transaction, since nothing is written.
-    productSource: { findUnique: jest.fn().mockResolvedValue(null) },
+    catalogSourceCheckpoint: { findUnique: jest.fn(async () => null), upsert: jest.fn() },
     catalogImportRun: {
-      create: jest.fn().mockResolvedValue({ id: 'run-id', status: CatalogImportStatus.QUEUED }),
-      update: runStore.update,
-      findMany: jest.fn(),
-      findUniqueOrThrow: runStore.findUniqueOrThrow,
+      create: jest.fn(async ({ data }) => ({ ...data, id: 'run' })),
+      findUniqueOrThrow: jest.fn(async () => ({ ...run })),
+      update: jest.fn(async ({ data }) => {
+        for (const [k, v] of Object.entries(data))
+          run[k] =
+            typeof v === 'object' && v && 'increment' in v
+              ? (run[k] ?? 0) + (v as any).increment
+              : v;
+        return { ...run };
+      }),
     },
-    $transaction: jest.fn((callback: (tx: unknown) => unknown) => callback(tx)),
+    productSource: {
+      findMany: jest.fn(async () => []),
+      findUnique: jest.fn(async () => null),
+      create: jest.fn(),
+    },
+    product: {
+      findMany: jest.fn(async () => []),
+      findUnique: jest.fn(async () => null),
+      create: jest.fn(async () => ({ id: 'product' })),
+    },
+    category: {
+      findUnique: jest.fn(async () => ({
+        id: 'category',
+        name: 'Snacks',
+        slug: 'snacks-sweets',
+        isActive: true,
+        parentId: null,
+      })),
+      findMany: jest.fn(async () => [
+        { id: 'category', name: 'Snacks', slug: 'snacks-sweets', isActive: true, parentId: null },
+      ]),
+      upsert: jest.fn(async () => ({ id: 'category' })),
+    },
+    brand: { upsert: jest.fn(async () => ({ id: 'brand' })) },
+    attributeDefinition: { upsert: jest.fn(async () => ({ id: 'attribute' })) },
+    productAttributeValue: { upsert: jest.fn() },
+    productMedia: { createMany: jest.fn() },
+    vendorOffer: { create: jest.fn(async () => ({ id: 'offer' })) },
+    inventoryAdjustment: { create: jest.fn() },
+    vendor: { findMany: jest.fn(async () => [{ id: 'vendor', name: 'ShopNest Direct' }]) },
+    taxClass: { findUnique: jest.fn(async () => null) },
+    $queryRaw: jest.fn(async () => [{ acquired: true }]),
   };
+  db.$transaction = jest.fn(async (fn: (tx: any) => unknown) => fn(db));
+  const adapter = {
+    fetchProducts: jest.fn(async () => ({
+      products: [candidate('a'), candidate('b')],
+      skippedCount: 0,
+      exhausted: true,
+    })),
+  };
+  const images = {
+    ingest: jest.fn(async (urls: string[]) =>
+      urls.map((_, i) => `http://localhost:3001/uploads/${i}.jpg`),
+    ),
+  };
+  const values: Record<string, unknown> = {
+    'app.catalogImportEnabled': true,
+    'app.nodeEnv': 'test',
+    'app.catalogImportBatchSize': 1,
+  };
+  const config = {
+    get: (key: string, fallback?: unknown) => values[key] ?? fallback,
+  } as ConfigService;
+  const service = new CatalogImportService(
+    db,
+    { resolve: () => adapter } as never,
+    config,
+    images as never,
+  );
+  return { db, run, adapter, images, service, values };
 }
-
-/** Batch size is injected via ConfigService — large by default so the
- * "ordinary behavior" tests exercise a single batch and keep their
- * assertions simple; the dedicated batching/checkpointing suite below
- * overrides it to a small number specifically to force multiple batches. */
-function makeConfigMock(batchSize = 100) {
-  return { get: jest.fn((key: string) => key === 'app.catalogImportEnabled' ? true : batchSize) } as never;
-}
-
-describe('CatalogImportService', () => {
-  it('blocks preview, enqueue and execution before any external or database work when disabled', async () => {
-    const prisma = makePrismaMock();
-    const adapter = { fetchProducts: jest.fn() };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter as never), { get: jest.fn().mockReturnValue(false) } as never);
-    await expect(service.preview(CatalogSource.DUMMY_JSON)).rejects.toThrow('Catalog imports are disabled');
-    await expect(service.enqueue(CatalogSource.DUMMY_JSON)).rejects.toThrow('Catalog imports are disabled');
-    await expect(service.executeRun('queued-run')).rejects.toThrow('Catalog imports are disabled');
+describe('saved catalog imports and incremental discovery', () => {
+  it('does not fetch a supplier taxonomy when this import has an explicit category override', async () => {
+    const { adapter, service } = setup();
+    const taxonomy = jest.fn(async () => {
+      throw new Error('Taxonomy unavailable');
+    });
+    Object.assign(adapter, { categoryTaxonomy: taxonomy });
+    const preview = await service.preview(source, { maxRecords: 1, targetCategoryId: 'category' });
+    expect(preview.wouldCreateCount).toBe(1);
+    expect(taxonomy).not.toHaveBeenCalled();
+  });
+  it('holds unmapped supplier categories for review without validating their photos or creating categories', async () => {
+    const { db, adapter, images, service } = setup();
+    const unknown = {
+      ...candidate('a'),
+      categoryName: 'Unknown supplier category',
+      sourceCategoryIds: ['en:unknown'],
+    };
+    const unknown2 = { ...unknown, externalId: 'b' };
+    adapter.fetchProducts.mockResolvedValue({
+      products: [unknown, unknown2],
+      skippedCount: 0,
+      exhausted: true,
+    });
+    const preview = await service.preview(source, { maxRecords: 2 });
+    expect(preview).toMatchObject({ wouldCreateCount: 0, unmappedCount: 2, skippedCount: 2 });
+    expect(images.ingest).not.toHaveBeenCalled();
+    expect(db.category.upsert).not.toHaveBeenCalled();
+  });
+  it('requires a fresh review if the internal category becomes unavailable', async () => {
+    const { db, service } = setup();
+    await service.preview(source, { maxRecords: 1 });
+    db.catalogImportPreview.findUnique.mockResolvedValue({
+      id: 'preview',
+      status: 'READY',
+      source,
+      expiresAt: new Date(Date.now() + 60000),
+      products: db.catalogImportPreview.create.mock.calls[0][0].data.products,
+    });
+    db.category.findMany.mockResolvedValue([]);
+    await expect(service.enqueue(source, { maxRecords: 1, previewId: 'preview' })).rejects.toThrow(
+      'Category mappings changed',
+    );
+    expect(db.catalogImportRun.create).not.toHaveBeenCalled();
+  });
+  it('uses the source/category/version checkpoint and requests additional eligible products past duplicates', async () => {
+    const { db, adapter, service } = setup();
+    db.catalogSourceCheckpoint.findUnique.mockResolvedValue({ position: 7 });
+    db.productSource.findMany
+      .mockResolvedValueOnce([{ externalId: 'a' }, { externalId: 'b' }])
+      .mockResolvedValue([]);
+    adapter.fetchProducts
+      .mockResolvedValueOnce({
+        products: [candidate('a'), candidate('b')],
+        skippedCount: 0,
+        exhausted: false,
+      })
+      .mockResolvedValueOnce({ products: [candidate('c')], skippedCount: 0, exhausted: true });
+    const preview = await service.preview(source, { categoryScope: ['en:snacks'], maxRecords: 1 });
+    expect(adapter.fetchProducts.mock.calls.map((args: any) => args[0].page)).toEqual([7, 8]);
+    expect(preview).toMatchObject({
+      wouldCreateCount: 1,
+      wouldBeUnchangedCount: 2,
+      discoveredCount: 3,
+    });
+    expect(preview.sample[0].externalId).toBe('c');
+    expect(db.catalogSourceCheckpoint.upsert).not.toHaveBeenCalled();
+  });
+  it('validates images before preview and saves exact proposed prices, stock and vendors', async () => {
+    const { db, images, service } = setup();
+    const scope = { maxRecords: 1, demoPriceCents: 12345, demoStockQuantity: 17, minImageCount: 2 };
+    const preview = await service.preview(source, scope);
+    expect(images.ingest).toHaveBeenCalled();
+    expect(preview.sample[0]).toMatchObject({
+      imageCount: 2,
+      proposedOffer: { vendorId: 'vendor', priceCents: 12345, stockQuantity: 17 },
+    });
+    expect(
+      db.catalogImportPreview.create.mock.calls[0][0].data.products.products[0].imageUrls[0],
+    ).toContain('/uploads/');
+  });
+  it('excludes cross-source GTIN matches without fuzzy title merging', async () => {
+    const { db, adapter, service } = setup();
+    adapter.fetchProducts.mockResolvedValue({
+      products: [{ ...candidate('a'), gtin: '00012345678901' }],
+      skippedCount: 0,
+      exhausted: true,
+    });
+    db.product.findMany.mockResolvedValue([{ gtin: '00012345678901' }]);
+    expect(await service.preview(source, { maxRecords: 1 })).toMatchObject({
+      wouldCreateCount: 0,
+      wouldBeUnchangedCount: 1,
+      exhausted: true,
+    });
+  });
+  it('allows a deliberate rescan after changing quality filters', async () => {
+    const { db, adapter, service } = setup();
+    await service.preview(source, { categoryScope: ['en:snacks'], rescan: true, maxRecords: 1 });
+    expect(db.catalogSourceCheckpoint.findUnique).not.toHaveBeenCalled();
+    expect(adapter.fetchProducts).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }));
+  });
+  it('binds the full configuration and imports only the selected saved candidates', async () => {
+    const { db, service } = setup();
+    const scope = { maxRecords: 2, demoPriceCents: 1000, demoStockQuantity: 10 };
+    await service.preview(source, scope);
+    db.catalogImportPreview.findUnique.mockResolvedValue({
+      id: 'preview',
+      status: 'READY',
+      source,
+      expiresAt: new Date(Date.now() + 60000),
+      products: db.catalogImportPreview.create.mock.calls[0][0].data.products,
+    });
+    await expect(
+      service.enqueue(source, { ...scope, demoPriceCents: 2000, previewId: 'preview' }),
+    ).rejects.toThrow('Configuration changed');
+    await service.enqueue(source, { ...scope, previewId: 'preview', selectedProductIds: ['b'] });
+    expect(
+      db.catalogImportRun.create.mock.calls[0][0].data.candidateSnapshot.products.map(
+        (p: any) => p.externalId,
+      ),
+    ).toEqual(['b']);
+    expect(db.catalogImportRun.create.mock.calls[0][0].data.scopedCount).toBe(1);
+    expect(db.catalogImportPreview.deleteMany).toHaveBeenCalledTimes(1);
+  });
+  it('rejects expired or previously consumed previews', async () => {
+    const { db, service } = setup();
+    db.catalogImportPreview.findUnique.mockResolvedValue(null);
+    await expect(service.enqueue(source, { previewId: 'missing' })).rejects.toThrow(
+      'Preview expired',
+    );
+    expect(db.catalogImportRun.create).not.toHaveBeenCalled();
+  });
+  it('never fetches from a source while executing a confirmed snapshot', async () => {
+    const { db, run, adapter, service } = setup();
+    run.candidateSnapshot = {
+      products: [candidate('a')],
+      checkpoints: [{ category: 'en:snacks', version: 'v1', position: 2, exhausted: false }],
+    };
+    await service.executeRun('run');
     expect(adapter.fetchProducts).not.toHaveBeenCalled();
-    expect(prisma.catalogImportRun.create).not.toHaveBeenCalled();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
-  it('creates a canonical product, its image, and a system-vendor VendorOffer — never writes Product commercial fields as the source of truth', async () => {
-    const prisma = makePrismaMock();
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    const queued = await service.enqueue(CatalogSource.DUMMY_JSON);
-    const result = await service.executeRun(queued.id);
-
-    expect(prisma.tx.vendor.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { slug: 'shopnest-direct' } }),
-    );
-    expect(prisma.tx.product.create).toHaveBeenCalledTimes(1);
-    expect(prisma.tx.productSource.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ source: CatalogSource.DUMMY_JSON, externalId: '7' }),
+    expect(db.product.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ publishStatus: 'DRAFT', brandId: 'brand' }),
     });
-    expect(prisma.tx.productMedia.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ create: expect.objectContaining({ url: supplierProduct.imageUrl, position: 0 }) }),
-    );
-    expect(prisma.tx.vendorOffer.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          vendorId: SYSTEM_VENDOR_ID,
-          productId: 'product-id',
-          priceCents: 4995,
-          stockQuantity: 12,
-          status: 'ACTIVE',
-        }),
-      }),
-    );
-    expect(prisma.tx.inventoryAdjustment.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ vendorOfferId: 'offer-id', delta: 12, reason: 'IMPORT_INITIAL' }) }),
-    );
-    expect(result).toEqual(
-      expect.objectContaining({
-        status: CatalogImportStatus.SUCCEEDED,
-        discoveredCount: 1,
-        createdCount: 1,
-        processedCount: 1,
-      }),
+    expect(db.productAttributeValue.upsert).toHaveBeenCalled();
+    expect(db.category.upsert).not.toHaveBeenCalled();
+    expect(db.catalogSourceCheckpoint.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: { position: 2, exhausted: false } }),
     );
   });
-
-  it('a supplier record with no commercial data creates a DRAFT product and no VendorOffer', async () => {
-    const prisma = makePrismaMock();
-    const priceless = { ...supplierProduct, priceCents: undefined, stockQuantity: undefined };
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [priceless], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    await service.executeRun('run-id');
-
-    expect(prisma.tx.product.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ publishStatus: 'DRAFT' }) }),
-    );
-    expect(prisma.tx.vendorOffer.create).not.toHaveBeenCalled();
-    expect(prisma.tx.inventoryAdjustment.create).not.toHaveBeenCalled();
+  it('uses insert-only writes and leaves existing descriptions, images, offers and stock untouched', async () => {
+    const { db, run, service } = setup();
+    run.candidateSnapshot = { products: [candidate('a')], checkpoints: [] };
+    db.productSource.findUnique.mockResolvedValue({ productId: 'existing' });
+    await service.executeRun('run');
+    expect(db.product.create).not.toHaveBeenCalled();
+    expect(db.productMedia.createMany).not.toHaveBeenCalled();
+    expect(db.vendorOffer.create).not.toHaveBeenCalled();
+    expect(run.unchangedCount).toBe(1);
   });
-
-  it('slugifies externalId, not just the name — an uppercase supplier id (e.g. an Amazon ASIN) must not end up in the slug', async () => {
-    const prisma = makePrismaMock();
-    const asinProduct = { ...supplierProduct, externalId: 'B0BLXXGZJL' };
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [asinProduct], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    await service.executeRun('run-id');
-
-    const slug = prisma.tx.product.create.mock.calls[0][0].data.slug as string;
-    // Same lowercase-kebab-case rule the admin edit form's slug field
-    // validates — an unslugified externalId would import fine, then
-    // reject the very first edit of that product.
-    expect(slug).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
-    expect(slug).toContain('b0blxxgzjl');
+  it('resumes from the last committed batch without double-counting', async () => {
+    const { db, run, service } = setup();
+    run.processedCount = 1;
+    run.createdCount = 1;
+    run.candidateSnapshot = { products: [candidate('a'), candidate('b')], checkpoints: [] };
+    await service.executeRun('run');
+    expect(db.product.create).toHaveBeenCalledTimes(1);
+    expect(run.processedCount).toBe(2);
+    expect(run.createdCount).toBe(2);
+    await service.executeRun('run');
+    expect(db.product.create).toHaveBeenCalledTimes(1);
   });
-
-  it('updating an existing product does not rewrite publishStatus — admin-owned once created', async () => {
-    const prisma = makePrismaMock();
-    prisma.tx.productSource.findUnique.mockResolvedValue({
-      id: 'source-id',
-      productId: 'product-id',
-      checksum: 'stale-checksum-so-it-looks-changed',
-    });
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [{ ...supplierProduct, name: 'Renamed Keyboard' }], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    await service.executeRun('run-id');
-
-    expect(prisma.tx.product.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.not.objectContaining({ publishStatus: expect.anything() }) }),
-    );
+  it('retains a partial page so records beyond a requested quantity remain reachable', async () => {
+    const { db, service } = setup();
+    await service.preview(source, { maxRecords: 1 });
+    expect(
+      db.catalogImportPreview.create.mock.calls[0][0].data.products.checkpoints[0],
+    ).toMatchObject({ position: 1, exhausted: false });
   });
-
-  it('writes one ProductMedia row per image in imageUrls, position-ordered, and prunes stale trailing positions', async () => {
-    const prisma = makePrismaMock();
-    const multiImage = {
-      ...supplierProduct,
-      imageUrl: 'http://localhost:3001/a.jpg',
-      imageUrls: ['http://localhost:3001/a.jpg', 'http://localhost:3001/b.jpg', 'http://localhost:3001/c.jpg'],
-    };
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [multiImage], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    await service.executeRun('run-id');
-
-    expect(prisma.tx.productMedia.upsert).toHaveBeenCalledTimes(3);
-    [0, 1, 2].forEach((position) => {
-      expect(prisma.tx.productMedia.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { productId_position: { productId: 'product-id', position } },
-          create: expect.objectContaining({ url: multiImage.imageUrls[position], position }),
-        }),
-      );
+  it('bounds scans even when a source keeps returning duplicates', async () => {
+    const { db, adapter, service } = setup();
+    adapter.fetchProducts.mockResolvedValue({
+      products: [candidate('a')],
+      skippedCount: 0,
+      exhausted: false,
     });
-    expect(prisma.tx.productMedia.deleteMany).toHaveBeenCalledWith({
-      where: { productId: 'product-id', position: { gte: 3 } },
-    });
-  });
-
-  it('drops a supplier-hosted image URL rather than storing an unapproved host, and reports the rejection explicitly on the run — real supplier CDNs are not on the media allow-list', async () => {
-    const prisma = makePrismaMock();
-    const thirdPartyHosted = {
-      ...supplierProduct,
-      imageUrl: 'https://cdn.dummyjson.com/products/1/thumbnail.jpg',
-      imageUrls: ['https://cdn.dummyjson.com/products/1/thumbnail.jpg', 'https://images.openfoodfacts.org/1.jpg'],
-    };
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [thirdPartyHosted], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    await service.executeRun('run-id');
-
-    expect(prisma.tx.productMedia.upsert).not.toHaveBeenCalled();
-    expect(prisma.tx.product.create).toHaveBeenCalledTimes(1);
-    expect(prisma.runStore.snapshot().imagesRejectedCount).toBe(2);
-  });
-
-  it('keeps whichever images in a mixed list are on the approved media origin and drops the rest, counting only the dropped ones', async () => {
-    const prisma = makePrismaMock();
-    const mixed = {
-      ...supplierProduct,
-      imageUrl: 'http://localhost:3001/ok.jpg',
-      imageUrls: ['http://localhost:3001/ok.jpg', 'https://cdn.dummyjson.com/bad.jpg'],
-    };
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [mixed], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    await service.executeRun('run-id');
-
-    expect(prisma.tx.productMedia.upsert).toHaveBeenCalledTimes(1);
-    expect(prisma.tx.productMedia.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ create: expect.objectContaining({ url: 'http://localhost:3001/ok.jpg', position: 0 }) }),
-    );
-    expect(prisma.runStore.snapshot().imagesRejectedCount).toBe(1);
-  });
-
-  it('accepts real Amazon product-image URLs, matching the exact host every existing ProductMedia row already depends on', async () => {
-    const prisma = makePrismaMock();
-    const amazonHosted = {
-      ...supplierProduct,
-      imageUrl: 'https://m.media-amazon.com/images/I/41qfjSfqNyL.jpg',
-      imageUrls: [
-        'https://m.media-amazon.com/images/I/41qfjSfqNyL.jpg',
-        'https://m.media-amazon.com/images/I/71i77AuI9xL._SL1500_.jpg',
-      ],
-    };
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [amazonHosted], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    await service.executeRun('run-id');
-
-    expect(prisma.tx.productMedia.upsert).toHaveBeenCalledTimes(2);
-    expect(prisma.runStore.snapshot().imagesRejectedCount).toBe(0);
-  });
-
-  it('does not rewrite an unchanged canonical product or its offer', async () => {
-    const prisma = makePrismaMock();
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    await service.executeRun('run-id');
-    const checksum = prisma.tx.productSource.create.mock.calls[0][0].data.checksum;
-    prisma.tx.productSource.findUnique.mockResolvedValue({
-      id: 'source-id',
-      productId: 'product-id',
-      checksum,
-    });
-    // A fresh run row for the second execution — a genuinely new
-    // CatalogImportRun, not a resume of the first (that's covered
-    // separately below).
-    const prisma2 = makePrismaMock();
-    prisma2.tx.productSource.findUnique.mockResolvedValue({ id: 'source-id', productId: 'product-id', checksum });
-    const service2 = new CatalogImportService(prisma2 as never, makeRegistry(adapter), makeConfigMock());
-    const result = await service2.executeRun('run-id-2');
-
-    expect(prisma2.tx.product.create).not.toHaveBeenCalled();
-    expect(prisma2.tx.vendorOffer.create).not.toHaveBeenCalled();
-    expect(result).toEqual(expect.objectContaining({ unchangedCount: 1, createdCount: 0 }));
-  });
-
-  it('re-syncing an existing offer with a changed stock quantity records the delta, not a fresh IMPORT_INITIAL row', async () => {
-    const prisma = makePrismaMock();
-    prisma.tx.productSource.findUnique.mockResolvedValue({
-      id: 'source-id',
-      productId: 'product-id',
-      checksum: 'stale-checksum-so-it-looks-changed',
-    });
-    prisma.tx.vendorOffer.findFirst.mockResolvedValue({ id: 'offer-id', stockQuantity: 5 });
-
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [{ ...supplierProduct, stockQuantity: 20 }], skippedCount: 0 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-    await service.executeRun('run-id');
-
-    expect(prisma.tx.vendorOffer.create).not.toHaveBeenCalled();
-    expect(prisma.tx.vendorOffer.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ stockQuantity: 20 }) }),
-    );
-    expect(prisma.tx.inventoryAdjustment.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ delta: 15, reason: 'CORRECTION' }) }), // 20 - 5
-    );
-  });
-
-  it('leaves retry and terminal failure policy to the worker — a fetch failure before any batch starts leaves the run untouched', async () => {
-    const prisma = makePrismaMock();
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockRejectedValue(new Error('offline')),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    await expect(service.executeRun('run-id')).rejects.toThrow('offline');
-    expect(prisma.catalogImportRun.update).not.toHaveBeenCalled();
-  });
-
-  it('a permanently-invalid record the adapter skipped is recorded (skippedCount) and does not block the valid ones', async () => {
-    const prisma = makePrismaMock();
-    const adapter: CatalogSourceAdapter = {
-      fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct], skippedCount: 2 }),
-    };
-    const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-    const result = await service.executeRun('run-id');
-
-    expect(result).toEqual(expect.objectContaining({ skippedCount: 2, createdCount: 1 }));
-    expect(prisma.tx.product.create).toHaveBeenCalledTimes(1);
-  });
-
-  describe('import scope', () => {
-    const otherCategoryProduct = { ...supplierProduct, externalId: '9', name: 'Desk Lamp', categoryName: 'Home Office' };
-    const lowImageProduct = { ...supplierProduct, externalId: '11', name: 'Cable Tie Pack', imageCount: 0 };
-
-    it('executeRun only processes products in categoryScope, matched case-insensitively by slug', async () => {
-      const prisma = makePrismaMock({ categoryScope: ['computer ACCESSORIES'] }); // mismatched case/spacing on purpose
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-      const result = await service.executeRun('run-id');
-
-      expect(prisma.tx.product.create).toHaveBeenCalledTimes(1); // only the in-scope one
-      expect(result).toEqual(expect.objectContaining({ discoveredCount: 2, scopedCount: 1, createdCount: 1 }));
-    });
-
-    it('categoryScope matches by substring, not exact equality — a supplier rarely uses the same vocabulary an admin types', async () => {
-      const allElectronics = { ...supplierProduct, externalId: '20', name: 'USB Hub', categoryName: 'All Electronics' };
-      const prisma = makePrismaMock({ categoryScope: ['Electronics'] }); // narrower than the real category name
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products: [allElectronics, otherCategoryProduct], skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-      const result = await service.executeRun('run-id');
-
-      expect(prisma.tx.productSource.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ externalId: '20' }) }),
-      );
-      expect(result).toEqual(expect.objectContaining({ scopedCount: 1, createdCount: 1 })); // Home Office excluded
-    });
-
-    it('a categoryScope entry that slugifies to nothing is dropped, not treated as "matches everything"', async () => {
-      const prisma = makePrismaMock({ categoryScope: ['   '] }); // whitespace-only, slugifies to ''
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-      const result = await service.executeRun('run-id');
-
-      // Every needle was blank, so scoping is effectively skipped — both
-      // products pass, same as an empty categoryScope would behave.
-      expect(result).toEqual(expect.objectContaining({ scopedCount: 2, createdCount: 2 }));
-    });
-
-    it('executeRun respects maxRecords as a hard cap on the scoped set', async () => {
-      const prisma = makePrismaMock({ maxRecords: 1 });
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-      await service.executeRun('run-id');
-
-      expect(prisma.tx.product.create).toHaveBeenCalledTimes(1);
-    });
-
-    it('executeRun excludes products below minImageCount', async () => {
-      const prisma = makePrismaMock({ minImageCount: 1 });
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, lowImageProduct], skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-      await service.executeRun('run-id');
-
-      expect(prisma.tx.productSource.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ externalId: '7' }) }),
-      );
-      expect(prisma.tx.product.create).toHaveBeenCalledTimes(1); // lowImageProduct (externalId 11) excluded
-    });
-
-    it('preview reports counts without writing anything', async () => {
-      const prisma = makePrismaMock();
-      prisma.productSource.findUnique.mockResolvedValue(null); // every product would be a fresh create
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-      const preview = await service.preview(CatalogSource.DUMMY_JSON, {});
-
-      expect(preview).toEqual(
-        expect.objectContaining({
-          discoveredCount: 2,
-          scopedCount: 2,
-          wouldCreateCount: 2,
-          wouldUpdateCount: 0,
-          wouldBeUnchangedCount: 0,
-        }),
-      );
-      expect(preview.sample).toHaveLength(2);
-      expect(prisma.$transaction).not.toHaveBeenCalled();
-      expect(prisma.tx.product.create).not.toHaveBeenCalled();
-      expect(prisma.catalogImportRun.create).not.toHaveBeenCalled();
-    });
-
-    it('preview reports how many images would be rejected, without writing anything', async () => {
-      const prisma = makePrismaMock();
-      prisma.productSource.findUnique.mockResolvedValue(null);
-      const thirdPartyHosted = { ...supplierProduct, imageUrl: 'https://cdn.dummyjson.com/x.jpg', imageUrls: ['https://cdn.dummyjson.com/x.jpg'] };
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products: [thirdPartyHosted], skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-      const preview = await service.preview(CatalogSource.DUMMY_JSON, {});
-
-      expect(preview.wouldRejectImageCount).toBe(1);
-      expect(prisma.tx.productMedia.upsert).not.toHaveBeenCalled();
-    });
-
-    it('preview distinguishes create/update/unchanged using the same checksum logic as a real run', async () => {
-      const prisma = makePrismaMock();
-      const changedChecksum = 'a-checksum-that-will-never-match';
-      prisma.productSource.findUnique.mockImplementation(({ where }: { where: { source_externalId: { externalId: string } } }) => {
-        if (where.source_externalId.externalId === '7') return Promise.resolve({ checksum: changedChecksum });
-        return Promise.resolve(null);
-      });
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products: [supplierProduct, otherCategoryProduct], skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock());
-
-      const preview = await service.preview(CatalogSource.DUMMY_JSON, {});
-
-      expect(preview.wouldCreateCount).toBe(1); // otherCategoryProduct
-      expect(preview.wouldUpdateCount).toBe(1); // supplierProduct — exists with a different checksum
-      expect(preview.sample.find((i) => i.externalId === '7')?.action).toBe('update');
-    });
-  });
-
-  describe('bounded batches, checkpointing, and interruption/recovery', () => {
-    function makeProducts(count: number) {
-      return Array.from({ length: count }, (_, i) => ({
-        ...supplierProduct,
-        externalId: String(i + 1),
-        name: `Product ${i + 1}`,
-      }));
-    }
-
-    it('processes a run across multiple short batches, checkpointing progress after each one', async () => {
-      const prisma = makePrismaMock();
-      const products = makeProducts(5);
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2)); // batch size 2 -> 3 batches (2,2,1)
-
-      const result = await service.executeRun('run-id');
-
-      // $transaction called once per batch, not once for the whole run.
-      expect(prisma.$transaction).toHaveBeenCalledTimes(3);
-      expect(prisma.tx.product.create).toHaveBeenCalledTimes(5);
-      expect(result).toEqual(
-        expect.objectContaining({
-          status: CatalogImportStatus.SUCCEEDED,
-          processedCount: 5,
-          createdCount: 5,
-          scopedCount: 5,
-        }),
-      );
-    });
-
-    it('failure between batches leaves the completed batch committed and does not advance past it', async () => {
-      const prisma = makePrismaMock();
-      const products = makeProducts(4);
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2)); // 2 batches of 2
-
-      // Batch 1's advisory-lock acquisition succeeds; batch 2's fails outright
-      // (simulating e.g. a dropped connection) — before any product-level
-      // work in that batch even starts, so there's no partial-batch state
-      // to reason about.
-      prisma.tx.$queryRaw
-        .mockResolvedValueOnce([{ acquired: true }]) // batch 1
-        .mockRejectedValueOnce(new Error('connection lost')); // batch 2
-
-      await expect(service.executeRun('run-id')).rejects.toThrow('connection lost');
-
-      const afterFailure = prisma.runStore.snapshot();
-      expect(afterFailure.processedCount).toBe(2); // only batch 1 committed
-      expect(afterFailure.createdCount).toBe(2);
-      expect(afterFailure.status).not.toBe(CatalogImportStatus.SUCCEEDED);
-      expect(prisma.tx.product.create).toHaveBeenCalledTimes(2); // batch 2 never started
-    });
-
-    it('worker restart after a completed batch: retrying the same run resumes from the checkpoint, not from scratch', async () => {
-      const prisma = makePrismaMock();
-      const products = makeProducts(4);
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2));
-
-      prisma.tx.$queryRaw
-        .mockResolvedValueOnce([{ acquired: true }])
-        .mockRejectedValueOnce(new Error('worker crashed'));
-      await expect(service.executeRun('run-id')).rejects.toThrow('worker crashed');
-      expect(prisma.runStore.snapshot().processedCount).toBe(2);
-
-      // A "restart" is just calling executeRun again against the same run
-      // row — nothing in-memory carried over, exactly like a different
-      // worker process picking the job back up after a lease-expiry
-      // reclaim would look from the service's point of view.
-      prisma.tx.$queryRaw.mockResolvedValue([{ acquired: true }]); // healthy from here on
-      const result = await service.executeRun('run-id');
-
-      expect(result).toEqual(
-        expect.objectContaining({ status: CatalogImportStatus.SUCCEEDED, processedCount: 4, createdCount: 4 }),
-      );
-      // 2 from the completed first batch + 2 from the successful resume of
-      // batch 2 = 4 calls, matching the 4 real products — batch 2's failed
-      // attempt died at lock acquisition, before any product-level work,
-      // so it left nothing to duplicate on resume.
-      expect(prisma.tx.product.create).toHaveBeenCalledTimes(4);
-      expect(new Set(prisma.tx.product.create.mock.calls.map((c) => c[0].data.slug)).size).toBe(4);
-    });
-
-    it('retrying an already-fully-processed run is a no-op — no duplicate products, offers, or inventory adjustments', async () => {
-      const prisma = makePrismaMock();
-      const products = makeProducts(3);
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2));
-
-      await service.executeRun('run-id');
-      expect(prisma.runStore.snapshot().processedCount).toBe(3);
-      const createCallsAfterFirstRun = prisma.tx.product.create.mock.calls.length;
-
-      // Simulates a duplicate worker invocation (e.g. a lease reclaimed by
-      // a second worker that turns out not to have actually been dead) —
-      // processedCount already covers every scoped product, so `remaining`
-      // is empty and no batch even runs.
-      const result = await service.executeRun('run-id');
-
-      expect(prisma.tx.product.create).toHaveBeenCalledTimes(createCallsAfterFirstRun); // unchanged
-      expect(prisma.tx.inventoryAdjustment.create).toHaveBeenCalledTimes(createCallsAfterFirstRun);
-      expect(result).toEqual(expect.objectContaining({ status: CatalogImportStatus.SUCCEEDED, processedCount: 3 }));
-    });
-
-    it('progress counters stay accurate through an interruption and a resume — no double-counting', async () => {
-      const prisma = makePrismaMock();
-      const products = makeProducts(6);
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(3)); // 2 batches of 3
-
-      prisma.tx.$queryRaw
-        .mockResolvedValueOnce([{ acquired: true }])
-        .mockRejectedValueOnce(new Error('transient'));
-      await expect(service.executeRun('run-id')).rejects.toThrow();
-      expect(prisma.runStore.snapshot()).toEqual(
-        expect.objectContaining({ processedCount: 3, createdCount: 3, discoveredCount: 6, scopedCount: 6 }),
-      );
-
-      prisma.tx.$queryRaw.mockResolvedValue([{ acquired: true }]);
-      const final = await service.executeRun('run-id');
-      expect(final).toEqual(
-        expect.objectContaining({ processedCount: 6, createdCount: 6, discoveredCount: 6, scopedCount: 6 }),
-      );
-    });
-
-    it('renews the worker lease (lockedAt) after every batch, not just once at claim time', async () => {
-      const prisma = makePrismaMock({ lockedAt: new Date('2020-01-01') });
-      const products = makeProducts(4);
-      const adapter: CatalogSourceAdapter = {
-        fetchProducts: jest.fn().mockResolvedValue({ products, skippedCount: 0 }),
-      };
-      const service = new CatalogImportService(prisma as never, makeRegistry(adapter), makeConfigMock(2));
-
-      await service.executeRun('run-id');
-
-      const lockedAtUpdates = prisma.tx.catalogImportRun.update.mock.calls
-        .map((c) => c[0].data.lockedAt)
-        .filter((v) => v instanceof Date);
-      expect(lockedAtUpdates.length).toBe(2); // one per batch
-    });
+    db.productSource.findMany.mockResolvedValue([{ externalId: 'a' }]);
+    const result = await service.preview(source, { maxRecords: 1 });
+    expect(result.scanLimitReached).toBe(true);
+    expect(adapter.fetchProducts).toHaveBeenCalledTimes(30);
   });
 });

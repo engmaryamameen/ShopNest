@@ -19,10 +19,12 @@ export class VendorAnalyticsService {
     const { vendorId } = await this.membership.requireMembership(userId);
 
     const [revenue, orderCounts, offerCounts] = await Promise.all([
-      this.prisma.vendorOrder.aggregate({
-        where: { vendorId, status: { not: OrderStatus.CANCELLED } },
-        _sum: { subtotalCents: true },
-      }),
+      this.prisma.$queryRaw<Array<{ netCents: bigint }>>`
+        SELECT COALESCE(SUM(CASE WHEN i."pricingSnapshot" IS NOT NULL
+          THEN i."totalCents" - i."taxCents" ELSE i."unitPriceCents" * i.quantity END), 0) AS "netCents"
+        FROM "OrderItem" i JOIN "VendorOrder" o ON o.id = i."vendorOrderId"
+        WHERE o."vendorId" = ${vendorId}::uuid AND o.status <> 'CANCELLED'
+      `,
       this.prisma.vendorOrder.groupBy({
         by: ['status'],
         where: { vendorId },
@@ -35,13 +37,13 @@ export class VendorAnalyticsService {
       }),
     ]);
 
-    const ordersByStatus = Object.fromEntries(orderCounts.map((r) => [r.status, r._count])) as Partial<
-      Record<OrderStatus, number>
-    >;
+    const ordersByStatus = Object.fromEntries(
+      orderCounts.map((r) => [r.status, r._count]),
+    ) as Partial<Record<OrderStatus, number>>;
     const offersByStatus = Object.fromEntries(offerCounts.map((r) => [r.status, r._count]));
 
     return {
-      totalRevenueCents: revenue._sum.subtotalCents ?? 0,
+      totalRevenueCents: Number(revenue[0]?.netCents ?? 0),
       totalOrders: orderCounts.reduce((sum, r) => sum + r._count, 0),
       ordersAwaitingFulfilment: ordersByStatus.PENDING ?? 0,
       ordersByStatus,

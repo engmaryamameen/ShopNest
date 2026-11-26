@@ -33,7 +33,6 @@ export function AdminShell({ children, email, isSuperAdmin, demoEnabled }: {
     const media = window.matchMedia('(max-width: 900px)');
     const sync = () => { setIsMobile(media.matches); setMobileNavOpen(false); if (media.matches) setActivityOpen(false); };
     sync();
-    setActivityOpen(window.matchMedia('(min-width: 1101px)').matches);
     media.addEventListener('change', sync);
     return () => media.removeEventListener('change', sync);
   }, []);

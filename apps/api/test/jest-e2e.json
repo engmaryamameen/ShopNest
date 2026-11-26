@@ -4,10 +4,17 @@
   "testEnvironment": "node",
   "testRegex": "\\.integration\\.spec\\.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": ["ts-jest", {
-      "tsconfig": "<rootDir>/../tsconfig.json"
-    }]
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": { "allowJs": true }
+      }
+    ]
   },
+  "transformIgnorePatterns": [
+    "node_modules/.pnpm/(?!(htmlparser2|domhandler|domutils|domelementtype|entities|dom-serializer)@)",
+    "node_modules/(?!.pnpm|htmlparser2|domhandler|domutils|domelementtype|entities|dom-serializer)"
+  ],
   "moduleNameMapper": {
     "^@/(.*)$": "<rootDir>/../src/$1"
   },

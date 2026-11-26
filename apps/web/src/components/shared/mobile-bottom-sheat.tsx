@@ -33,10 +33,10 @@ export function MobileBottomSheet({
     <div
       className={`
         fixed inset-0 z-[100]
-        transition-visibility
+        transition-[visibility] duration-0 motion-reduce:delay-0
         lg:hidden
 
-        ${open ? 'visible' : 'invisible'}
+        ${open ? 'visible delay-0' : 'invisible delay-300'}
       `}
       inert={!open}
     >
@@ -49,7 +49,7 @@ export function MobileBottomSheet({
           absolute inset-0
           h-full w-full
           bg-black/40
-          transition-opacity duration-300
+          transition-opacity duration-300 motion-reduce:duration-0
 
           ${open ? 'opacity-100' : 'opacity-0'}
         `}
@@ -71,6 +71,7 @@ export function MobileBottomSheet({
           transition-transform
           duration-300
           ease-out
+          motion-reduce:duration-0
 
           ${
             open

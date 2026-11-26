@@ -22,8 +22,12 @@ export class CatalogImportWorker implements OnApplicationBootstrap, OnApplicatio
     if (this.config.get<boolean>('app.catalogImportEnabled') !== true) return;
     if (!this.config.get<boolean>('app.catalogWorkerEnabled', true)) return;
     const intervalMs = this.config.get<number>('app.catalogWorkerPollMs', 2000);
-    void this.poll();
-    this.timer = setInterval(() => void this.poll(), intervalMs);
+    const poll = () =>
+      void this.poll().catch((error: Error) =>
+        this.logger.error(`Catalog worker poll failed: ${error.message}`),
+      );
+    poll();
+    this.timer = setInterval(poll, intervalMs);
     this.timer.unref();
   }
 
@@ -37,7 +41,20 @@ export class CatalogImportWorker implements OnApplicationBootstrap, OnApplicatio
     this.polling = true;
     try {
       const job = await this.claimNextRun();
-      if (!job) return;
+      if (!job) {
+        const [preview] = await this.prisma.$queryRaw<Array<{ id: string }>>`
+          WITH candidate AS (
+            SELECT id FROM "CatalogImportPreview"
+            WHERE status = 'PREPARING' AND "expiresAt" > NOW()
+              AND ("lockedAt" IS NULL OR "lockedAt" < NOW() - INTERVAL '5 minutes')
+            ORDER BY "createdAt" FOR UPDATE SKIP LOCKED LIMIT 1
+          )
+          UPDATE "CatalogImportPreview" p SET "lockedAt" = NOW()
+          FROM candidate WHERE p.id = candidate.id RETURNING p.id
+        `;
+        if (preview) await this.imports.prepareQueuedPreview(preview.id);
+        return;
+      }
       try {
         await this.imports.executeRun(job.id);
         this.logger.log(`Catalog synchronization ${job.id} succeeded`);
@@ -72,7 +89,10 @@ export class CatalogImportWorker implements OnApplicationBootstrap, OnApplicatio
   }
 
   private async recordFailure(job: CatalogImportRun, error: unknown): Promise<void> {
-    const message = (error instanceof Error ? error.message : 'Unknown import failure').slice(0, 1000);
+    const message = (error instanceof Error ? error.message : 'Unknown import failure').slice(
+      0,
+      1000,
+    );
     const retry = job.attemptCount < job.maxAttempts;
     const delaySeconds = Math.min(30 * 2 ** Math.max(job.attemptCount - 1, 0), 600);
     await this.prisma.catalogImportRun.update({
@@ -93,6 +113,8 @@ export class CatalogImportWorker implements OnApplicationBootstrap, OnApplicatio
             errorMessage: message,
           },
     });
-    this.logger.error(`Catalog synchronization ${job.id} failed${retry ? '; retry scheduled' : ''}: ${message}`);
+    this.logger.error(
+      `Catalog synchronization ${job.id} failed${retry ? '; retry scheduled' : ''}: ${message}`,
+    );
   }
 }

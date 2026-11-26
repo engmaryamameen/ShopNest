@@ -7,6 +7,7 @@
     "dev": "nest start --watch",
     "start": "node dist/src/main",
     "db:seed": "node --experimental-strip-types prisma/seed.ts",
+    "db:taxonomy": "node --env-file=.env --experimental-strip-types prisma/prepare-categories.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "type-check": "tsc --noEmit",
     "test": "jest",
@@ -45,6 +46,7 @@
     "prisma": "6.10.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
+    "sanitize-html": "^2.18.2",
     "swagger-ui-express": "5.0.1"
   },
   "devDependencies": {
@@ -58,6 +60,7 @@
     "@types/nodemailer": "6.4.17",
     "@types/passport-jwt": "4.0.1",
     "@types/passport-local": "1.0.38",
+    "@types/sanitize-html": "^2.16.2",
     "@types/supertest": "6.0.3",
     "@typescript-eslint/eslint-plugin": "8.34.1",
     "@typescript-eslint/parser": "8.34.1",
@@ -77,8 +80,19 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "allowJs": true
+          }
+        }
+      ]
     },
+    "transformIgnorePatterns": [
+      "node_modules/.pnpm/(?!(htmlparser2|domhandler|domutils|domelementtype|entities|dom-serializer)@)",
+      "node_modules/(?!.pnpm|htmlparser2|domhandler|domutils|domelementtype|entities|dom-serializer)"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],

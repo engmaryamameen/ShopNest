@@ -18,7 +18,7 @@ export function AdminTopbar({ collapsed, onToggleSidebar, favorite, onToggleFavo
   const title = adminPageTitle(pathname);
 
   return (
-    <header className={styles.header}>
+    <header className={styles.header} data-admin-header>
       <div className={`flex items-center ${styles.navControls}`}>
         <button type="button" className={`${toolbarControl} ${collapsed ? activeControl : ""}`} onClick={onToggleSidebar} aria-controls="admin-sidebar"
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed}>

@@ -65,6 +65,7 @@ function OfferRow({
           )}
         </div>
         <p className="text-sm text-gray-500 mt-0.5">
+          {offer.variantLabel && <span className="mr-2">{offer.variantLabel} ·</span>}
           {offer.stockQuantity > 0 ? `${offer.stockQuantity} in stock` : 'Out of stock'}
         </p>
         {message && <p className="text-xs text-gray-500 mt-1">{message}</p>}

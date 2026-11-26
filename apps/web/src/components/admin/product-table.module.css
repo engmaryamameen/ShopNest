@@ -1,0 +1,9 @@
+.scrollArea {
+  scrollbar-width: thin;
+  scrollbar-color: #aab8c6 transparent;
+}
+.scrollArea::-webkit-scrollbar { height: 6px; }
+.scrollArea::-webkit-scrollbar-track { background: transparent; }
+.scrollArea::-webkit-scrollbar-thumb { background: #aab8c6; border-radius: 999px; }
+.scrollArea::-webkit-scrollbar-thumb:hover { background: #7d90a2; }
+.scrollArea::-webkit-scrollbar-button { display: none; }

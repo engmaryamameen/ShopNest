@@ -7,6 +7,7 @@ import { CheckIcon, SearchIcon } from '@/assets/icons';
 
 import { FOCUS_RING_INSET } from './styles';
 import type { HeaderCategory } from './types';
+import { categoryOptions } from '@/lib/category-tree';
 
 interface PickerOption {
   slug: string | null;
@@ -58,13 +59,13 @@ export function CategoryPickerPanel({
   const options = useMemo<PickerOption[]>(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    const filtered = categories.filter((category) =>
-      category.name.toLowerCase().includes(normalizedQuery),
+    const filtered = categoryOptions(categories).filter((category) =>
+      normalizedQuery ? category.path.toLowerCase().includes(normalizedQuery) : !category.parentId,
     );
 
     const mapped = filtered.map((category) => ({
       slug: category.slug,
-      name: category.name,
+      name: normalizedQuery && category.parentId ? category.path : category.name,
     }));
 
     if (allLabel && normalizedQuery === '') {

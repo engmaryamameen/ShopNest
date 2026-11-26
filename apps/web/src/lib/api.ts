@@ -11,6 +11,7 @@ import type {
   CatalogImportRunResponse,
   CategoryResponse,
   ImportPreviewResponse,
+  CatalogSource,
   ImportScopeInput,
   InventoryAdjustmentResponse,
   OrderResponse,
@@ -30,6 +31,11 @@ import type {
   VendorResponse,
   VendorStaffListResponse,
   WishlistItemResponse,
+  ImportOptions,
+  PricingSettings,
+  PriceQuote,
+  TaxClass,
+  PromotionInput,
 } from './api-types';
 
 type Schemas = components['schemas'];
@@ -58,6 +64,24 @@ type RequestOptions = {
   isServer?: boolean;
 };
 
+let refreshInFlight: Promise<boolean> | null = null;
+
+function refreshBrowserSession(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${CLIENT_API_BASE}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then((response) => response.ok || response.status === 409)
+      .catch(() => false)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, cookies, isServer = typeof window === 'undefined' } = opts;
 
@@ -75,13 +99,23 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
   const base = isServer ? SERVER_API_URL : CLIENT_API_BASE;
 
-  const response = await fetch(`${base}${path}`, {
-    method,
-    headers,
-    credentials: 'include',
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    cache: 'no-store',
-  });
+  const send = () =>
+    fetch(`${base}${path}`, {
+      method,
+      headers,
+      credentials: 'include',
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
+    });
+  let response = await send();
+  if (
+    !isServer &&
+    response.status === 401 &&
+    !path.startsWith('/auth/') &&
+    (await refreshBrowserSession())
+  ) {
+    response = await send();
+  }
 
   if (!response.ok) {
     const errorBody = (await response.json().catch(() => ({}))) as {
@@ -102,12 +136,48 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 }
 
 export const api = {
+  adminImportOptions: (cookies?: string) =>
+    request<ImportOptions>('/admin/catalog-imports/options', { cookies }),
+  adminAssignPromotion: (id: string, productIds: string[]) =>
+    request<PromotionResponse>(`/admin/promotions/${id}/products`, {
+      method: 'POST',
+      body: { productIds },
+    }),
+  adminProductPage: (filters: Record<string, string | number | undefined>, cookies?: string) =>
+    request<ProductListResponse>(
+      `/admin/products/page?${new URLSearchParams(
+        Object.entries(filters)
+          .filter(
+            (entry): entry is [string, string | number] =>
+              entry[1] !== undefined && entry[1] !== '',
+          )
+          .map(([key, value]) => [key, String(value)]),
+      )}`,
+      { cookies },
+    ),
+  priceQuote: (
+    body: PricingSettings & import('./api-types').PriceQuoteContext & { priceCents: number },
+  ) => request<PriceQuote>('/admin/pricing/quote', { method: 'POST', body }),
+  taxClasses: () => request<TaxClass[]>('/admin/pricing/tax-classes'),
+  createTaxClass: (body: { name: string; rateBps: number }) =>
+    request<TaxClass>('/admin/pricing/tax-classes', { method: 'POST', body }),
+  updateTaxClass: (id: string, body: { name: string; rateBps: number }) =>
+    request<TaxClass>(`/admin/pricing/tax-classes/${id}`, { method: 'PATCH', body }),
+  retryImport: (id: string) =>
+    request<CatalogImportRunResponse>(`/admin/catalog-imports/${id}/retry`, { method: 'POST' }),
   adminFavorites: () => request<string[]>('/admin/favorites'),
-  addAdminFavorite: (path: string) => request<void>('/admin/favorites', { method: 'PUT', body: { path } }),
-  removeAdminFavorite: (path: string) => request<void>('/admin/favorites', { method: 'DELETE', body: { path } }),
-  confirmGoogleLink: () => request<{ status: 'linked' | 'requires_signin'; returnTo?: string }>('/auth/google/link-confirm', { method: 'POST' }),
+  addAdminFavorite: (path: string) =>
+    request<void>('/admin/favorites', { method: 'PUT', body: { path } }),
+  removeAdminFavorite: (path: string) =>
+    request<void>('/admin/favorites', { method: 'DELETE', body: { path } }),
+  confirmGoogleLink: () =>
+    request<{ status: 'linked' | 'requires_signin'; returnTo?: string }>(
+      '/auth/google/link-confirm',
+      { method: 'POST' },
+    ),
   linkGoogle: () => request<{ returnTo: string }>('/auth/google/link', { method: 'POST' }),
-  addDemoCatalog: () => request<{ result: 'created' | 'already_applied' }>('/admin/demo-catalog', { method: 'POST' }),
+  addDemoCatalog: () =>
+    request<{ result: 'created' | 'already_applied' }>('/admin/demo-catalog', { method: 'POST' }),
 
   //  Auth
   register: (body: Schemas['RegisterDto']) =>
@@ -133,7 +203,10 @@ export const api = {
   me: (cookies?: string) => request<Schemas['AuthResponseDto']>('/auth/me', { cookies }),
 
   verifyEmail: (body: Schemas['VerifyEmailDto']) =>
-    request<{ status: 'verified' | 'already-verified' }>('/auth/verify-email', { method: 'POST', body }),
+    request<{ status: 'verified' | 'already-verified' }>('/auth/verify-email', {
+      method: 'POST',
+      body,
+    }),
 
   resendVerification: (body: Schemas['ResendVerificationDto']) =>
     request<void>('/auth/resend-verification', { method: 'POST', body }),
@@ -144,7 +217,8 @@ export const api = {
   resetPassword: (body: Schemas['ResetPasswordDto']) =>
     request<void>('/auth/reset-password', { method: 'POST', body }),
 
-  listSessions: (cookies?: string) => request<Schemas['SessionDto'][]>('/auth/sessions', { cookies }),
+  listSessions: (cookies?: string) =>
+    request<Schemas['SessionDto'][]>('/auth/sessions', { cookies }),
 
   revokeSession: (id: string, cookies?: string) =>
     request<void>(`/auth/sessions/${id}`, { method: 'DELETE', cookies }),
@@ -178,7 +252,6 @@ export const api = {
       `/location/suggestions?${new URLSearchParams({ query })}`,
     ),
 
-
   //  Cart
   getCart: (cookies?: string) => request<CartResponse>('/cart', { cookies }),
 
@@ -193,7 +266,8 @@ export const api = {
   applyPromotion: (code: string, cookies?: string) =>
     request<CartResponse>('/cart/promotion', { method: 'POST', body: { code }, cookies }),
 
-  removePromotion: (cookies?: string) => request<CartResponse>('/cart/promotion', { method: 'DELETE', cookies }),
+  removePromotion: (cookies?: string) =>
+    request<CartResponse>('/cart/promotion', { method: 'DELETE', cookies }),
 
   // Orders
 
@@ -208,7 +282,11 @@ export const api = {
     request<OrderResponse>(`/orders/${id}/cancel`, { method: 'PATCH', cookies }),
 
   requestReturn: (orderItemId: string, body: Schemas['CreateReturnRequestDto'], cookies?: string) =>
-    request<ReturnRequestResponse>(`/orders/items/${orderItemId}/returns`, { method: 'POST', body, cookies }),
+    request<ReturnRequestResponse>(`/orders/items/${orderItemId}/returns`, {
+      method: 'POST',
+      body,
+      cookies,
+    }),
 
   // Admin – Orders
 
@@ -225,13 +303,52 @@ export const api = {
 
   // Admin – Products
 
-  adminListProducts: (cookies?: string) => request<ProductCardResponse[]>('/admin/products', { cookies }),
+  adminListProducts: (cookies?: string) =>
+    request<ProductCardResponse[]>('/admin/products', { cookies }),
+  adminProductImages: (id: string) => request<string[]>(`/admin/products/${id}/images`),
+  adminProductDetails: (id: string) =>
+    request<ProductDetailResponse>(`/admin/products/${id}/details`),
+  saveProductVariant: (
+    productId: string,
+    variantId: string | null,
+    body: PricingSettings & {
+      sku?: string;
+      attributes: Record<string, string>;
+      priceCents: number;
+      stockQuantity: number;
+      vendorId?: string;
+    },
+  ) =>
+    request<{ id: string }>(
+      `/admin/products/${productId}/variants${variantId ? `/${variantId}` : ''}`,
+      { method: variantId ? 'PATCH' : 'POST', body },
+    ),
+  adminImportedProductSources: (cookies?: string) =>
+    request<
+      Array<{ productId: string; source: string; importRunId: string | null; createdAt: string }>
+    >('/admin/catalog-imports/products', { cookies }),
 
-  adminCreateProduct: (body: Schemas['CreateProductDto'], cookies?: string) =>
-    request<ProductDetailResponse>('/products', { method: 'POST', body, cookies }),
+  adminCreateProduct: (
+    body: Omit<Schemas['CreateProductDto'], 'brandId'> &
+      PricingSettings & {
+        brandId?: string | null;
+        productType?: string;
+        specifications?: Record<string, string>;
+      },
+    cookies?: string,
+  ) => request<ProductDetailResponse>('/products', { method: 'POST', body, cookies }),
 
-  adminUpdateProduct: (id: string, body: Schemas['UpdateProductDto'], cookies?: string) =>
-    request<ProductDetailResponse>(`/products/${id}`, { method: 'PATCH', body, cookies }),
+  adminUpdateProduct: (
+    id: string,
+    body: Omit<Schemas['UpdateProductDto'], 'brandId'> &
+      PricingSettings & {
+        brandId?: string | null;
+        offerId?: string;
+        productType?: string;
+        specifications?: Record<string, string>;
+      },
+    cookies?: string,
+  ) => request<ProductDetailResponse>(`/products/${id}`, { method: 'PATCH', body, cookies }),
 
   adminArchiveProduct: (id: string, cookies?: string) =>
     request<void>(`/products/${id}`, { method: 'DELETE', cookies }),
@@ -243,7 +360,14 @@ export const api = {
 
   adminUpdateCategory: (
     id: string,
-    body: { name?: string; slug?: string; parentId?: string | null; position?: number; isActive?: boolean; imageUrl?: string },
+    body: {
+      name?: string;
+      slug?: string;
+      parentId?: string | null;
+      position?: number;
+      isActive?: boolean;
+      imageUrl?: string | null;
+    },
     cookies?: string,
   ) => request<CategoryResponse>(`/categories/${id}`, { method: 'PATCH', body, cookies }),
 
@@ -267,8 +391,10 @@ export const api = {
 
   // Vendor
 
-  vendorApply: (body: { name: string; description?: string; logoUrl?: string; contactEmail: string }, cookies?: string) =>
-    request<VendorResponse>('/vendor/apply', { method: 'POST', body, cookies }),
+  vendorApply: (
+    body: { name: string; description?: string; logoUrl?: string; contactEmail: string },
+    cookies?: string,
+  ) => request<VendorResponse>('/vendor/apply', { method: 'POST', body, cookies }),
 
   vendorMe: (cookies?: string) => request<VendorResponse>('/vendor/me', { cookies }),
 
@@ -277,18 +403,25 @@ export const api = {
     cookies?: string,
   ) => request<VendorResponse>('/vendor/me', { method: 'PATCH', body, cookies }),
 
-  vendorAnalytics: (cookies?: string) => request<VendorAnalyticsResponse>('/vendor/analytics', { cookies }),
+  vendorAnalytics: (cookies?: string) =>
+    request<VendorAnalyticsResponse>('/vendor/analytics', { cookies }),
 
   vendorSearchProducts: (q: string, cookies?: string) =>
-    request<Array<{ id: string; name: string; slug: string; category: { name: string; slug: string } | null }>>(
-      `/vendor/offers/search-products?q=${encodeURIComponent(q)}`,
-      { cookies },
-    ),
+    request<
+      Array<{
+        id: string;
+        name: string;
+        slug: string;
+        category: { name: string; slug: string } | null;
+        variants?: Array<{ id: string; sku: string | null; label: string }>;
+      }>
+    >(`/vendor/offers/search-products?q=${encodeURIComponent(q)}`, { cookies }),
 
-  vendorListOffers: (cookies?: string) => request<VendorOfferResponse[]>('/vendor/offers', { cookies }),
+  vendorListOffers: (cookies?: string) =>
+    request<VendorOfferResponse[]>('/vendor/offers', { cookies }),
 
   vendorCreateOffer: (
-    body: {
+    body: PricingSettings & {
       productId: string;
       variantId?: string;
       vendorSku: string;
@@ -302,7 +435,13 @@ export const api = {
 
   vendorUpdateOffer: (
     id: string,
-    body: { vendorSku?: string; condition?: string; priceCents?: number; compareAtPriceCents?: number; status?: string },
+    body: PricingSettings & {
+      vendorSku?: string;
+      condition?: string;
+      priceCents?: number;
+      compareAtPriceCents?: number;
+      status?: string;
+    },
     cookies?: string,
   ) => request<VendorOfferResponse>(`/vendor/offers/${id}`, { method: 'PATCH', body, cookies }),
 
@@ -310,7 +449,12 @@ export const api = {
     id: string,
     body: { delta: number; reason: 'RESTOCK' | 'CORRECTION'; reference?: string },
     cookies?: string,
-  ) => request<VendorOfferResponse>(`/vendor/offers/${id}/inventory`, { method: 'PATCH', body, cookies }),
+  ) =>
+    request<VendorOfferResponse>(`/vendor/offers/${id}/inventory`, {
+      method: 'PATCH',
+      body,
+      cookies,
+    }),
 
   vendorInventoryHistory: (id: string, cookies?: string) =>
     request<InventoryAdjustmentResponse[]>(`/vendor/offers/${id}/inventory`, { cookies }),
@@ -324,18 +468,31 @@ export const api = {
     request<VendorFulfilmentResponse>(`/vendor/orders/${id}`, { cookies }),
 
   vendorUpdateOrderStatus: (id: string, status: 'CONFIRMED' | 'SHIPPED', cookies?: string) =>
-    request<VendorFulfilmentResponse>(`/vendor/orders/${id}/status`, { method: 'PATCH', body: { status }, cookies }),
+    request<VendorFulfilmentResponse>(`/vendor/orders/${id}/status`, {
+      method: 'PATCH',
+      body: { status },
+      cookies,
+    }),
 
-  vendorListStaff: (cookies?: string) => request<VendorStaffListResponse>('/vendor/staff', { cookies }),
+  vendorListStaff: (cookies?: string) =>
+    request<VendorStaffListResponse>('/vendor/staff', { cookies }),
 
   vendorInviteStaff: (email: string, cookies?: string) =>
-    request<{ status: string }>('/vendor/staff/invite', { method: 'POST', body: { email }, cookies }),
+    request<{ status: string }>('/vendor/staff/invite', {
+      method: 'POST',
+      body: { email },
+      cookies,
+    }),
 
   vendorAcceptStaffInvite: (token: string, cookies?: string) =>
     request<{ id: string }>('/vendor/staff/accept', { method: 'POST', body: { token }, cookies }),
 
   vendorUpdateStaffRole: (memberId: string, role: 'OWNER' | 'STAFF', cookies?: string) =>
-    request<{ id: string }>(`/vendor/staff/${memberId}/role`, { method: 'PATCH', body: { role }, cookies }),
+    request<{ id: string }>(`/vendor/staff/${memberId}/role`, {
+      method: 'PATCH',
+      body: { role },
+      cookies,
+    }),
 
   vendorRevokeStaff: (memberId: string, cookies?: string) =>
     request<void>(`/vendor/staff/${memberId}`, { method: 'DELETE', cookies }),
@@ -343,9 +500,10 @@ export const api = {
   vendorRevokeInvite: (inviteId: string, cookies?: string) =>
     request<void>(`/vendor/staff/invites/${inviteId}`, { method: 'DELETE', cookies }),
 
-  vendorListPromotions: (cookies?: string) => request<PromotionResponse[]>('/vendor/promotions', { cookies }),
+  vendorListPromotions: (cookies?: string) =>
+    request<PromotionResponse[]>('/vendor/promotions', { cookies }),
 
-  vendorCreatePromotion: (body: Schemas['CreatePromotionDto'], cookies?: string) =>
+  vendorCreatePromotion: (body: PromotionInput, cookies?: string) =>
     request<PromotionResponse>('/vendor/promotions', { method: 'POST', body, cookies }),
 
   vendorUpdatePromotion: (id: string, body: Schemas['UpdatePromotionDto'], cookies?: string) =>
@@ -357,10 +515,18 @@ export const api = {
   },
 
   vendorApproveReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
-    request<ReturnRequestResponse>(`/vendor/returns/${id}/approve`, { method: 'PATCH', body, cookies }),
+    request<ReturnRequestResponse>(`/vendor/returns/${id}/approve`, {
+      method: 'PATCH',
+      body,
+      cookies,
+    }),
 
   vendorRejectReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
-    request<ReturnRequestResponse>(`/vendor/returns/${id}/reject`, { method: 'PATCH', body, cookies }),
+    request<ReturnRequestResponse>(`/vendor/returns/${id}/reject`, {
+      method: 'PATCH',
+      body,
+      cookies,
+    }),
 
   // Admin – Vendors
 
@@ -369,7 +535,8 @@ export const api = {
     return request<VendorResponse[]>(`/admin/vendors${qs}`, { cookies });
   },
 
-  adminGetVendor: (id: string, cookies?: string) => request<VendorResponse>(`/admin/vendors/${id}`, { cookies }),
+  adminGetVendor: (id: string, cookies?: string) =>
+    request<VendorResponse>(`/admin/vendors/${id}`, { cookies }),
 
   adminApproveVendor: (id: string, cookies?: string) =>
     request<VendorResponse>(`/admin/vendors/${id}/approve`, { method: 'PATCH', cookies }),
@@ -382,7 +549,11 @@ export const api = {
 
   // Admin – Dashboard / audit log / admin accounts
 
-  adminDashboard: (cookies?: string, range?: string, timezone?: string) => request<AdminDashboardResponse>(`/admin/dashboard?${new URLSearchParams({ ...(range ? { range } : {}), ...(timezone ? { timezone } : {}) })}`, { cookies }),
+  adminDashboard: (cookies?: string, range?: string, timezone?: string) =>
+    request<AdminDashboardResponse>(
+      `/admin/dashboard?${new URLSearchParams({ ...(range ? { range } : {}), ...(timezone ? { timezone } : {}) })}`,
+      { cookies },
+    ),
 
   adminAuditLogs: (
     params: { page?: number; limit?: number; action?: string; targetType?: string } = {},
@@ -397,18 +568,79 @@ export const api = {
     return request<AuditLogListResponse>(`/admin/audit-logs${suffix}`, { cookies });
   },
 
-  adminListAdmins: (cookies?: string) => request<AdminAccountResponse[]>('/admin/admins', { cookies }),
+  adminListAdmins: (cookies?: string) =>
+    request<AdminAccountResponse[]>('/admin/admins', { cookies }),
 
   adminCreateAdmin: (email: string, cookies?: string) =>
-    request<{ id: string; email: string; role: string }>('/admin/admins', { method: 'POST', body: { email }, cookies }),
+    request<{ id: string; email: string; role: string }>('/admin/admins', {
+      method: 'POST',
+      body: { email },
+      cookies,
+    }),
 
   // Admin – Catalog imports
 
+  adminPreviewArchiveImports: (filter: {
+    runId?: string;
+    source?: CatalogSource;
+    categoryId?: string;
+    productIds?: string[];
+  }) =>
+    request<{ eligible: number; excluded: number; archived: number }>(
+      '/admin/catalog-imports/archive-preview',
+      { method: 'POST', body: filter },
+    ),
+  adminArchiveImports: (filter: {
+    runId?: string;
+    source?: CatalogSource;
+    categoryId?: string;
+    productIds?: string[];
+  }) =>
+    request<{ eligible: number; excluded: number; archived: number }>(
+      '/admin/catalog-imports/archive',
+      { method: 'POST', body: filter },
+    ),
+  adminImportCategories: (source: CatalogSource, query: string) =>
+    request<
+      Array<{
+        id: string;
+        name: string;
+        parents: string[];
+        mappedCategory?: { id: string; name: string; path: string } | null;
+      }>
+    >(`/admin/catalog-imports/categories?${new URLSearchParams({ source, q: query })}`),
+
   adminPreviewImport: (scope: ImportScopeInput, cookies?: string) =>
-    request<ImportPreviewResponse>('/admin/catalog-imports/preview', { method: 'POST', body: scope, cookies }),
+    request<{ previewId: string; status: string }>('/admin/catalog-imports/preview', {
+      method: 'POST',
+      body: scope,
+      cookies,
+    }),
+
+  adminImportPreviewStatus: (id: string) =>
+    request<
+      ImportPreviewResponse & {
+        status: string;
+        errorMessage?: string;
+        partialSample?: ImportPreviewResponse['sample'];
+        progress?: {
+          scanned: number;
+          eligible: number;
+          requested: number;
+          productName?: string;
+          imagesChecked?: number;
+          imageTotal?: number;
+          phase?: string;
+        };
+      }
+    >(`/admin/catalog-imports/previews/${id}`),
 
   adminTriggerImport: (scope: ImportScopeInput, cookies?: string) =>
-    request<CatalogImportRunResponse>('/admin/catalog-imports/run', { method: 'POST', body: scope, cookies }),
+    request<CatalogImportRunResponse>('/admin/catalog-imports/run', {
+      method: 'POST',
+      body: scope,
+      cookies,
+    }),
 
   adminListImportRuns: (limit = 20, cookies?: string) =>
     request<CatalogImportRunResponse[]>(`/admin/catalog-imports?limit=${limit}`, { cookies }),
@@ -416,7 +648,9 @@ export const api = {
   // Reviews
 
   listReviews: (slug: string, page = 1, limit = 10, cookies?: string) =>
-    request<PublicReviewListResponse>(`/products/${slug}/reviews?page=${page}&limit=${limit}`, { cookies }),
+    request<PublicReviewListResponse>(`/products/${slug}/reviews?page=${page}&limit=${limit}`, {
+      cookies,
+    }),
 
   reviewEligibility: (slug: string, cookies?: string) =>
     request<ReviewEligibilityResponse>(`/products/${slug}/reviews/my-eligibility`, { cookies }),
@@ -467,9 +701,10 @@ export const api = {
 
   // Admin – Promotions
 
-  adminListPromotions: (cookies?: string) => request<PromotionResponse[]>('/admin/promotions', { cookies }),
+  adminListPromotions: (cookies?: string) =>
+    request<PromotionResponse[]>('/admin/promotions', { cookies }),
 
-  adminCreatePromotion: (body: Schemas['CreatePromotionDto'], cookies?: string) =>
+  adminCreatePromotion: (body: PromotionInput, cookies?: string) =>
     request<PromotionResponse>('/admin/promotions', { method: 'POST', body, cookies }),
 
   adminUpdatePromotion: (id: string, body: Schemas['UpdatePromotionDto'], cookies?: string) =>
@@ -483,10 +718,18 @@ export const api = {
   },
 
   adminApproveReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
-    request<ReturnRequestResponse>(`/admin/returns/${id}/approve`, { method: 'PATCH', body, cookies }),
+    request<ReturnRequestResponse>(`/admin/returns/${id}/approve`, {
+      method: 'PATCH',
+      body,
+      cookies,
+    }),
 
   adminRejectReturn: (id: string, body: Schemas['DecideReturnRequestDto'], cookies?: string) =>
-    request<ReturnRequestResponse>(`/admin/returns/${id}/reject`, { method: 'PATCH', body, cookies }),
+    request<ReturnRequestResponse>(`/admin/returns/${id}/reject`, {
+      method: 'PATCH',
+      body,
+      cookies,
+    }),
 
   // Media
   uploadMedia: async (file: File): Promise<{ url: string }> => {

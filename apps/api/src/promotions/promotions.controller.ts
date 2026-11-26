@@ -7,6 +7,14 @@ import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decor
 import { PromotionsService } from './promotions.service';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsUUID } from 'class-validator';
+class AssignPromotionProductsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID(undefined, { each: true })
+  productIds!: string[];
+}
 
 @ApiTags('admin-promotions')
 @ApiCookieAuth('access_token')
@@ -32,5 +40,10 @@ export class AdminPromotionsController {
   @ApiOperation({ summary: '[Admin] Update a platform-scope promotion' })
   update(@Param('id') id: string, @Body() dto: UpdatePromotionDto) {
     return this.promotions.updatePlatform(id, dto);
+  }
+
+  @Post(':id/products')
+  assign(@Param('id') id: string, @Body() dto: AssignPromotionProductsDto) {
+    return this.promotions.assignProducts(id, dto.productIds);
   }
 }

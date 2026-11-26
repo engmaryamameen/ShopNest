@@ -11,14 +11,11 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiCookieAuth,
-  ApiParam,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiCookieAuth, ApiParam } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CatalogService } from './catalog.service';
+import { ProductVariantDto } from './dto/product-variant.dto';
+import { AdminProductQueryDto } from './dto/admin-product-query.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -97,6 +94,45 @@ export class CatalogController {
     return this.catalog.listAllProducts();
   }
 
+  @Get('admin/products/page')
+  @UseGuards(JwtAuthGuard)
+  @Roles(Role.ADMIN)
+  adminProductPage(@Query() query: AdminProductQueryDto) {
+    return this.catalog.adminProductPage(query);
+  }
+
+  @Get('admin/products/:id/images')
+  @UseGuards(JwtAuthGuard)
+  @Roles(Role.ADMIN)
+  getProductImages(@Param('id') id: string) {
+    return this.catalog.getProductImages(id);
+  }
+
+  @Get('admin/products/:id/details')
+  @UseGuards(JwtAuthGuard)
+  @Roles(Role.ADMIN)
+  getProductDetails(@Param('id') id: string) {
+    return this.catalog.getAdminProductDetails(id);
+  }
+
+  @Post('admin/products/:id/variants')
+  @UseGuards(JwtAuthGuard)
+  @Roles(Role.ADMIN)
+  createVariant(@Param('id') id: string, @Body() dto: ProductVariantDto) {
+    return this.catalog.saveVariant(id, dto);
+  }
+
+  @Patch('admin/products/:id/variants/:variantId')
+  @UseGuards(JwtAuthGuard)
+  @Roles(Role.ADMIN)
+  updateVariant(
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+    @Body() dto: ProductVariantDto,
+  ) {
+    return this.catalog.saveVariant(id, dto, variantId);
+  }
+
   @Get('products')
   @ApiOperation({ summary: 'List products (supports full-text search and category filter)' })
   listProducts(@Query() query: ProductQueryDto) {
@@ -126,7 +162,9 @@ export class CatalogController {
   @Audit({ action: 'ADMIN_PRODUCT_ARCHIVE', targetType: 'Product' })
   @ApiCookieAuth('access_token')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: '[Admin] Archive a product (soft-delete; physical deletion is never performed)' })
+  @ApiOperation({
+    summary: '[Admin] Archive a product (soft-delete; physical deletion is never performed)',
+  })
   archiveProduct(@Param('id') id: string) {
     return this.catalog.archiveProduct(id);
   }

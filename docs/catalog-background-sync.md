@@ -1,84 +1,21 @@
-# Catalog import
+# Catalog import worker
 
-ShopNest's catalog is admin-curated by default — products are created and edited by hand through the
-admin UI, which can also point at any image URL uploaded via the media endpoint. Real supplier feeds
-exist as an optional, manually-triggered way to seed or enrich the catalog, never as a storefront
-dependency and never as something that runs on its own.
+Administrators choose a source and categories in Catalog Import. Preview requests are durable jobs in the existing `CatalogImportPreview` table; the HTTP request returns immediately while the lightweight worker validates metadata and ingests bounded, content-addressed images. The UI polls the saved preview. Confirmation consumes that exact snapshot, including vendor, regular price, direct discount, inventory, and tax settings.
 
-## Sources
+The same worker claims confirmed runs with `FOR UPDATE SKIP LOCKED`, renews its lease after each batch, and commits product creation and processed counters together. Failed runs retry with bounded backoff and can be explicitly retried from Import History. A restart reclaims expired run and preview leases. No Redis, scheduler, or recurring supplier synchronization is used.
 
-Each source implements the same `CatalogSourceAdapter` interface (`fetchProducts()` → normalized
-`SupplierProduct[]`); `CatalogSourceRegistry` resolves a `CatalogSource` enum value to its adapter, so
-`CatalogImportService` is written once against the interface, not once per supplier.
+`CatalogSourceCheckpoint` records source, category, dataset version, retrieval position, and exhaustion. Checkpoints advance after a successful confirmed import, or after a completed scan with no eligible new products. Partial pages remain reachable; existing external IDs and valid GTIN matches are skipped without overwriting products or offers. The explicit rescan switch revisits earlier records after quality changes.
 
-- **DummyJSON** (`DUMMY_JSON`) — general merchandise, includes price and stock. A new product imports
-  with a real `VendorOffer` (system vendor) and publishes immediately. Carries a real image gallery
-  (`images[]`), written as one `ProductMedia` row per image, not just the first.
-- **Open Food Facts** (`OPEN_FOOD_FACTS`) — groceries, open and keyless (world.openfoodfacts.org).
-  Carries no commercial data at all — no price, no stock. A new product from this source is created
-  `DRAFT` with no `VendorOffer`; an admin prices and publishes it by hand through the product-edit
-  form, same as a manually-created product. Scoped to a fixed set of real, populated grocery category
-  tags (this supplier has no "list everything" endpoint — its catalog is millions of products
-  worldwide) — see `GROCERY_CATEGORIES` in `open-food-facts.adapter.ts`. Its public API is genuinely
-  flaky under rapid sequential requests (observed live: roughly half of back-to-back category
-  searches intermittently 503); each category is retried a few times with backoff and, if it still
-  fails, skipped rather than aborting the whole run — one category's outage has no bearing on the
-  others, since each is an independent search, not a page of one resource.
-- **Amazon** (`AMAZON`) — real catalog metadata from the McAuley Lab "Amazon Reviews 2023" dataset,
-  hosted on Hugging Face (open, keyless). No search API and no "everything" feed — each of a fixed
-  set of categories is a separate JSONL file, some 100MB+, so the adapter streams each one and stops
-  reading (cancelling the connection, not downloading the rest) once it has enough valid records.
-  Carries several real images per product — every one is written to `ProductMedia`, not just the
-  first. Most records have no usable price (`null` or `0`, both treated as absent), so — like Open
-  Food Facts — most imports land `DRAFT` and offer-less; the small fraction that do carry a real price
-  publish immediately, same as any other priced import. There's no inventory/stock concept in a
-  static dataset at all, so stock is never set regardless of price.
+Open Food Facts and Open Beauty Facts use paginated APIs and their actual category taxonomies. Amazon Berkeley Objects uses locally cached official metadata shards and original catalog images under CC BY 4.0, with attribution on product pages. The separate historical Amazon Reviews adapter stays unavailable until source-specific reuse permission is configured. Daraz stays unavailable without an application key, secret, and authorized seller token. [Source capabilities and exact access requirements](catalog-source-assessment.md) include the missing Icecat discovery/account requirements.
 
-## Runtime flow
+Image transfer is the measured bottleneck. Two products are prefetched with a shared limit of three image requests; duplicate and metadata lookups are batched. Successful image URL results cache for one hour, failures for ten minutes, source pages for five minutes, and taxonomies for one day. Image URL mappings are in process memory; first-party image files and ABO metadata persist locally. The default gallery validates up to three photos and remains configurable up to ten. Progress updates are throttled, and the first ten validated products appear in the bottom preview table before the final snapshot becomes selectable.
 
-1. An admin queues a run from `/admin/imports` (`POST /admin/catalog-imports/run`), or the scheduler
-   does (only if re-enabled — see below).
-2. The controller fires one immediate, unawaited `CatalogImportWorker.poll()` right after queuing —
-   the background worker loop is off by default, so without this a run would just sit `QUEUED`
-   forever with nothing to ever claim it. This is a single on-demand invocation triggered by the
-   admin's own click, not a recurring background job — it reuses the exact same claim/lease/retry path
-   the interval-based worker uses when it *is* enabled.
-3. Whichever process claims it (`FOR UPDATE SKIP LOCKED`, writes a lease) — the chosen source's
-   adapter fetches and validates the complete response.
-4. The import service normalizes money (when present), categories, inventory, and image URLs.
-5. Canonical products and supplier mappings are written transactionally to PostgreSQL, batched and
-   checkpointed so a crash/retry resumes rather than restarting.
-6. Storefront reads use only PostgreSQL and continue to work during supplier outages.
+Live Body-category previews (at least two unique photos with an 800px longest edge, up to three per product): cold/warm 10 products **43.376s / 0.100s**, 50 **117.648s / 0.357s**, 100 **222.777s / 0.128s**. The galleries contained 29, 137 and 269 validated photos. Cold source retrieval took 2.994s / 1.826s / 5.388s; cumulative database operations 0.151s / 0.908s / 1.283s. Warm runs required no image network requests. These measure complete preview-service processing against PostgreSQL; queue wait and UI polling are additional. Concurrent stage durations overlap and must not be summed.
 
-Failed work is retried three times with exponential backoff. A run abandoned by a crashed worker
-becomes claimable after its lease expires. The partial unique database index permits only one queued
-or running synchronization per supplier, including when multiple application replicas schedule at
-the same time.
+Migration history 0022–0024 was repaired by restoring the exact original SQL bytes matching the three recorded SHA-256 checksums. A combined local 0022 file had replaced three separately applied files. All 30 applied checksums now match; replay into a fresh temporary schema produced an empty schema diff against the existing database. No applied history rows or business data were reset.
 
-A re-sync never overwrites a product's `publishStatus` once it exists — that's admin-owned from
-creation onward, so re-running an Open Food Facts sync can't silently demote a product an admin has
-since priced and published.
+Imported offers carry their import-run provenance. Bulk rollback archives canonical products, preserves orders and media, and excludes products with independently added offers. Administrators can restore products through normal product management.
 
-## Operational controls
+Commercial rules are shared with ordinary products: direct offer discount, best automatic promotion per line, then one coupon on eligible remaining amounts. Category targets include descendants. Tax is calculated after discounts using store-wide tax classes; inclusive pricing and exemption are independent. Checkout validates authoritative values and persists immutable line and order breakdowns. Shipping remains the existing zero-charge policy and payment remains simulated.
 
-- `CATALOG_SCHEDULE_ENABLED=false` (default) disables automatic scheduling entirely — off because the
-  catalog is admin-curated, not supplier-driven. If re-enabled, the scheduler only ever queues
-  DummyJSON runs; Open Food Facts stays manual-only (see `catalog-import.scheduler.ts`).
-- `CATALOG_SCHEDULE_INTERVAL_MS` controls the recurring interval when enabled (default: six hours).
-- `CATALOG_WORKER_ENABLED=false` (default) disables the *recurring interval poll* in this process,
-  allowing a dedicated worker deployment. It does not disable manual triggers — "Run synchronization"
-  always fires one immediate `poll()` regardless of this flag (see Runtime flow, step 2), so a click
-  processes right away even with the interval loop off.
-- `CATALOG_WORKER_POLL_MS` controls claim frequency (default: two seconds).
-- `CATALOG_WORKER_LEASE_SECONDS` controls crash recovery (default: five minutes).
-- `OPEN_FOOD_FACTS_URL`, `OPEN_FOOD_FACTS_TIMEOUT_MS`, `OPEN_FOOD_FACTS_PAGE_SIZE` configure the Open
-  Food Facts adapter specifically.
-- `AMAZON_CATALOG_URL`, `AMAZON_CATALOG_TIMEOUT_MS`, `AMAZON_CATALOG_PER_CATEGORY_LIMIT` configure the
-  Amazon adapter specifically — the limit bounds how many records it reads from each category file
-  before moving on, not a page size (there's no pagination, only a byte stream to read further into
-  or stop).
-
-Admins enqueue a run with `POST /admin/catalog-imports/run` (`{ source, categoryScope?, maxRecords?,
-minImageCount? }`), preview one without writing anything via `POST /admin/catalog-imports/preview`
-(same body shape), and inspect recent runs with `GET /admin/catalog-imports`. Enqueue returns `202
-Accepted`; completion is asynchronous.
+Runtime settings: `CATALOG_WORKER_ENABLED=true` (default), `CATALOG_WORKER_POLL_MS`, `CATALOG_WORKER_LEASE_SECONDS`, and `CATALOG_IMPORT_BATCH_SIZE`. Imports are enabled in development, or in tests with `CATALOG_IMPORT_TEST_ENABLED=true`. Source settings are listed in `apps/api/.env.example`.

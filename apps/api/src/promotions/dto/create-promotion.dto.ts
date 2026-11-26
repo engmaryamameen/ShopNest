@@ -1,9 +1,51 @@
 import { Transform } from 'class-transformer';
-import { IsDateString, IsIn, IsInt, IsOptional, IsPositive, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsArray,
+  ArrayMaxSize,
+  IsUUID,
+  IsBoolean,
+  MaxLength,
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsPositive,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PromotionType } from '@prisma/client';
 
 export class CreatePromotionDto {
+  @IsOptional() @IsBoolean() automatic?: boolean;
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsUUID(undefined, { each: true })
+  productIds?: string[];
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID(undefined, { each: true })
+  brandIds?: string[];
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID(undefined, { each: true })
+  categoryIds?: string[];
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID(undefined, { each: true })
+  vendorIds?: string[];
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @MaxLength(120, { each: true })
+  productTypes?: string[];
+  @IsOptional() @IsInt() @Min(1) maxDiscountCents?: number;
   @ApiProperty({ example: 'SAVE10' })
   @IsString()
   @MinLength(3)

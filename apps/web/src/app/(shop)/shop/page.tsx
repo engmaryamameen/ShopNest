@@ -2,6 +2,8 @@ import { Suspense } from 'react';
 import { api } from '@/lib/api';
 import { ProductGrid } from '@/components/shop/product-grid';
 import { ShopFilters } from '@/components/shop/shop-filters';
+import { CategoryNavigation } from '@/components/shop/category-navigation';
+import { findCategory } from '@/lib/category-tree';
 
 interface SearchParams {
   q?: string;
@@ -16,7 +18,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function ShopPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
-  const query: Record<string, string | number> = { page: parseInt(params.page ?? '1', 10), limit: 20 };
+  const query: Record<string, string | number> = {
+    page: parseInt(params.page ?? '1', 10),
+    limit: 20,
+  };
   if (params.q) query.q = params.q;
   if (params.category) query.category = params.category;
   if (params.brand) query.brand = params.brand;
@@ -25,15 +30,25 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
 
   let productsData: Awaited<ReturnType<typeof api.listProducts>>;
   let brands: Awaited<ReturnType<typeof api.listBrands>>;
+  let categories: Awaited<ReturnType<typeof api.listCategories>>;
   try {
-    [productsData, brands] = await Promise.all([api.listProducts(query), api.listBrands()]);
+    [productsData, brands, categories] = await Promise.all([
+      api.listProducts(query),
+      api.listBrands(),
+      api.listCategories(),
+    ]);
   } catch {
     return (
       <section role="alert" className="mx-auto max-w-xl py-12">
         <h1 className="text-2xl font-semibold text-gray-900">Shop is temporarily unavailable</h1>
         <p className="mt-3 text-gray-600">We couldn’t load products right now. Please try again.</p>
         <form action="/shop" method="get">
-          <button type="submit" className="mt-5 inline-block rounded-md bg-sky-700 px-4 py-2 font-medium text-white">Try again</button>
+          <button
+            type="submit"
+            className="mt-5 inline-block rounded-md bg-sky-700 px-4 py-2 font-medium text-white"
+          >
+            Try again
+          </button>
         </form>
       </section>
     );
@@ -53,12 +68,16 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Shop</h1>
+        <h1 className="text-3xl font-bold text-gray-900">
+          {findCategory(categories, params.category)?.name ?? 'Shop'}
+        </h1>
         <p className="mt-1 text-gray-500">
           {productsData.total} product{productsData.total !== 1 ? 's' : ''}
           {params.q ? ` matching "${params.q}"` : ''}
         </p>
       </div>
+
+      <CategoryNavigation categories={categories} selectedSlug={params.category} query={params.q} />
 
       <Suspense fallback={null}>
         <ShopFilters brands={brands} />
@@ -71,7 +90,10 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
       {productsData.total > productsData.limit && (
         <div className="mt-8 flex justify-center gap-2">
           {productsData.page > 1 && (
-            <a href={pageHref(productsData.page - 1)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+            <a
+              href={pageHref(productsData.page - 1)}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
               Previous
             </a>
           )}
@@ -79,7 +101,10 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
             Page {productsData.page} of {Math.ceil(productsData.total / productsData.limit)}
           </span>
           {productsData.page < Math.ceil(productsData.total / productsData.limit) && (
-            <a href={pageHref(productsData.page + 1)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+            <a
+              href={pageHref(productsData.page + 1)}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
               Next
             </a>
           )}
