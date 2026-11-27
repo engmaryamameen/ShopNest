@@ -69,7 +69,9 @@ test.describe('Forgot / reset password', () => {
     await page.click('button[type="submit"]');
 
     await expect(page).toHaveURL(/\/login\?reset=success/);
-    await expect(page.getByRole('status').filter({ hasText: /sign in with your new password/i })).toBeVisible();
+    await expect(
+      page.getByRole('status').filter({ hasText: /sign in with your new password/i }),
+    ).toBeVisible();
 
     // Old password no longer works; new password does.
     await loginViaUI(page, email, PASSWORD);
@@ -201,7 +203,19 @@ test.describe('Suspended account', () => {
 
     const row = adminPage.locator('tr', { hasText: email });
     acceptNextConfirm(adminPage);
-    await row.getByRole('button', { name: 'Suspend' }).click();
+    const [suspension] = await Promise.all([
+      adminPage.waitForResponse(
+        (res) =>
+          res.url().includes('/users/') &&
+          res.url().endsWith('/status') &&
+          res.request().method() === 'PATCH',
+      ),
+      row.getByRole('button', { name: 'Suspend' }).click(),
+    ]);
+    expect(suspension.ok(), await suspension.text()).toBeTruthy();
+    // Verify the saved status on a fresh document, independently of the
+    // client transition, before testing that the old sessions are revoked.
+    await adminPage.reload();
     await expect(row.getByText('SUSPENDED')).toBeVisible();
 
     // Suspended user can no longer log in.
@@ -213,7 +227,17 @@ test.describe('Suspended account', () => {
 
     // Admin reactivates.
     acceptNextConfirm(adminPage);
-    await row.getByRole('button', { name: 'Reactivate' }).click();
+    const [reactivation] = await Promise.all([
+      adminPage.waitForResponse(
+        (res) =>
+          res.url().includes('/users/') &&
+          res.url().endsWith('/status') &&
+          res.request().method() === 'PATCH',
+      ),
+      row.getByRole('button', { name: 'Reactivate' }).click(),
+    ]);
+    expect(reactivation.ok(), await reactivation.text()).toBeTruthy();
+    await adminPage.reload();
     await expect(row.getByText('ACTIVE')).toBeVisible();
 
     const finalContext = await browser.newContext();

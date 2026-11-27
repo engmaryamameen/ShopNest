@@ -191,7 +191,7 @@ export function PromotionsManager({
               aria-label="Promotion value"
               required
               type="number"
-              min={0.01}
+              min={form.type === 'PERCENT' ? 1 : 0.01}
               max={form.type === 'PERCENT' ? 100 : undefined}
               step={form.type === 'PERCENT' ? 1 : 0.01}
               value={form.value}

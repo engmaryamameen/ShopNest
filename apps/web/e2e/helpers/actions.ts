@@ -58,13 +58,18 @@ export async function loginViaUI(page: Page, email: string, password: string): P
   if (!page.url().includes('/login')) {
     await page.goto('/login');
   }
-  await page.fill('#email', email);
-  await page.fill('#password', password);
+  // A reset-password page can remain behind an intercepted login dialog.
+  // Scope fields to the sign-in form so its background inputs are untouched.
+  const form = page
+    .locator('form')
+    .filter({ has: page.getByRole('button', { name: 'Sign in', exact: true }) });
+  await form.getByPlaceholder('Enter your email address', { exact: true }).fill(email);
+  await form.getByPlaceholder('Enter your password', { exact: true }).fill(password);
   const [response] = await Promise.all([
     page.waitForResponse(
       (res) => res.url().includes('/auth/login') && res.request().method() === 'POST',
     ),
-    page.click('button[type="submit"]'),
+    form.getByRole('button', { name: 'Sign in', exact: true }).click(),
   ]);
   // The response arrives before the client finishes redirecting. Navigating to
   // another page immediately can otherwise race with the login redirect.

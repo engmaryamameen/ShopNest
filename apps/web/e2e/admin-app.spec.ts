@@ -27,7 +27,9 @@ test.describe('Admin app', () => {
     await expect(page.getByText('Published products')).toBeVisible();
     await expect(page.getByText('Orders by status')).toBeVisible();
     await expect(page.getByText('Vendors by status')).toBeVisible();
-    await expect(page.getByText('Recent activity')).toBeVisible();
+    await expect(
+      page.getByRole('main').getByRole('heading', { name: 'Recent activity', exact: true }),
+    ).toBeVisible();
   });
 
   test('audit log lists real entries with actor and timestamp', async ({ page }) => {
