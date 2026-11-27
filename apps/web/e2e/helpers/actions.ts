@@ -1,6 +1,29 @@
 import type { APIRequestContext, Page } from '@playwright/test';
-import { expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { waitForSignupCode } from './mail-capture';
+
+async function submitAuthViaUI(page: Page, endpoint: string, submit: () => Promise<void>) {
+  async function send() {
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes(endpoint) && res.request().method() === 'POST',
+      ),
+      submit(),
+    ]);
+    return response;
+  }
+  const response = await send();
+  if (response.status() !== 429) return response;
+  const seconds = Number(response.headers()['retry-after']);
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 60) return response;
+  // Retried journeys share the real API's IP quota. Respect its cooldown
+  // instead of changing production limits or causing unrelated tests to fail.
+  const delay = (seconds + 1) * 1000;
+  const info = test.info();
+  info.setTimeout(info.timeout + delay + 5000);
+  await page.waitForTimeout(delay);
+  return send();
+}
 
 export async function startSignupViaUI(page: Page, email: string, password: string): Promise<void> {
   await page.goto('/register');
@@ -8,12 +31,9 @@ export async function startSignupViaUI(page: Page, email: string, password: stri
   await page.fill('#email', email);
   await page.fill('#password', password);
   await page.fill('#confirm', password);
-  const [response] = await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes('/auth/register') && res.request().method() === 'POST',
-    ),
+  const response = await submitAuthViaUI(page, '/auth/register', () =>
     page.click('button[type="submit"]'),
-  ]);
+  );
   expect(response.status(), `Registration failed: ${await response.text()}`).toBe(202);
   await expect(
     page.getByRole('heading', { name: 'Please verify your email address' }),
@@ -25,12 +45,9 @@ export async function completeSignupViaUI(page: Page, email: string): Promise<vo
   for (let i = 0; i < code.length; i++) {
     await page.getByLabel(`Digit ${i + 1} of 6`).fill(code[i]);
   }
-  const [response] = await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes('/auth/signup/verify') && res.request().method() === 'POST',
-    ),
+  const response = await submitAuthViaUI(page, '/auth/signup/verify', () =>
     page.getByRole('button', { name: 'Create account' }).click(),
-  ]);
+  );
   expect(response.ok(), `Verification failed: ${await response.text()}`).toBeTruthy();
   await expect(page).toHaveURL(/\/shop/);
 }
@@ -65,12 +82,9 @@ export async function loginViaUI(page: Page, email: string, password: string): P
     .filter({ has: page.getByRole('button', { name: 'Sign in', exact: true }) });
   await form.getByPlaceholder('Enter your email address', { exact: true }).fill(email);
   await form.getByPlaceholder('Enter your password', { exact: true }).fill(password);
-  const [response] = await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes('/auth/login') && res.request().method() === 'POST',
-    ),
+  const response = await submitAuthViaUI(page, '/auth/login', () =>
     form.getByRole('button', { name: 'Sign in', exact: true }).click(),
-  ]);
+  );
   // The response arrives before the client finishes redirecting. Navigating to
   // another page immediately can otherwise race with the login redirect.
   if (response.ok()) await page.waitForURL((url) => url.pathname !== '/login');

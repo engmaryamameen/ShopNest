@@ -78,10 +78,10 @@ test.describe('Forgot / reset password', () => {
     await expect(page.getByText('Invalid credentials')).toBeVisible();
 
     await loginViaUI(page, email, NEW_PASSWORD);
-    // Login with no returnTo lands on / — the real homepage, not a
-    // redirect stub — not /shop (validate-return-to.ts's fallback; register
-    // special-cases this to /shop, login intentionally doesn't).
-    await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
+    // The login opened by the reset page is intercepted as an account modal
+    // and retains its Shop destination. Canonical login redirects are covered
+    // separately in auth.spec.ts.
+    await expect(page).toHaveURL(/\/shop$/);
   });
 
   test('an expired reset link is rejected with a clear error, not a silent failure', async ({
