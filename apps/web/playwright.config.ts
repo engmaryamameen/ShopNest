@@ -19,7 +19,8 @@ const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 // set MAIL_CAPTURE_FILE_PATH yourself and export the same value as
 // MAIL_TEST_CAPTURE_FILE when starting the API, so both sides agree.
 export const MAIL_CAPTURE_FILE =
-  process.env.MAIL_CAPTURE_FILE_PATH ?? join(mkdtempSync(join(tmpdir(), 'shopnest-e2e-')), 'mail.jsonl');
+  process.env.MAIL_CAPTURE_FILE_PATH ??
+  join(mkdtempSync(join(tmpdir(), 'shopnest-e2e-')), 'mail.jsonl');
 
 // Single source of truth for the short test TTL configured on the API below
 // — the expired-link tests wait this long (plus margin) before using a
@@ -43,6 +44,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: {
     baseURL: WEB_URL,
+    timezoneId: 'UTC',
     trace: 'on-first-retry',
   },
   projects: [
@@ -107,6 +109,7 @@ export default defineConfig({
         },
         {
           command: 'pnpm start',
+          env: { NODE_ENV: 'production' },
           url: WEB_URL,
           reuseExistingServer: false,
           timeout: 120_000,

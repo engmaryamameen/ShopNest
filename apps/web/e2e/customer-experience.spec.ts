@@ -1,5 +1,10 @@
-import { test, expect, request as apiRequestModule, type APIRequestContext } from '@playwright/test';
-import { registerViaUI } from './helpers/actions';
+import {
+  test,
+  expect,
+  request as apiRequestModule,
+  type APIRequestContext,
+} from '@playwright/test';
+import { registerViaAPI, registerViaUI } from './helpers/actions';
 
 // Reviews, wishlist, addresses, PDP multi-offer, /shop filters — all
 // through real UI interaction. Setup that has nothing to do with what's
@@ -16,12 +21,17 @@ function uniqueEmail(prefix: string): string {
 }
 
 async function loginApi(ctx: APIRequestContext, email: string, password: string) {
-  const res = await ctx.post('/auth/login', { headers: { Origin: 'http://localhost:3000' }, data: { email, password } });
+  const res = await ctx.post('/auth/login', {
+    headers: { Origin: 'http://localhost:3000' },
+    data: { email, password },
+  });
   expect(res.ok()).toBeTruthy();
 }
 
 test.describe('Customer experience', () => {
-  test('shop filters (sort, brand) are reflected in the URL and re-fetch results', async ({ page }) => {
+  test('shop filters (sort, brand) are reflected in the URL and re-fetch results', async ({
+    page,
+  }) => {
     await page.goto('/shop');
     await page.locator('#shop-sort').selectOption('priceCents-asc');
     await expect(page).toHaveURL(/sortBy=priceCents&sortOrder=asc/);
@@ -35,7 +45,9 @@ test.describe('Customer experience', () => {
     const firstCard = page.locator('[data-testid="product-card"]').first();
     const productName = await firstCard.locator('h3').innerText();
     await firstCard.getByRole('button', { name: /add .* to wishlist/i }).click();
-    await expect(firstCard.getByRole('button', { name: /saved to wishlist/i })).toBeVisible({ timeout: 10_000 });
+    await expect(firstCard.getByRole('button', { name: /saved to wishlist/i })).toBeVisible({
+      timeout: 10_000,
+    });
 
     await page.goto('/account/wishlist');
     await expect(page.getByText(productName.trim())).toBeVisible({ timeout: 10_000 });
@@ -44,7 +56,9 @@ test.describe('Customer experience', () => {
     await expect(page.getByText(/wishlist is empty/i)).toBeVisible({ timeout: 10_000 });
   });
 
-  test('address book: first address auto-defaults, second does not, set-default flips it', async ({ page }) => {
+  test('address book: first address auto-defaults, second does not, set-default flips it', async ({
+    page,
+  }) => {
     const email = uniqueEmail('address-e2e');
     await registerViaUI(page, email, PASSWORD);
 
@@ -56,7 +70,9 @@ test.describe('Customer experience', () => {
     await page.locator('#addr-postal').fill('11111');
     await page.locator('#addr-country').fill('US');
     await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/me/addresses') && res.request().method() === 'POST'),
+      page.waitForResponse(
+        (res) => res.url().includes('/me/addresses') && res.request().method() === 'POST',
+      ),
       page.getByRole('button', { name: 'Save address' }).click(),
     ]);
     await expect(page.getByText('Default', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -68,7 +84,9 @@ test.describe('Customer experience', () => {
     await page.locator('#addr-postal').fill('22222');
     await page.locator('#addr-country').fill('US');
     await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/me/addresses') && res.request().method() === 'POST'),
+      page.waitForResponse(
+        (res) => res.url().includes('/me/addresses') && res.request().method() === 'POST',
+      ),
       page.getByRole('button', { name: 'Save address' }).click(),
     ]);
 
@@ -89,22 +107,22 @@ test.describe('Customer experience', () => {
     // buyer/admin sessions never share cookies.
     const buyer = await apiRequestModule.newContext({ baseURL: API_URL });
     const buyerEmail = uniqueEmail('reviewer-e2e');
-    await buyer.post('/auth/register', {
-      headers: { Origin: 'http://localhost:3000' },
-      data: { email: buyerEmail, password: PASSWORD },
-    });
+    await registerViaAPI(buyer, buyerEmail, PASSWORD);
 
     const productsRes = await buyer.get('/products?q=Headphones');
+    expect(productsRes.ok(), await productsRes.text()).toBeTruthy();
     const product = (await productsRes.json()).data.items[0];
 
-    await buyer.put('/cart/items', {
+    const cartRes = await buyer.put('/cart/items', {
       headers: { Origin: 'http://localhost:3000' },
       data: { vendorOfferId: product.offerId, quantity: 1 },
     });
+    expect(cartRes.ok(), await cartRes.text()).toBeTruthy();
     const checkoutRes = await buyer.post('/orders/checkout', {
       headers: { Origin: 'http://localhost:3000' },
       data: { idempotencyKey: crypto.randomUUID() },
     });
+    expect(checkoutRes.ok(), await checkoutRes.text()).toBeTruthy();
     const order = (await checkoutRes.json()).data;
 
     const admin = await apiRequestModule.newContext({ baseURL: API_URL });
@@ -125,15 +143,21 @@ test.describe('Customer experience', () => {
     await page.context().addCookies(cookies);
 
     await page.goto(`/products/${product.slug}`);
-    await expect(page.getByRole('heading', { name: 'Write a review' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: 'Write a review' })).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Title carries the buyer email so repeat runs against this same
     // seeded product never collide on review text.
     const reviewTitle = `Great buy (${buyerEmail})`;
     await page.locator('#review-title').fill(reviewTitle);
-    await page.locator('#review-body').fill('Exactly as described, arrived on time, works perfectly.');
+    await page
+      .locator('#review-body')
+      .fill('Exactly as described, arrived on time, works perfectly.');
     await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/reviews') && res.request().method() === 'POST'),
+      page.waitForResponse(
+        (res) => res.url().includes('/reviews') && res.request().method() === 'POST',
+      ),
       page.getByRole('button', { name: 'Submit review' }).click(),
     ]);
     await expect(page.getByText('Thanks for your review!')).toBeVisible({ timeout: 10_000 });

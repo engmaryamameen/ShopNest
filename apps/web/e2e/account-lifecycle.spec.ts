@@ -1,7 +1,14 @@
 import { test, expect } from '@playwright/test';
 import { TEST_TOKEN_TTL_MS } from '../playwright.config';
 import { waitForSignupCode, waitForToken } from './helpers/mail-capture';
-import { acceptNextConfirm, completeSignupViaUI, loginViaUI, openAccountMenu, registerViaUI, startSignupViaUI } from './helpers/actions';
+import {
+  acceptNextConfirm,
+  completeSignupViaUI,
+  loginViaUI,
+  openAccountMenu,
+  registerViaUI,
+  startSignupViaUI,
+} from './helpers/actions';
 
 // Margin added on top of the API's configured token TTL before a test
 // exercises the "expired" path — has to outlast the TTL, not just meet it.
@@ -25,7 +32,7 @@ test.describe('Registration & email verification', () => {
     const incorrect = code === '000000' ? '000001' : '000000';
     for (let i = 0; i < 6; i++) await page.getByLabel(`Digit ${i + 1} of 6`).fill(incorrect[i]);
     await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page.getByRole('alert')).toContainText(/not correct/i);
+    await expect(page.getByRole('alert').filter({ hasText: /not correct/i })).toBeVisible();
     await completeSignupViaUI(page, email);
     await page.goto('/account/security');
     await expect(page.getByText("isn't verified yet")).not.toBeVisible();
@@ -35,13 +42,15 @@ test.describe('Registration & email verification', () => {
     const email = uniqueEmail('resend');
     await startSignupViaUI(page, email, PASSWORD);
     await page.getByRole('button', { name: 'Resend code' }).click();
-    await expect(page.getByRole('alert')).toContainText(/wait/i);
+    await expect(page.getByRole('alert').filter({ hasText: /wait/i })).toBeVisible();
     await completeSignupViaUI(page, email);
   });
 });
 
 test.describe('Forgot / reset password', () => {
-  test('forgot-password shows the same generic message regardless of outcome, and the reset link works', async ({ page }) => {
+  test('forgot-password shows the same generic message regardless of outcome, and the reset link works', async ({
+    page,
+  }) => {
     const email = uniqueEmail('reset');
     await registerViaUI(page, email, PASSWORD);
     await page.context().clearCookies();
@@ -49,7 +58,9 @@ test.describe('Forgot / reset password', () => {
     await page.goto('/forgot-password');
     await page.fill('#email', email);
     await page.click('button[type="submit"]');
-    await expect(page.getByText('a reset link is on its way')).toBeVisible();
+    await expect(
+      page.getByRole('status').filter({ hasText: /If an account exists.*password reset link/ }),
+    ).toBeVisible();
 
     const token = await waitForToken(email, 'Reset your ShopNest password');
     await page.goto(`/reset-password?token=${token}`);
@@ -71,7 +82,9 @@ test.describe('Forgot / reset password', () => {
     await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
   });
 
-  test('an expired reset link is rejected with a clear error, not a silent failure', async ({ page }) => {
+  test('an expired reset link is rejected with a clear error, not a silent failure', async ({
+    page,
+  }) => {
     const email = uniqueEmail('reset-expired');
     await registerViaUI(page, email, PASSWORD);
     await page.context().clearCookies();
@@ -90,7 +103,9 @@ test.describe('Forgot / reset password', () => {
     await expect(page.getByText(/expired/i)).toBeVisible();
   });
 
-  test('mismatched confirmation is caught client-side before any request is made', async ({ page }) => {
+  test('mismatched confirmation is caught client-side before any request is made', async ({
+    page,
+  }) => {
     await page.goto('/reset-password?token=irrelevant-for-this-check');
     await page.fill('#password', 'FirstPassword123!');
     await page.fill('#confirm', 'DifferentPassword456!');
@@ -100,7 +115,9 @@ test.describe('Forgot / reset password', () => {
 });
 
 test.describe('Sessions', () => {
-  test('the current session appears in the list, and revoking it logs the device out', async ({ browser }) => {
+  test('the current session appears in the list, and revoking it logs the device out', async ({
+    browser,
+  }) => {
     const email = uniqueEmail('sessions');
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -119,7 +136,9 @@ test.describe('Sessions', () => {
     await context.close();
   });
 
-  test('a second device shows up in the list and can be revoked independently of the first', async ({ browser }) => {
+  test('a second device shows up in the list and can be revoked independently of the first', async ({
+    browser,
+  }) => {
     const email = uniqueEmail('multisession');
     const contextA = await browser.newContext();
     const pageA = await contextA.newPage();
@@ -132,7 +151,11 @@ test.describe('Sessions', () => {
 
     await pageA.goto('/account/security');
     await pageA.reload();
-    const otherDeviceRow = pageA.locator('div').filter({ hasText: 'Revoke' }).filter({ hasNotText: 'This device' }).first();
+    const otherDeviceRow = pageA
+      .locator('div')
+      .filter({ hasText: 'Revoke' })
+      .filter({ hasNotText: 'This device' })
+      .first();
     await expect(otherDeviceRow).toBeVisible();
 
     acceptNextConfirm(pageA);
@@ -162,7 +185,9 @@ test.describe('Logout', () => {
 });
 
 test.describe('Suspended account', () => {
-  test('a suspended user is blocked from logging in with a clear message, and reactivation restores access', async ({ browser }) => {
+  test('a suspended user is blocked from logging in with a clear message, and reactivation restores access', async ({
+    browser,
+  }) => {
     const email = uniqueEmail('suspend');
     const userContext = await browser.newContext();
     const userPage = await userContext.newPage();
@@ -202,7 +227,9 @@ test.describe('Suspended account', () => {
 });
 
 test.describe('Admin authorization', () => {
-  test('a non-admin visiting /admin/users is redirected away, not shown a broken/empty admin page', async ({ page }) => {
+  test('a non-admin visiting /admin/users is redirected away, not shown a broken/empty admin page', async ({
+    page,
+  }) => {
     const email = uniqueEmail('nonadmin');
     await registerViaUI(page, email, PASSWORD);
 
@@ -210,7 +237,9 @@ test.describe('Admin authorization', () => {
     await expect(page).toHaveURL(/\/shop/);
   });
 
-  test('an anonymous visitor hitting /admin/users is sent to login with a returnTo', async ({ page }) => {
+  test('an anonymous visitor hitting /admin/users is sent to login with a returnTo', async ({
+    page,
+  }) => {
     await page.goto('/admin/users');
     await expect(page).toHaveURL(/\/login\?returnTo=%2Fadmin%2Fusers/);
   });

@@ -35,7 +35,9 @@ test.describe('Vendor lifecycle', () => {
     await page.getByLabel(/store name|vendor name|business name/i).fill(vendorName);
     await page.getByLabel(/contact email/i).fill(`contact-${Date.now()}@example.com`);
     await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/vendor/apply') && res.request().method() === 'POST'),
+      page.waitForResponse(
+        (res) => res.url().includes('/vendor/apply') && res.request().method() === 'POST',
+      ),
       page.getByRole('button', { name: /apply|submit/i }).click(),
     ]);
 
@@ -51,11 +53,16 @@ test.describe('Vendor lifecycle', () => {
     await adminPage.goto('/admin/vendors');
     const vendorRow = adminPage.getByRole('row', { name: new RegExp(vendorName) });
     await expect(vendorRow).toBeVisible({ timeout: 10_000 });
-    await Promise.all([
-      adminPage.waitForResponse((res) => res.url().includes('/admin/vendors/') && res.url().includes('/approve')),
+    const [approval] = await Promise.all([
+      adminPage.waitForResponse(
+        (res) => res.url().includes('/admin/vendors/') && res.url().includes('/approve'),
+      ),
       vendorRow.getByRole('button', { name: /approve/i }).click(),
     ]);
-    await expect(adminPage.getByRole('row', { name: new RegExp(vendorName) }).getByText('APPROVED')).toBeVisible({
+    expect(approval.ok(), await approval.text()).toBeTruthy();
+    await expect(
+      adminPage.getByRole('row', { name: new RegExp(vendorName) }).getByText('APPROVED'),
+    ).toBeVisible({
       timeout: 10_000,
     });
     await adminContext.close();
@@ -73,20 +80,29 @@ test.describe('Vendor lifecycle', () => {
     await page.goto('/vendor/offers');
     await page.getByRole('button', { name: /new offer/i }).click();
     await page.getByPlaceholder(/search products to sell/i).fill('Headphones');
-    await expect(page.getByText('Wireless Noise-Cancelling Headphones')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Wireless Noise-Cancelling Headphones')).toBeVisible({
+      timeout: 10_000,
+    });
     await page.getByText('Wireless Noise-Cancelling Headphones').click();
     await page.getByLabel(/your sku/i).fill(`E2E-SKU-${Date.now()}`);
-    await page.getByLabel(/price/i).fill('49.99');
+    await page.getByRole('spinbutton', { name: 'Price (USD)', exact: true }).fill('49.99');
     await page.getByLabel(/starting stock/i).fill('15');
     await Promise.all([
-      page.waitForResponse((res) => res.url().includes('/vendor/offers') && res.request().method() === 'POST'),
+      page.waitForResponse(
+        (res) => res.url().includes('/vendor/offers') && res.request().method() === 'POST',
+      ),
       page.getByRole('button', { name: /create offer/i }).click(),
     ]);
-    await expect(page.getByText('Wireless Noise-Cancelling Headphones')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Wireless Noise-Cancelling Headphones')).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.getByText('DRAFT')).toBeVisible();
 
     // Activate it so it's purchasable.
-    await page.getByRole('button', { name: /activate/i }).first().click();
+    await page
+      .getByRole('button', { name: /activate/i })
+      .first()
+      .click();
     await expect(page.getByText('ACTIVE')).toBeVisible({ timeout: 10_000 });
 
     // ── Vendor orders page renders with no orders yet ──────────────────

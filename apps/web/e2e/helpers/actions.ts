@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { waitForSignupCode } from './mail-capture';
 
@@ -9,11 +9,15 @@ export async function startSignupViaUI(page: Page, email: string, password: stri
   await page.fill('#password', password);
   await page.fill('#confirm', password);
   const [response] = await Promise.all([
-    page.waitForResponse((res) => res.url().includes('/auth/register') && res.request().method() === 'POST'),
+    page.waitForResponse(
+      (res) => res.url().includes('/auth/register') && res.request().method() === 'POST',
+    ),
     page.click('button[type="submit"]'),
   ]);
   expect(response.status(), `Registration failed: ${await response.text()}`).toBe(202);
-  await expect(page.getByRole('heading', { name: 'Please verify your email address' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Please verify your email address' }),
+  ).toBeVisible();
 }
 
 export async function completeSignupViaUI(page: Page, email: string): Promise<void> {
@@ -22,7 +26,9 @@ export async function completeSignupViaUI(page: Page, email: string): Promise<vo
     await page.getByLabel(`Digit ${i + 1} of 6`).fill(code[i]);
   }
   const [response] = await Promise.all([
-    page.waitForResponse((res) => res.url().includes('/auth/signup/verify') && res.request().method() === 'POST'),
+    page.waitForResponse(
+      (res) => res.url().includes('/auth/signup/verify') && res.request().method() === 'POST',
+    ),
     page.getByRole('button', { name: 'Create account' }).click(),
   ]);
   expect(response.ok(), `Verification failed: ${await response.text()}`).toBeTruthy();
@@ -34,16 +40,35 @@ export async function registerViaUI(page: Page, email: string, password: string)
   await completeSignupViaUI(page, email);
 }
 
+/** Real signup and email verification for setup that is not testing the signup UI. */
+export async function registerViaAPI(
+  context: APIRequestContext,
+  email: string,
+  password: string,
+): Promise<void> {
+  const headers = { Origin: process.env.WEB_URL ?? 'http://localhost:3000' };
+  const registration = await context.post('/auth/register', { headers, data: { email, password } });
+  expect(registration.status(), `Registration failed: ${await registration.text()}`).toBe(202);
+  const code = await waitForSignupCode(email);
+  const verification = await context.post('/auth/signup/verify', { headers, data: { code } });
+  expect(verification.ok(), `Verification failed: ${await verification.text()}`).toBeTruthy();
+}
+
 export async function loginViaUI(page: Page, email: string, password: string): Promise<void> {
   if (!page.url().includes('/login')) {
     await page.goto('/login');
   }
   await page.fill('#email', email);
   await page.fill('#password', password);
-  await Promise.all([
-    page.waitForResponse((res) => res.url().includes('/auth/login') && res.request().method() === 'POST'),
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (res) => res.url().includes('/auth/login') && res.request().method() === 'POST',
+    ),
     page.click('button[type="submit"]'),
   ]);
+  // The response arrives before the client finishes redirecting. Navigating to
+  // another page immediately can otherwise race with the login redirect.
+  if (response.ok()) await page.waitForURL((url) => url.pathname !== '/login');
 }
 
 export function acceptNextConfirm(page: Page): void {
@@ -51,7 +76,10 @@ export function acceptNextConfirm(page: Page): void {
 }
 
 export async function openAccountMenu(page: Page): Promise<void> {
-  await page.locator('header').getByRole('button', { name: /Welcome back/ }).click();
+  await page
+    .locator('header')
+    .getByRole('button', { name: /Welcome back/ })
+    .click();
 }
 
 export async function expectRedirectedToLogin(page: Page, returnTo?: string): Promise<void> {
