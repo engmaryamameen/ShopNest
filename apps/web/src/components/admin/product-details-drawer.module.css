@@ -1,0 +1,43 @@
+dialog.drawer {
+  width: min(100%, 640px);
+  max-width: 640px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+@media (min-width: 1024px) {
+  dialog.editor { width: min(100%, 960px); max-width: 960px; }
+}
+.drawer[open] {
+  animation: enter 240ms ease-out both;
+}
+.drawer[open]::backdrop {
+  background: rgb(15 23 42 / 40%);
+  animation: fade-in 240ms ease-out both;
+}
+.drawer[open][data-closing] {
+  animation: exit 200ms ease-in both;
+}
+.drawer[open][data-closing]::backdrop {
+  animation: fade-out 200ms ease-in both;
+}
+@keyframes enter { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes exit { from { transform: translateX(0); } to { transform: translateX(100%); } }
+@keyframes fade-in { from { background: transparent; } to { background: rgb(15 23 42 / 40%); } }
+@keyframes fade-out { from { background: rgb(15 23 42 / 40%); } to { background: transparent; } }
+@media (max-width: 767px) {
+  dialog.drawer {
+    inset: auto 0 0;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: 90dvh;
+    border-radius: 20px 20px 0 0;
+  }
+  .drawer[open] { animation-name: sheet-enter; }
+  .drawer[open][data-closing] { animation-name: sheet-exit; }
+}
+@keyframes sheet-enter { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes sheet-exit { from { transform: translateY(0); } to { transform: translateY(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .drawer[open], .drawer[open][data-closing], .drawer[open]::backdrop, .drawer[open][data-closing]::backdrop { animation-duration: 1ms; }
+}

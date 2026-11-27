@@ -1,0 +1,109 @@
+import type { APIRequestContext, Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { waitForSignupCode } from './mail-capture';
+
+async function submitAuthViaUI(page: Page, endpoint: string, submit: () => Promise<void>) {
+  async function send() {
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes(endpoint) && res.request().method() === 'POST',
+      ),
+      submit(),
+    ]);
+    return response;
+  }
+  const response = await send();
+  if (response.status() !== 429) return response;
+  const seconds = Number(response.headers()['retry-after']);
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 60) return response;
+  // Retried journeys share the real API's IP quota. Respect its cooldown
+  // instead of changing production limits or causing unrelated tests to fail.
+  const delay = (seconds + 1) * 1000;
+  const info = test.info();
+  info.setTimeout(info.timeout + delay + 5000);
+  await page.waitForTimeout(delay);
+  return send();
+}
+
+export async function startSignupViaUI(page: Page, email: string, password: string): Promise<void> {
+  await page.goto('/register');
+  await page.fill('#fullName', 'Alex Morgan');
+  await page.fill('#email', email);
+  await page.fill('#password', password);
+  await page.fill('#confirm', password);
+  const response = await submitAuthViaUI(page, '/auth/register', () =>
+    page.click('button[type="submit"]'),
+  );
+  expect(response.status(), `Registration failed: ${await response.text()}`).toBe(202);
+  await expect(
+    page.getByRole('heading', { name: 'Please verify your email address' }),
+  ).toBeVisible();
+}
+
+export async function completeSignupViaUI(page: Page, email: string): Promise<void> {
+  const code = await waitForSignupCode(email);
+  for (let i = 0; i < code.length; i++) {
+    await page.getByLabel(`Digit ${i + 1} of 6`).fill(code[i]);
+  }
+  const response = await submitAuthViaUI(page, '/auth/signup/verify', () =>
+    page.getByRole('button', { name: 'Create account' }).click(),
+  );
+  expect(response.ok(), `Verification failed: ${await response.text()}`).toBeTruthy();
+  await expect(page).toHaveURL(/\/shop/);
+}
+
+export async function registerViaUI(page: Page, email: string, password: string): Promise<void> {
+  await startSignupViaUI(page, email, password);
+  await completeSignupViaUI(page, email);
+}
+
+/** Real signup and email verification for setup that is not testing the signup UI. */
+export async function registerViaAPI(
+  context: APIRequestContext,
+  email: string,
+  password: string,
+): Promise<void> {
+  const headers = { Origin: process.env.WEB_URL ?? 'http://localhost:3000' };
+  const registration = await context.post('/auth/register', { headers, data: { email, password } });
+  expect(registration.status(), `Registration failed: ${await registration.text()}`).toBe(202);
+  const code = await waitForSignupCode(email);
+  const verification = await context.post('/auth/signup/verify', { headers, data: { code } });
+  expect(verification.ok(), `Verification failed: ${await verification.text()}`).toBeTruthy();
+}
+
+export async function loginViaUI(page: Page, email: string, password: string): Promise<void> {
+  if (!page.url().includes('/login')) {
+    await page.goto('/login');
+  }
+  // A reset-password page can remain behind an intercepted login dialog.
+  // Scope fields to the sign-in form so its background inputs are untouched.
+  const form = page
+    .locator('form')
+    .filter({ has: page.getByRole('button', { name: 'Sign in', exact: true }) });
+  await form.getByPlaceholder('Enter your email address', { exact: true }).fill(email);
+  await form.getByPlaceholder('Enter your password', { exact: true }).fill(password);
+  const response = await submitAuthViaUI(page, '/auth/login', () =>
+    form.getByRole('button', { name: 'Sign in', exact: true }).click(),
+  );
+  // The response arrives before the client finishes redirecting. Navigating to
+  // another page immediately can otherwise race with the login redirect.
+  if (response.ok()) await page.waitForURL((url) => url.pathname !== '/login');
+}
+
+export function acceptNextConfirm(page: Page): void {
+  page.once('dialog', (dialog) => dialog.accept());
+}
+
+export async function openAccountMenu(page: Page): Promise<void> {
+  await page
+    .locator('header')
+    .getByRole('button', { name: /Welcome back/ })
+    .click();
+}
+
+export async function expectRedirectedToLogin(page: Page, returnTo?: string): Promise<void> {
+  await expect(page).toHaveURL(/\/login/);
+  if (returnTo) {
+    expect(page.url()).toContain(`returnTo=${encodeURIComponent(returnTo)}`);
+  }
+}

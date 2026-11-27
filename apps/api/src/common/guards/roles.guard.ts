@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Role } from '@prisma/client';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -17,6 +17,12 @@ export class RolesGuard implements CanActivate {
     if (!requiredRoles || requiredRoles.length === 0) return true;
 
     const request = context.switchToHttp().getRequest<Request & { user: JwtPayload }>();
-    return requiredRoles.includes(request.user?.role as Role);
+    if (!request.user) throw new UnauthorizedException('Please sign in again.');
+    const actualRole = request.user?.role as Role;
+
+    // SUPER_ADMIN satisfies ADMIN-gated routes; not the reverse.
+    if (actualRole === Role.SUPER_ADMIN && requiredRoles.includes(Role.ADMIN)) return true;
+
+    return requiredRoles.includes(actualRole);
   }
 }

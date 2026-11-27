@@ -8,10 +8,15 @@ export class ProductQueryDto {
   @IsString()
   q?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by category slug' })
+  @ApiPropertyOptional({ description: 'Filter by category slug — also matches every descendant category' })
   @IsOptional()
   @IsString()
   category?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by brand slug' })
+  @IsOptional()
+  @IsString()
+  brand?: string;
 
   @ApiPropertyOptional({ enum: ['createdAt', 'priceCents', 'name'], default: 'createdAt' })
   @IsOptional()

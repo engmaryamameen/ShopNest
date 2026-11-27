@@ -1,0 +1,13 @@
+.root {
+  container-type: inline-size;
+}
+.summary {
+  display: grid;
+  align-items: start;
+  gap: 16px;
+}
+@container (min-width: 600px) {
+  .summary {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}

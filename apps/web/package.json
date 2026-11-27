@@ -8,17 +8,35 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "test": "jest --passWithNoTests",
+    "test": "jest",
     "test:e2e": "playwright test",
     "clean": "rm -rf .next out"
   },
   "dependencies": {
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/manrope": "^5.3.0",
+    "@fontsource-variable/nunito": "^5.3.0",
+    "@fontsource-variable/playwrite-au-sa": "^5.3.0",
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "@fontsource/lato": "^5.3.0",
+    "@fontsource/poppins": "^5.3.0",
+    "@iconify-icons/fluent-mdl2": "^1.2.1",
+    "@iconify-icons/material-symbols": "^1.2.58",
+    "@iconify-icons/mdi": "^1.2.48",
+    "@iconify-icons/mingcute": "^1.2.9",
+    "@iconify/react": "^6.0.2",
     "@shopnest/api-client": "workspace:*",
+    "@shopnest/media-origins": "workspace:*",
     "@tanstack/react-query": "5.80.7",
     "@tanstack/react-query-devtools": "5.80.7",
-    "next": "15.5.21",
+    "@tiptap/markdown": "^3.35.0",
+    "@tiptap/react": "^3.35.0",
+    "@tiptap/starter-kit": "^3.35.0",
+    "next": "15.5.29",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-markdown": "^10.1.0",
     "zustand": "5.0.5"
   },
   "devDependencies": {
@@ -32,7 +50,7 @@
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
     "eslint": "9.29.0",
-    "eslint-config-next": "15.5.21",
+    "eslint-config-next": "15.5.29",
     "jest": "29.7.0",
     "jest-environment-jsdom": "29.7.0",
     "tailwindcss": "4.1.10",
@@ -41,9 +59,24 @@
   },
   "jest": {
     "preset": "ts-jest",
+    "transform": {
+      "^.+\\.tsx?$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "jsx": "react-jsx"
+          }
+        }
+      ]
+    },
     "testEnvironment": "jsdom",
-    "testMatch": ["<rootDir>/src/**/*.test.ts", "<rootDir>/src/**/*.test.tsx"],
-    "setupFilesAfterEnv": ["@testing-library/jest-dom"],
+    "testMatch": [
+      "<rootDir>/src/**/*.test.ts",
+      "<rootDir>/src/**/*.test.tsx"
+    ],
+    "setupFilesAfterEnv": [
+      "@testing-library/jest-dom"
+    ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
     }

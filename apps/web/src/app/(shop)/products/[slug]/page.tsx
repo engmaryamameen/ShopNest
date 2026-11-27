@@ -1,85 +1,73 @@
+import { ProductDescription } from '@/components/product/product-description';
 import { notFound } from 'next/navigation';
-import Image from 'next/image';
 import { api, ApiError } from '@/lib/api';
-import { AddToCartButton } from '@/components/shop/add-to-cart-button';
-
-interface Product {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  priceCents: number;
-  imageUrl?: string | null;
-  stockQuantity: number;
-  category?: { name: string; slug: string };
-}
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
-
+import type { ProductDetailResponse } from '@/lib/api-types';
+import { StarRating } from '@/components/product/star-rating';
+import { OffersList } from '@/components/product/offers-list';
+import { ReviewsSection } from '@/components/product/reviews-section';
+import { ProductGallery } from '@/components/product/product-gallery';
+import { ProductPurchaseOptions } from '@/components/product/product-purchase-options';
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  let product: Product;
-
+  let product: ProductDetailResponse;
   try {
-    product = (await api.getProduct(slug)) as Product;
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) {
-      notFound();
-    }
-    throw err;
+    product = await api.getProduct(slug);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) notFound();
+    throw e;
   }
-
   return (
-    <div className="max-w-5xl mx-auto">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-        {/* Product image */}
-        <div className="relative aspect-square rounded-2xl overflow-hidden bg-gray-100">
-          {product.imageUrl ? (
-            <Image
-              src={product.imageUrl}
-              alt={product.name}
-              fill
-              className="object-cover"
-              priority
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-300">
-              <svg className="w-24 h-24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-          )}
-        </div>
-
-        {/* Product details */}
+    <div className="mx-auto max-w-5xl">
+      <div className="grid gap-8 md:grid-cols-2">
+        <ProductGallery name={product.name} images={product.images} />
         <div>
-          {product.category && (
-            <span className="text-sm text-indigo-600 font-medium uppercase tracking-wide">
-              {product.category.name}
-            </span>
-          )}
-          <h1 className="mt-2 text-4xl font-bold text-gray-900">{product.name}</h1>
-          <p className="mt-4 text-3xl font-bold text-gray-900">{formatPrice(product.priceCents)}</p>
-
-          <div className="mt-4">
-            {product.stockQuantity > 0 ? (
-              <span className="text-green-600 text-sm font-medium">
-                {product.stockQuantity} in stock
-              </span>
-            ) : (
-              <span className="text-red-500 text-sm font-medium">Out of stock</span>
-            )}
+          <p className="text-sm font-medium text-[#0077b6]">
+            {[product.category?.name, product.brand?.name].filter(Boolean).join(' · ')}
+          </p>
+          <h1 className="mt-2 text-3xl font-bold text-gray-900">{product.name}</h1>
+          <div className="mt-2">
+            <StarRating average={product.ratingAverage} count={product.ratingCount} />
           </div>
-
-          <p className="mt-6 text-gray-600 leading-relaxed">{product.description}</p>
-
-          <div className="mt-8">
-            <AddToCartButton productId={product.id} stockQuantity={product.stockQuantity} />
-          </div>
+          <ProductPurchaseOptions product={product} />
+          <ProductDescription
+            className="mt-6 leading-relaxed text-gray-600"
+            value={product.description}
+          />
         </div>
       </div>
+      {!!product.attributes.length && (
+        <section className="mt-10">
+          <h2 className="mb-4 text-xl font-semibold text-gray-900">Specifications</h2>
+          <dl className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
+            {product.attributes.map((a) => (
+              <div key={a.slug} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-3">
+                <dt className="font-medium text-gray-700">{a.name}</dt>
+                <dd className="break-words text-gray-600 sm:col-span-2">{a.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+      {product.offers.length > 1 && (
+        <section className="mt-10">
+          <h2 className="mb-4 text-xl font-semibold text-gray-900">Available sellers</h2>
+          <OffersList offers={product.offers} productUrl={`/products/${slug}`} />
+        </section>
+      )}
+      {!!product.sourceAttributions?.length && (
+        <div className="mt-6 text-xs text-gray-500">
+          {product.sourceAttributions.map((a) => (
+            <p key={a.url}>
+              Product information and images:{' '}
+              <a className="underline" href={a.url} target="_blank" rel="noreferrer">
+                {a.name}
+              </a>{' '}
+              · {a.license}
+            </p>
+          ))}
+        </div>
+      )}
+      <ReviewsSection slug={slug} />
     </div>
   );
 }

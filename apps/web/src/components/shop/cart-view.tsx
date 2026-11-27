@@ -2,14 +2,20 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
-import { useCart, useRemoveCartItem, type Cart } from '@/lib/use-cart';
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
+import {
+  CART_QUERY_KEY,
+  useCart,
+  useRemoveCartItem,
+  useApplyPromotion,
+  useRemovePromotion,
+  type Cart,
+} from '@/lib/use-cart';
+import { formatPrice } from '@/lib/format-price';
+import { isFirstPartyImageUrl } from '@/lib/is-first-party-image';
 
 interface CartViewProps {
   /** Server-fetched initial cart, hydrates the TanStack Query cache. */
@@ -18,8 +24,11 @@ interface CartViewProps {
 
 export function CartView({ initialCart }: CartViewProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [isCheckingOut, startCheckoutTransition] = useTransition();
+  const [promoCode, setPromoCode] = useState('');
+  const [promoError, setPromoError] = useState<string | null>(null);
 
   // TanStack Query owns the cart state client-side.
   // initialCart seeds the cache so we render immediately without a waterfall.
@@ -28,14 +37,27 @@ export function CartView({ initialCart }: CartViewProps) {
   const { data } = useCart();
   const cart: Cart = data ?? initialCart;
   const removeItem = useRemoveCartItem();
+  const applyPromotion = useApplyPromotion();
+  const removePromotion = useRemovePromotion();
 
-  const total = cart.items.reduce(
-    (sum, item) => sum + item.product.priceCents * item.quantity,
-    0,
-  );
+  const subtotal =
+    cart.pricing?.regularSubtotalCents ??
+    cart.items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
+  const discountPreview = cart.appliedPromotion?.discountPreviewCents ?? 0;
+  const total = cart.pricing?.totalCents ?? subtotal - discountPreview;
 
-  function handleRemove(productId: string) {
-    removeItem.mutate(productId);
+  function handleApplyPromo(e: React.FormEvent) {
+    e.preventDefault();
+    setPromoError(null);
+    applyPromotion.mutate(promoCode, {
+      onSuccess: () => setPromoCode(''),
+      onError: (err) =>
+        setPromoError(err instanceof ApiError ? err.message : 'Could not apply that code'),
+    });
+  }
+
+  function handleRemove(vendorOfferId: string) {
+    removeItem.mutate(vendorOfferId);
   }
 
   function handleCheckout() {
@@ -45,6 +67,9 @@ export function CartView({ initialCart }: CartViewProps) {
         // Client-generated UUID v4 as idempotency key — stable for this attempt.
         const idempotencyKey = crypto.randomUUID();
         const order = (await api.checkout({ idempotencyKey })) as { id: string };
+        // Checkout changes the server cart. Refetch rather than assuming it is empty.
+        await queryClient.cancelQueries({ queryKey: CART_QUERY_KEY });
+        void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
         router.push(`/orders/${order.id}`);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -74,7 +99,10 @@ export function CartView({ initialCart }: CartViewProps) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
           {cart.items.map((item) => (
-            <div key={item.id} className="bg-white rounded-xl border border-gray-200 p-4 flex gap-4">
+            <div
+              key={item.id}
+              className="bg-white rounded-xl border border-gray-200 p-4 flex gap-4"
+            >
               <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100 shrink-0">
                 {item.product.imageUrl ? (
                   <Image
@@ -82,6 +110,7 @@ export function CartView({ initialCart }: CartViewProps) {
                     alt={item.product.name}
                     fill
                     className="object-cover"
+                    unoptimized={!isFirstPartyImageUrl(item.product.imageUrl)}
                   />
                 ) : (
                   <div className="w-full h-full bg-gray-100" />
@@ -95,19 +124,21 @@ export function CartView({ initialCart }: CartViewProps) {
                 >
                   {item.product.name}
                 </Link>
-                <p className="text-gray-500 text-sm mt-0.5">
-                  {formatPrice(item.product.priceCents)} each
-                </p>
+                <p className="text-gray-400 text-xs mt-0.5">Sold by {item.vendor.name}</p>
+                {item.variantLabel && (
+                  <p className="text-gray-500 text-xs mt-0.5">{item.variantLabel}</p>
+                )}
+                <p className="text-gray-500 text-sm mt-0.5">{formatPrice(item.priceCents)} each</p>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
                   <span className="font-semibold">
-                    {formatPrice(item.product.priceCents * item.quantity)}
+                    {formatPrice(item.lineTotalCents ?? item.priceCents * item.quantity)}
                   </span>
                 </div>
               </div>
 
               <button
-                onClick={() => handleRemove(item.productId)}
+                onClick={() => handleRemove(item.vendorOfferId)}
                 disabled={removeItem.isPending}
                 className="text-red-400 hover:text-red-600 text-sm transition-colors disabled:opacity-50"
                 aria-label={`Remove ${item.product.name} from cart`}
@@ -128,12 +159,83 @@ export function CartView({ initialCart }: CartViewProps) {
                 <span>
                   {item.product.name} × {item.quantity}
                 </span>
-                <span>{formatPrice(item.product.priceCents * item.quantity)}</span>
+                <span>{formatPrice(item.lineTotalCents ?? item.priceCents * item.quantity)}</span>
               </div>
             ))}
           </div>
 
-          <div className="border-t pt-4 mb-6">
+          <div className="border-t pt-4 mb-4">
+            {cart.appliedPromotion ? (
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-emerald-700">
+                  Code <span className="font-mono font-medium">{cart.appliedPromotion.code}</span>{' '}
+                  applied
+                  {discountPreview > 0 ? ` (−${formatPrice(discountPreview)})` : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removePromotion.mutate()}
+                  disabled={removePromotion.isPending}
+                  className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleApplyPromo} className="flex gap-2 mb-2">
+                <input
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value)}
+                  placeholder="Promo code"
+                  className="flex-1 min-w-0 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={applyPromotion.isPending || !promoCode.trim()}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 shrink-0"
+                >
+                  Apply
+                </button>
+              </form>
+            )}
+            {promoError && <p className="text-xs text-red-600 mb-2">{promoError}</p>}
+
+            {
+              <div className="flex justify-between text-sm text-gray-500 mb-1">
+                <span>Subtotal</span>
+                <span>{formatPrice(subtotal)}</span>
+              </div>
+            }
+            {cart.pricing && (
+              <div className="mb-3 space-y-1 text-sm text-gray-500">
+                <div className="flex justify-between">
+                  <span>Direct discounts</span>
+                  <span>−{formatPrice(cart.pricing.directDiscountCents)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Automatic promotions</span>
+                  <span>−{formatPrice(cart.pricing.automaticDiscountCents)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Coupon</span>
+                  <span>−{formatPrice(cart.pricing.couponDiscountCents)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tax added</span>
+                  <span>{formatPrice(cart.pricing.addedTaxCents ?? cart.pricing.taxCents)}</span>
+                </div>
+                {!!cart.pricing.includedTaxCents && (
+                  <div className="flex justify-between text-xs">
+                    <span>Tax already included</span>
+                    <span>{formatPrice(cart.pricing.includedTaxCents)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Shipping</span>
+                  <span>{formatPrice(cart.pricing.shippingCents)}</span>
+                </div>
+              </div>
+            )}
             <div className="flex justify-between font-bold text-lg">
               <span>Total</span>
               <span>{formatPrice(total)}</span>
@@ -149,12 +251,14 @@ export function CartView({ initialCart }: CartViewProps) {
           <button
             onClick={handleCheckout}
             disabled={isCheckingOut}
-            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            className="w-full py-3 shopnest-primary rounded-xl font-medium  disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {isCheckingOut ? 'Processing…' : 'Place Order'}
           </button>
 
-          <p className="text-xs text-gray-400 text-center mt-4">All amounts in USD</p>
+          <p className="text-xs text-gray-600 text-center mt-4">
+            Demo checkout: payments are simulated and no money is charged. All amounts are in USD.
+          </p>
         </div>
       </div>
     </div>

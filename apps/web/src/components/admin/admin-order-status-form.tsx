@@ -3,14 +3,16 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
+import type { OrderStatus } from '@/lib/api-types';
+import { AdminSelect } from '@/components/ui/admin-form';
 
 interface AdminOrderStatusFormProps {
   orderId: string;
-  availableStatuses: string[];
+  availableStatuses: OrderStatus[];
 }
 
 export function AdminOrderStatusForm({ orderId, availableStatuses }: AdminOrderStatusFormProps) {
-  const [status, setStatus] = useState(availableStatuses[0] ?? '');
+  const [status, setStatus] = useState<OrderStatus | ''>(availableStatuses[0] ?? '');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -18,9 +20,12 @@ export function AdminOrderStatusForm({ orderId, availableStatuses }: AdminOrderS
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!status) return;
+    const nextStatus = status;
+
     startTransition(async () => {
       try {
-        await api.adminUpdateOrderStatus(orderId, { status });
+        await api.adminUpdateOrderStatus(orderId, { status: nextStatus });
         router.refresh();
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Update failed');
@@ -39,19 +44,21 @@ export function AdminOrderStatusForm({ orderId, availableStatuses }: AdminOrderS
       )}
 
       <form onSubmit={handleSubmit} className="flex gap-3">
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          {availableStatuses.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+        <div className="min-w-0 flex-1">
+          <label htmlFor="order-next-status" className="sr-only">
+            New order status
+          </label>
+          <AdminSelect
+            id="order-next-status"
+            value={status}
+            onChange={(next) => setStatus(next as OrderStatus)}
+            options={availableStatuses.map((next) => ({ value: next, label: next }))}
+          />
+        </div>
         <button
           type="submit"
           disabled={isPending || !status}
-          className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          className="px-6 py-2 shopnest-primary rounded-lg font-medium  disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
         >
           {isPending ? 'Updating…' : 'Update'}
         </button>

@@ -3,33 +3,11 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
 import { CancelOrderButton } from '@/components/shop/cancel-order-button';
+import { RequestReturnButton } from '@/components/shop/request-return-button';
+import { formatPrice } from '@/lib/format-price';
+import type { OrderResponse } from '@/lib/api-types';
 
 export const dynamic = 'force-dynamic';
-
-interface Order {
-  id: string;
-  status: string;
-  totalCents: number;
-  currency: string;
-  createdAt: string;
-  items: Array<{
-    id: string;
-    productName: string;
-    productSlug: string;
-    quantity: number;
-    unitPriceCents: number;
-  }>;
-  statusHistory: Array<{
-    id: string;
-    fromStatus: string;
-    toStatus: string;
-    createdAt: string;
-  }>;
-}
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-}
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-yellow-100 text-yellow-800',
@@ -39,14 +17,20 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-red-100 text-red-800',
 };
 
+const RETURN_STATUS_LABELS: Record<string, string> = {
+  REQUESTED: 'Return requested',
+  REJECTED: 'Return rejected',
+  REFUNDED: 'Refunded',
+};
+
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
-  let order: Order;
+  let order: OrderResponse;
   try {
-    order = (await api.getOrder(id, cookieHeader)) as Order;
+    order = await api.getOrder(id, cookieHeader);
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
       redirect('/login?returnTo=/orders');
@@ -57,14 +41,20 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     throw err;
   }
 
+  const subtotalCents =
+    order.pricingSnapshot?.regularSubtotalCents ?? order.totalCents + order.discountCents;
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Order Details</h1>
+          <p>Current checkout payments are simulated; no money is charged.</p>
           <p className="text-gray-500 mt-1">#{order.id.slice(0, 8).toUpperCase()}</p>
         </div>
-        <span className={`px-4 py-1.5 rounded-full text-sm font-medium ${STATUS_COLORS[order.status] ?? 'bg-gray-100'}`}>
+        <span
+          className={`px-4 py-1.5 rounded-full text-sm font-medium ${STATUS_COLORS[order.status] ?? 'bg-gray-100'}`}
+        >
           {order.status}
         </span>
       </div>
@@ -75,17 +65,73 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           <h2 className="font-semibold text-gray-900">Items</h2>
         </div>
         <div className="divide-y">
-          {order.items.map((item) => (
-            <div key={item.id} className="px-6 py-4 flex justify-between">
-              <div>
-                <Link href={`/products/${item.productSlug}`} className="font-medium text-gray-900 hover:text-indigo-600">
-                  {item.productName}
-                </Link>
-                <p className="text-sm text-gray-500">× {item.quantity}</p>
+          {order.items.map((item) => {
+            const vendorOrder = order.vendorOrders.find((vo) => vo.id === item.vendorOrderId);
+            const canRequestReturn = vendorOrder?.status === 'DELIVERED' && !item.returnRequest;
+
+            return (
+              <div key={item.id} className="px-6 py-4 flex justify-between">
+                <div>
+                  <Link
+                    href={`/products/${item.productSlug}`}
+                    className="font-medium text-gray-900 hover:text-indigo-600"
+                  >
+                    {item.productName}
+                  </Link>
+                  <p className="text-sm text-gray-500">× {item.quantity}</p>
+                  {item.returnRequest ? (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {RETURN_STATUS_LABELS[item.returnRequest.status]}
+                    </p>
+                  ) : canRequestReturn ? (
+                    <div className="mt-1">
+                      <RequestReturnButton orderItemId={item.id} />
+                    </div>
+                  ) : null}
+                </div>
+                <p className="font-medium">
+                  {formatPrice(
+                    item.pricingSnapshot
+                      ? (item.totalCents ?? 0)
+                      : item.unitPriceCents * item.quantity,
+                  )}
+                </p>
               </div>
-              <p className="font-medium">{formatPrice(item.unitPriceCents * item.quantity)}</p>
+            );
+          })}
+          <div className="px-6 py-3 flex justify-between text-sm text-gray-600">
+            <span>Subtotal</span>
+            <span>{formatPrice(subtotalCents)}</span>
+          </div>
+          {order.discountCents + (order.pricingSnapshot?.directDiscountCents ?? 0) > 0 && (
+            <div className="px-6 py-3 flex justify-between text-sm text-emerald-700 bg-emerald-50">
+              <span>Discount</span>
+              <span>
+                −
+                {formatPrice(
+                  order.discountCents + (order.pricingSnapshot?.directDiscountCents ?? 0),
+                )}
+              </span>
             </div>
-          ))}
+          )}
+          {order.pricingSnapshot && (
+            <div className="px-6 py-3 space-y-1 text-sm text-gray-600">
+              <div className="flex justify-between">
+                <span>Tax added</span>
+                <span>{formatPrice(order.pricingSnapshot.addedTaxCents ?? 0)}</span>
+              </div>
+              {!!order.pricingSnapshot.includedTaxCents && (
+                <div className="flex justify-between">
+                  <span>Tax already included</span>
+                  <span>{formatPrice(order.pricingSnapshot.includedTaxCents)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span>Shipping</span>
+                <span>{formatPrice(order.shippingCents ?? 0)}</span>
+              </div>
+            </div>
+          )}
           <div className="px-6 py-4 flex justify-between bg-gray-50">
             <span className="font-bold">Total</span>
             <span className="font-bold text-lg">{formatPrice(order.totalCents)}</span>
@@ -104,9 +150,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               <span className="text-gray-600">
                 {h.fromStatus} → {h.toStatus}
               </span>
-              <span className="text-gray-400">
-                {new Date(h.createdAt).toLocaleString()}
-              </span>
+              <span className="text-gray-400">{new Date(h.createdAt).toLocaleString()}</span>
             </div>
           ))}
         </div>
@@ -114,12 +158,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
       {/* Actions */}
       <div className="flex gap-3">
-        <Link href="/orders" className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">
+        <Link
+          href="/orders"
+          className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+        >
           Back to orders
         </Link>
-        {order.status === 'PENDING' && (
-          <CancelOrderButton orderId={order.id} />
-        )}
+        {order.status === 'PENDING' && <CancelOrderButton orderId={order.id} />}
       </div>
     </div>
   );

@@ -4,17 +4,11 @@ import { AdminCategoryList } from '@/components/admin/admin-category-list';
 
 export const dynamic = 'force-dynamic';
 
-interface Category {
-  id: string;
-  name: string;
-  slug: string;
-}
-
 export default async function AdminCategoriesPage() {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
-  const categories = (await api.listCategories(cookieHeader)) as Category[];
+  const categories = await api.listCategories(cookieHeader);
 
   return (
     <div>

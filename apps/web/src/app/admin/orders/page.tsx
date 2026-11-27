@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { formatPrice } from '@/lib/format-price';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,10 +12,6 @@ interface Order {
   createdAt: string;
   user?: { id: string; email: string };
   items: Array<{ productName: string; quantity: number }>;
-}
-
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -38,6 +35,7 @@ export default async function AdminOrdersPage({
 
   return (
     <div>
+      <p>Current checkout payments are simulated; no money is charged.</p>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
         <div className="flex gap-2">
@@ -47,7 +45,7 @@ export default async function AdminOrdersPage({
               href={s ? `?status=${s}` : '/admin/orders'}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 (params.status ?? '') === s
-                  ? 'bg-indigo-600 text-white'
+                  ? 'shopnest-primary'
                   : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
               }`}
             >

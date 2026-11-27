@@ -10,6 +10,9 @@ export class AuthUserDto {
 
   @ApiProperty({ enum: Role })
   role!: Role;
+
+  @ApiProperty({ nullable: true, description: 'null if the email has not been verified yet' })
+  emailVerifiedAt!: Date | null;
 }
 
 export class AuthResponseDto {

@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import { SkipOriginCheck } from '../common/decorators/skip-origin-check.decorator';
@@ -10,6 +11,7 @@ export class HealthController {
 
   @Get()
   @SkipOriginCheck()
+  @SkipThrottle()
   @ApiOperation({ summary: 'Health check — liveness + DB connectivity' })
   async check(): Promise<{ status: string; db: string; timestamp: string }> {
     await this.prisma.$queryRaw`SELECT 1`;

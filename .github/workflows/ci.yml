@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "refactor/**", "feat/**"]
+    branches: [main, "refactor/**", "feat/**", "fix/**"]
   pull_request:
     branches: [main]
 
@@ -48,9 +48,13 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://shopnest:shopnest@localhost:5432/shopnest_test
-      JWT_ACCESS_SECRET: test-access-secret-placeholder
-      JWT_REFRESH_SECRET: test-refresh-secret-placeholder
+      JWT_ACCESS_SECRET: integration-test-access-secret-1234567890
+      JWT_REFRESH_SECRET: integration-test-refresh-secret-12345678
+      WEB_URL: http://localhost:3000
       NODE_ENV: test
+      SHOPNEST_DISPOSABLE_DB: 'true'
+      CATALOG_WORKER_ENABLED: 'false'
+      CATALOG_SCHEDULE_ENABLED: 'false'
 
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +66,7 @@ jobs:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shopnest/media-origins build
 
       - name: Generate Prisma client
         working-directory: apps/api
@@ -75,6 +80,22 @@ jobs:
 
       - name: Run API unit tests
         run: pnpm --filter @shopnest/api test --coverage
+
+      - name: Apply migrations to the ephemeral test database
+        working-directory: apps/api
+        run: pnpm exec prisma migrate deploy
+
+      - name: Run catalog, concurrency and media integration tests
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand catalog-import.integration.spec.ts concurrency.integration.spec.ts media-upload.integration.spec.ts
+
+      - name: Test admin favorites
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand admin-favorites.integration.spec.ts
+
+      - name: Test demo catalog behavior
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand demo-catalog.integration.spec.ts
+
+      - name: Test demo catalog access
+        run: pnpm --filter @shopnest/api exec jest --config ./test/jest-e2e.json --runInBand demo-catalog-access.integration.spec.ts
 
       - name: Verify generated types are committed
         run: test -s packages/api-client/src/types.ts
@@ -93,6 +114,7 @@ jobs:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shopnest/media-origins build
 
       - name: Type-check web
         run: pnpm --filter @shopnest/web type-check
@@ -102,6 +124,96 @@ jobs:
 
       - name: Run web unit tests
         run: pnpm --filter @shopnest/web test
+
+  # ── E2E ──────────────────────────────────────────────────────────────────
+  # Drives the real Next.js UI against the real API + an ephemeral Postgres
+  # in a real browser (Playwright's own pinned Chromium — the sandboxed dev
+  # environment this suite was authored in couldn't download it, so this is
+  # this suite's first from-scratch execution; see DECISIONS.md). Separate
+  # job from `web` because it needs the API built and a database, not just
+  # the frontend's own unit tests.
+  e2e:
+    name: E2E — full account-lifecycle journey (desktop + mobile)
+    runs-on: ubuntu-24.04
+    needs: [api, web]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: shopnest
+          POSTGRES_PASSWORD: shopnest
+          POSTGRES_DB: shopnest_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://shopnest:shopnest@localhost:5432/shopnest_e2e
+      JWT_ACCESS_SECRET: e2e-access-secret-placeholder-at-least-32-chars
+      JWT_REFRESH_SECRET: e2e-refresh-secret-placeholder-at-least-32-chars
+      WEB_URL: http://localhost:3000
+      API_URL: http://localhost:3001
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      INTERNAL_API_URL: http://localhost:3001
+      MAIL_CAPTURE_FILE_PATH: /tmp/shopnest-e2e-${{ github.run_id }}-${{ github.run_attempt }}.jsonl
+      NODE_ENV: development # not `test` or `production` — production refuses the local mail adapter (env.validation.ts), and this job needs it to read verification/reset links back out.
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.28.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shopnest/media-origins build
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: pnpm exec prisma generate
+
+      - name: Apply migrations
+        working-directory: apps/api
+        run: pnpm exec prisma migrate deploy
+
+      - name: Seed (admin account the suite logs in as)
+        run: pnpm --filter @shopnest/api db:seed
+
+      - name: Build API
+        run: pnpm --filter @shopnest/api build
+
+      - name: Build web
+        run: pnpm --filter @shopnest/web build
+        env:
+          NODE_ENV: production
+
+      - name: Install Playwright's Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E suite (isolated browser test groups)
+        working-directory: apps/web
+        run: |
+          failed=0
+          for spec in e2e/*.spec.ts; do
+            name="$(basename "$spec" .spec.ts)"
+            PLAYWRIGHT_HTML_OUTPUT_DIR="playwright-reports/$name" pnpm test:e2e "$spec" || failed=1
+          done
+          exit "$failed"
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-reports/
+          retention-days: 14
 
   # ── Build ────────────────────────────────────────────────────────────────
   build:
@@ -122,6 +234,7 @@ jobs:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @shopnest/media-origins build
 
       - name: Generate Prisma client
         working-directory: apps/api
@@ -129,5 +242,8 @@ jobs:
 
       - name: Build API
         run: pnpm --filter @shopnest/api build
+
+      - name: Build web
+        run: pnpm --filter @shopnest/web build
         env:
           NEXT_PUBLIC_API_URL: http://placeholder:3001

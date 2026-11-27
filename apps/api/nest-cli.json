@@ -12,6 +12,12 @@
           "introspectComments": true
         }
       }
+    ],
+    "assets": [
+      {
+        "include": "mail/assets/*",
+        "outDir": "dist/src"
+      }
     ]
   }
 }

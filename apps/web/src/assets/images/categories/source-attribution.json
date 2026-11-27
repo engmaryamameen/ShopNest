@@ -1,0 +1,14 @@
+{
+  "baby-kids.jpg": {
+    "name": "Amazon.com — Amazon Berkeley Objects; Guillaumin, Dideriksen, Deng, Arora, Collins and Malik",
+    "externalId": "amazon.in:B081ZKCDZM",
+    "url": "https://amazon-berkeley-objects.s3.amazonaws.com/index.html",
+    "license": "CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/. Metadata normalized; images copied unmodified."
+  },
+  "pet-supplies.jpg": {
+    "name": "Amazon.com — Amazon Berkeley Objects; Guillaumin, Dideriksen, Deng, Arora, Collins and Malik",
+    "externalId": "amazon.co.uk:B07HJ9WBTY",
+    "url": "https://amazon-berkeley-objects.s3.amazonaws.com/index.html",
+    "license": "CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/. Metadata normalized; images copied unmodified."
+  }
+}
