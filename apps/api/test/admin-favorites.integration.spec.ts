@@ -59,7 +59,7 @@ const enabled = process.env.SHOPNEST_DISPOSABLE_DB === 'true' && /\/(?:shopnest_
 
   it('rejects anonymous users, customers and invalid paths', async () => {
     const server = app.getHttpServer();
-    await request(server).get('/admin/favorites').expect(403);
+    await request(server).get('/admin/favorites').expect(401);
     await request(server).get('/admin/favorites').auth(customer, { type: 'bearer' }).expect(403);
     await request(server).put('/admin/favorites').set('Origin', 'http://localhost:3000').auth(adminA, { type: 'bearer' }).send({ path: 'https://example.com' }).expect(400);
   });

@@ -146,7 +146,12 @@ async function createAdminSession(suffix: string): Promise<Cookies> {
 
 async function createCategory(adminCookies: Cookies, name: string, slug: string): Promise<string> {
   const data = (await assertOk(
-    await api('/categories', { method: 'POST', body: { name, slug }, cookies: adminCookies }),
+    await api('/categories', {
+      method: 'POST',
+      // Active root categories require image metadata, including in checkout fixtures.
+      body: { name, slug, imageUrl: 'https://m.media-amazon.com/images/I/integration-category.jpg' },
+      cookies: adminCookies,
+    }),
     `createCategory(${slug})`,
   )) as { id: string };
   return data.id;
