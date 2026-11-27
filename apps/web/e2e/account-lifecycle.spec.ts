@@ -69,7 +69,7 @@ test.describe('Forgot / reset password', () => {
     await page.click('button[type="submit"]');
 
     await expect(page).toHaveURL(/\/login\?reset=success/);
-    await expect(page.getByText('sign in with your new password')).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: /sign in with your new password/i })).toBeVisible();
 
     // Old password no longer works; new password does.
     await loginViaUI(page, email, PASSWORD);
